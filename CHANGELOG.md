@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 - 2026-08-23
+
+- Add a versioned WDL bundle descriptor, JSON Schema, bounded structural
+  validator, local-import closure checks, and per-file SHA-256 verification.
+- Add the non-executable Workflow Store with built-in search, opt-in immutable
+  local installs, and conflict-safe custom WDL scaffolding.
+- Add `fastq-qc` and `bam-qc` WDL 1.0 starter bundles as structurally checked,
+  `miniwdl v1.15.0 check`-validated drafts with example inputs and explicit execution
+  limitations. Pin both starter container images by registry digest.
+- Add search, validation, install, and scaffold DSH tools. Mutations are denied
+  by default and require both store configuration and a DSH approval decision;
+  install approval is bound to an exact version and bundle digest.
+- Keep Manifest v1 compatible and keep workflow execution disabled.
+
 ## 0.3.1 - 2026-08-23
 
 - Remove the runtime import of `@deepseek-ai/dsh-tools` so an isolated DSH

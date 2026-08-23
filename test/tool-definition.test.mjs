@@ -52,3 +52,33 @@ test('the local tool wrapper rejects unsupported parameter types at registration
     /unsupported tool parameter type/,
   )
 })
+
+test('the local tool wrapper enforces string bounds, patterns, and enums', async () => {
+  const tool = defineTool({
+    name: 'constrained',
+    description: 'Constrained tool.',
+    parameters: {
+      digest: {
+        type: 'string',
+        required: true,
+        minLength: 3,
+        maxLength: 8,
+        pattern: '^ok-',
+      },
+      source: { type: 'string', enum: ['builtin', 'draft'] },
+    },
+    output: { schema: { type: 'string' }, render: () => [] },
+    execute: async () => 'ok',
+  })
+
+  await assert.rejects(
+    tool.execute({ digest: 'bad', source: 'remote' }),
+    (error) => (
+      error instanceof ToolArgsError
+      && error.code === 'INVALID_ARGS'
+      && error.violations.length === 2
+    ),
+  )
+  await assert.rejects(tool.execute({ digest: 'ok-too-long' }), /at most 8/)
+  assert.equal(await tool.execute({ digest: 'ok-one', source: 'builtin' }), 'ok')
+})

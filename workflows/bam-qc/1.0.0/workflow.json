@@ -1,0 +1,101 @@
+{
+  "bundleVersion": "1",
+  "manifest": {
+    "schemaVersion": "1",
+    "id": "bam-qc",
+    "version": "1.0.0",
+    "name": "BAM quality control",
+    "summary": "Run samtools flagstat and stats for one BAM file.",
+    "status": "draft",
+    "engine": {
+      "name": "miniwdl"
+    },
+    "inputs": [
+      {
+        "id": "bam",
+        "type": "file",
+        "required": true,
+        "description": "BAM file to inspect."
+      },
+      {
+        "id": "threads",
+        "type": "integer",
+        "required": false,
+        "description": "Threads allocated to samtools."
+      }
+    ],
+    "outputs": [
+      {
+        "id": "flagstat_report",
+        "type": "file",
+        "description": "samtools flagstat text report."
+      },
+      {
+        "id": "stats_report",
+        "type": "file",
+        "description": "samtools stats text report."
+      }
+    ],
+    "tags": [
+      "bam",
+      "qc",
+      "starter",
+      "wdl"
+    ]
+  },
+  "wdl": {
+    "version": "1.0",
+    "entrypoint": "main.wdl",
+    "engines": [
+      {
+        "name": "miniwdl",
+        "version": "1.15.0"
+      },
+      {
+        "name": "cromwell"
+      }
+    ]
+  },
+  "source": {
+    "kind": "builtin",
+    "repository": "https://github.com/qzhqzh/dsh-bio-workflows",
+    "revision": "0.4.0"
+  },
+  "authors": [
+    "dsh-bio-workflows maintainers"
+  ],
+  "license": "MIT",
+  "verification": {
+    "status": "structural",
+    "checks": [
+      "bundle-file-digests",
+      "local-import-closure",
+      "wdl-source-shape",
+      "miniwdl-check@1.15.0",
+      "container-digest-pinned",
+      "example-json"
+    ]
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "role": "license",
+      "sha256": "8e02f8ac03fd6bc80b43d27ae6ccba78a2af6fc5fb2698c99793bec3e9b29549"
+    },
+    {
+      "path": "README.md",
+      "role": "documentation",
+      "sha256": "8b8574af6bd3b487b77aae42e1506dbc831afa15377279a3b8e6d4d59b681181"
+    },
+    {
+      "path": "examples/inputs.json",
+      "role": "example",
+      "sha256": "0b3c4b475fc30c67b9f92fd23bae013b511a05e16261c382337e0486f22028ab"
+    },
+    {
+      "path": "main.wdl",
+      "role": "workflow",
+      "sha256": "93f3a65c86704806d3b3ff9452b22d7656598f551adc4f3bad87be876a710dbd"
+    }
+  ]
+}

@@ -27,10 +27,17 @@ test('package metadata matches the runtime identity', () => {
   assert.equal(packageJson.exports['./catalog'], './src/catalog.js')
   assert.equal(packageJson.exports['./manifest'], './src/manifest.js')
   assert.equal(packageJson.exports['./preflight'], './src/preflight.js')
+  assert.equal(packageJson.exports['./store'], './src/workflow-store.js')
+  assert.equal(packageJson.exports['./wdl-bundle'], './src/wdl-bundle.js')
   assert.equal(
     packageJson.exports['./schema/workflow-manifest.schema.json'],
     './schema/workflow-manifest.schema.json',
   )
+  assert.equal(
+    packageJson.exports['./schema/wdl-bundle.schema.json'],
+    './schema/wdl-bundle.schema.json',
+  )
+  assert.ok(packageJson.files.includes('workflows/'))
 })
 
 test('the foundation package has no install lifecycle scripts', () => {
@@ -47,6 +54,7 @@ test('the bundle patch installs the expected package', async () => {
   assert.match(patch, /name: dsh-bio-workflows/)
   assert.match(patch, /manifests: \[\]/)
   assert.match(patch, /engines: \{\}/)
+  assert.match(patch, /writeEnabled: false/)
 })
 
 test('the info tool is read-only and registers once', async () => {
@@ -72,8 +80,31 @@ test('the info tool is read-only and registers once', async () => {
   assert.equal(result.readOnly, true)
   assert.equal(result.workflowCount, 3)
   assert.equal(result.declaredEngineCount, 2)
+  assert.deepEqual(result.store, {
+    builtinWorkflowCount: 0,
+    localStoreConfigured: false,
+    writesEnabled: false,
+  })
   assert.equal(result.capabilities.workflowCatalog, true)
   assert.equal(result.capabilities.manifestValidation, true)
   assert.equal(result.capabilities.preflightValidation, true)
+  assert.equal(result.capabilities.workflowStore, true)
+  assert.equal(result.capabilities.wdlBundleValidation, true)
+  assert.equal(result.capabilities.workflowInstallation, false)
+  assert.equal(result.capabilities.workflowScaffolding, false)
   assert.equal(result.capabilities.workflowExecution, false)
+})
+
+test('the info tool reports explicitly enabled local store mutations', async () => {
+  const info = getPackageInfo(0, 0, {
+    builtinWorkflowCount: 2,
+    localStoreConfigured: true,
+    writesEnabled: true,
+  })
+
+  assert.equal(info.readOnly, false)
+  assert.equal(info.store.builtinWorkflowCount, 2)
+  assert.equal(info.capabilities.workflowInstallation, true)
+  assert.equal(info.capabilities.workflowScaffolding, true)
+  assert.equal(info.capabilities.workflowExecution, false)
 })

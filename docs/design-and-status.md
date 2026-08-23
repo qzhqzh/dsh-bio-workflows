@@ -2,27 +2,35 @@
 
 ## Executive assessment
 
-`dsh-bio-workflows` has implemented the read-only control-plane foundation, but
-it has **not implemented the main end-to-end product capability: executing and
+`dsh-bio-workflows` has implemented the control-plane and local WDL asset-store
+foundation, but it has **not implemented the main end-to-end product capability: executing and
 managing a bioinformatics workflow**.
 
-The current package can answer three questions safely:
+The current package can answer four questions safely:
 
 1. Which workflow manifests are configured?
 2. Is one manifest structurally valid?
 3. Do supplied input values and a configured engine declaration agree with that
    manifest?
+4. Which built-in or local WDL bundles are available, and are their files
+   structurally intact?
 
-It cannot yet prove that referenced files exist, discover an installed engine,
-submit a run, stream logs, cancel a run, or collect provenance and artifacts.
+It cannot yet prove that analysis input files exist, perform full WDL semantic
+validation, discover an installed engine, submit a run, stream logs, cancel a
+run, or collect provenance and artifacts.
 
 ## Architecture boundary
 
 ```mermaid
 flowchart LR
-  A[DSH agent] --> B[Read-only tools]
+  A[DSH agent] --> B[Control-plane tools]
   B --> C[Workflow catalog]
   C --> D[Manifest v1 validator]
+  B --> K[Workflow Store tools]
+  K --> L[Built-in WDL bundles]
+  K --> M[Opt-in local install and drafts]
+  L --> N[Structural validation and SHA-256]
+  M --> N
   B --> E[Declarative preflight]
   E --> F[Input shape checks]
   E --> G[Configured engine snapshot]
@@ -31,11 +39,14 @@ flowchart LR
   I -. not implemented .-> J[Future run and provenance store]
 ```
 
-The manifest is intentionally metadata-only. It contains no command, script,
-entrypoint, or source checkout instruction. Preflight consumes caller-supplied
-JSON values and a package configuration snapshot; it does not read the host or
-start a process. This keeps catalog registration and preflight below the
-execution authority boundary.
+Manifest v1 remains intentionally metadata-only. WDL source is carried by a
+separate bundle descriptor whose install operation is confined to a configured
+store root. Preflight does not read the host or start a process. Bundle
+validation inventories the whole directory, rejects links and undeclared
+entries, and reads local asset files through bounded file handles, but never
+invokes a WDL engine. Install approval is bound to an exact source, version, and
+bundle digest and is rechecked before writing. This keeps catalog, store, and
+preflight operations below the execution boundary.
 
 ## Capability matrix
 
@@ -44,10 +55,13 @@ execution authority boundary.
 | DSH bundle installation | Implemented | `npm run smoke:dsh` installs the tarball into an isolated headless profile and dumps its config | Run the smoke in CI |
 | Manifest v1 schema | Implemented | JSON Schema plus zero-dependency runtime validator | Schema migration policy when v2 is needed |
 | Workflow catalog | Implemented | Strict startup validation, unique ids, deterministic list/get | Dynamic provider registration if needed |
+| WDL bundle descriptor | Implemented | Runtime validator, JSON Schema, local-only imports, file SHA-256 | Schema migration policy and engine-produced validation evidence |
+| Workflow Store | Implemented foundation | Built-in search, opt-in immutable installs, local draft scaffold | Git/TRS providers and a visual store UI |
+| Starter workflows | Implemented as drafts | `fastq-qc` and `bam-qc` WDL 1.0 bundles pass `miniwdl v1.15.0 check`; containers are digest-pinned | Real miniwdl/Cromwell execution tests |
 | Input declaration preflight | Implemented | Required, unknown, scalar type, and cardinality checks | File existence, readability, size, and checksum checks |
 | Environment declaration preflight | Implemented | Availability and exact-version comparison | Trusted live engine probing |
 | Execution authorization | Not implemented | `executionReady` is always `false` | Explicit approval/policy contract |
-| Engine execution adapters | Not implemented | No command or adapter surface exists | Nextflow, WDL/Cromwell, and Snakemake adapters |
+| Engine execution adapters | Not implemented | No command or adapter surface exists | miniwdl, Cromwell/WES, Nextflow, and Snakemake adapters |
 | Run lifecycle | Not implemented | No run id or persisted state | Submit, status, logs, cancellation, retries |
 | Provenance and reports | Not implemented | No run artifacts are produced | Inputs, versions, checksums, outputs, normalized reports |
 
@@ -56,7 +70,8 @@ execution authority boundary.
 The answer depends on which product boundary is being evaluated:
 
 - **Foundation package:** yes. Installation metadata, manifest validation,
-  catalog discovery, and declaration-only preflight are implemented and tested.
+  catalog discovery, WDL asset management, structural bundle validation, and
+  declaration-only preflight are implemented and tested.
 - **Usable workflow runner:** no. The package cannot execute or manage a real
   bioinformatics workflow, so the primary end-user loop is incomplete.
 
@@ -86,14 +101,26 @@ command, environment, mounts, and expected outputs. Planning must not submit a
 run. A separate operation crosses the execution boundary only after DSH policy or
 user approval.
 
+Store installation and draft creation already use a separate DSH approval gate,
+but that grant applies only to bounded asset writes and never authorizes a run.
+
 ### 3. Engine adapters and run lifecycle
 
-Implement one adapter first, preferably Nextflow, behind the common contract.
+Implement one adapter first, preferably miniwdl for the WDL starter path, behind
+the common contract.
 Return an immutable run id and expose status, bounded log reads, cancellation,
-and terminal outcome. Add WDL/Cromwell and Snakemake only after the lifecycle
-contract is stable.
+and terminal outcome. Add Cromwell/WES, Nextflow, and Snakemake only after the
+lifecycle contract is stable.
 
-### 4. Provenance and normalized reports
+### 4. Store federation and visual authoring
+
+Add Git and GA4GH TRS read providers after the local provider contract is
+stable. A later UI may present the same search/install/update flow as a theme
+store, while displaying workflow-specific trust, license, digest, container,
+engine, and verification metadata. Source edits must use explicit version and
+digest baselines; conflicts stop autosave and require user-controlled merging.
+
+### 5. Provenance and normalized reports
 
 Persist the manifest version, resolved inputs, engine/container versions,
 checksums, timestamps, exit status, output inventory, and report links. This is
