@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 - 2026-08-23
+
+- Add deterministic workflow input validation for required values, types, and cardinality.
+- Add strict configured environment declarations for engine availability and exact versions.
+- Add the read-only `bio_workflows_preflight` tool and public preflight API.
+- Keep filesystem inspection, engine probing, and workflow execution explicitly disabled.
+
 ## 0.2.0 - 2026-08-23
 
 - Add the metadata-only workflow manifest v1 JSON Schema and runtime validator.

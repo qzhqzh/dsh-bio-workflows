@@ -1,13 +1,14 @@
 {
   "name": "dsh-bio-workflows",
-  "version": "0.2.0",
-  "description": "Read-only bioinformatics workflow catalog for DeepSeek Harness.",
+  "version": "0.3.0",
+  "description": "Read-only bioinformatics workflow catalog and declarative preflight for DeepSeek Harness.",
   "type": "module",
   "main": "./index.js",
   "exports": {
     ".": "./index.js",
     "./catalog": "./src/catalog.js",
     "./manifest": "./src/manifest.js",
+    "./preflight": "./src/preflight.js",
     "./schema/workflow-manifest.schema.json": "./schema/workflow-manifest.schema.json",
     "./package.json": "./package.json"
   },
@@ -15,6 +16,7 @@
     "index.js",
     "src/",
     "schema/",
+    "docs/",
     "cordis.patch.yml",
     "README.md",
     "CHANGELOG.md",

@@ -6,9 +6,9 @@ Bioinformatics workflow orchestration foundation for
 `workflows` is intentionally plural: this package is intended to provide one
 DSH integration surface for multiple workflow definitions and engines.
 
-> `0.2.0` is a read-only catalog release. It validates configured workflow
-> metadata and exposes discovery tools, but it does not resolve files or execute
-> bioinformatics workflows.
+> `0.3.0` is a read-only catalog and declarative preflight release. It validates
+> configured workflow metadata, supplied input values, and a configured engine
+> snapshot, but it does not inspect files, probe engines, or execute workflows.
 
 ## Install
 
@@ -23,7 +23,7 @@ Add the bundle to a DSH profile:
 dsh plugin --profile web add dsh-bio-workflows
 ```
 
-The bundle registers three tools:
+The bundle registers four tools:
 
 - `bio_workflows_info`: reports the installed package version and current
   capability flags without reading files, accessing the network, or starting
@@ -31,6 +31,8 @@ The bundle registers three tools:
 - `bio_workflows_list`: lists manifest summaries, with optional exact filters
   for engine, status, and tag.
 - `bio_workflows_get`: returns one complete manifest by workflow id.
+- `bio_workflows_preflight`: validates supplied input values and compares the
+  manifest engine requirement with the configured environment declaration.
 
 ## Configure the catalog
 
@@ -61,13 +63,18 @@ home-level `cordis.patch.yml` to add manifests:
         tags:
           - fastq
           - qc
+    environment:
+      engines:
+        nextflow:
+          available: true
+          version: "24.04"
 ```
 
 Workflow ids are unique within one catalog. Invalid manifests and duplicate ids
 fail at plugin startup instead of producing a partially valid catalog.
 
 The versioned contract is published as
-[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.2.0/schema/workflow-manifest.schema.json).
+[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.3.0/schema/workflow-manifest.schema.json).
 The zero-dependency runtime API is also available through package subpaths:
 
 ```js
@@ -76,17 +83,35 @@ import {
   parseWorkflowManifest,
   validateWorkflowManifest,
 } from 'dsh-bio-workflows/manifest'
+import {
+  parsePreflightEnvironment,
+  preflightWorkflow,
+} from 'dsh-bio-workflows/preflight'
 ```
 
 The manifest is deliberately metadata-only. It has no command, script, or
 entrypoint field, so catalog registration cannot grant execution authority.
+
+## Preflight boundary
+
+Preflight checks only declarations supplied to this package:
+
+- required, unknown, scalar, and cardinality constraints for workflow inputs;
+- whether the manifest engine is declared available;
+- exact engine version equality when the manifest specifies a version.
+
+It deliberately does not check whether a file exists or is readable, invoke an
+engine version command, or submit a workflow. Every preflight result therefore
+contains `executionReady: false` plus machine-readable limitation codes. A
+`pass` means the supplied declarations are internally consistent, not that the
+host is ready to execute the workflow.
 
 ## Roadmap
 
 Minor releases add independently reviewable layers:
 
 1. Workflow catalog and metadata schema — available in `0.2.0`
-2. Input and environment preflight validation — next
+2. Input and declared-environment preflight — available in `0.3.0`
 3. Opt-in adapters for established workflow engines
 4. Run status, provenance, and report normalization
 
@@ -101,12 +126,15 @@ npm run pack:check
 ```
 
 The package ships plain ESM and has no build or install lifecycle scripts.
+See [Design and implementation status](./docs/design-and-status.md) for the
+architecture boundary, completion assessment, and next milestones.
 
 ## 中文说明
 
-`0.2.0` 提供严格校验的 workflow manifest v1、只读内存目录和查询工具。
-manifest 只包含元数据，不包含命令或入口点；本版本仍不会读取工作流文件、
-访问网络或执行 Nextflow、WDL、Snakemake。下一层再增加输入与环境预检。
+`0.3.0` 在只读目录上增加输入与声明式环境预检。它会检查输入类型、必填项、
+集合基数和配置中声明的引擎版本，但不会检查文件是否存在、探测本机引擎或
+执行 Nextflow、WDL、Snakemake。即使预检通过，`executionReady` 仍固定为
+`false`，直到后续显式实现安全探测和执行授权链路。
 
 ## License
 

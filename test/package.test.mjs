@@ -22,6 +22,7 @@ test('package metadata matches the runtime identity', () => {
   assert.equal(packageJson.publishConfig.registry, 'https://registry.npmjs.org/')
   assert.equal(packageJson.exports['./catalog'], './src/catalog.js')
   assert.equal(packageJson.exports['./manifest'], './src/manifest.js')
+  assert.equal(packageJson.exports['./preflight'], './src/preflight.js')
   assert.equal(
     packageJson.exports['./schema/workflow-manifest.schema.json'],
     './schema/workflow-manifest.schema.json',
@@ -41,6 +42,7 @@ test('the bundle patch installs the expected package', async () => {
   assert.match(patch, /id: bio-workflows/)
   assert.match(patch, /name: dsh-bio-workflows/)
   assert.match(patch, /manifests: \[\]/)
+  assert.match(patch, /engines: \{\}/)
 })
 
 test('the info tool is read-only and registers once', async () => {
@@ -54,7 +56,7 @@ test('the info tool is read-only and registers once', async () => {
   }
   const defineTool = (definition) => definition
 
-  const tool = registerInfoTool(ctx, defineTool, 3)
+  const tool = registerInfoTool(ctx, defineTool, 3, 2)
   const result = JSON.parse(await tool.execute({}))
 
   assert.equal(registered.length, 1)
@@ -64,10 +66,12 @@ test('the info tool is read-only and registers once', async () => {
   assert.deepEqual(tool.output.schema, { type: 'string' })
   assert.deepEqual(tool.output.render({}, 'ready'), [{ type: 'text', text: 'ready' }])
   assert.equal(tool.isConcurrencySafe({}), true)
-  assert.deepEqual(result, getPackageInfo(3))
+  assert.deepEqual(result, getPackageInfo(3, 2))
   assert.equal(result.readOnly, true)
   assert.equal(result.workflowCount, 3)
+  assert.equal(result.declaredEngineCount, 2)
   assert.equal(result.capabilities.workflowCatalog, true)
   assert.equal(result.capabilities.manifestValidation, true)
+  assert.equal(result.capabilities.preflightValidation, true)
   assert.equal(result.capabilities.workflowExecution, false)
 })

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/dsh-bio-workflows@0.2.0/schema/workflow-manifest.schema.json",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.3.0/schema/workflow-manifest.schema.json",
   "title": "dsh-bio-workflows manifest v1",
   "description": "Read-only catalog metadata. A valid manifest does not authorize or define workflow execution.",
   "type": "object",
@@ -94,7 +94,8 @@
         "version": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 128
+          "maxLength": 128,
+          "description": "Exact engine version expected by declarative preflight. Omit to accept any declared version."
         }
       }
     },
