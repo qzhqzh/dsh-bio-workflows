@@ -43,7 +43,7 @@ try {
     assert.equal(typeof createWorkflowCatalog, 'function')
     assert.equal(typeof preflightWorkflow, 'function')
     assert.equal(metadata.name, plugin.name)
-    assert.equal(metadata.version, '0.3.0')
+    assert.equal(metadata.version, '0.3.1')
     assert.equal(schema.properties.schemaVersion.const, MANIFEST_SCHEMA_VERSION)
 
     const registered = []

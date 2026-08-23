@@ -12,13 +12,12 @@ import { makeManifest } from './fixtures.mjs'
 test('catalog tools register once and expose mandatory DSH output declarations', async () => {
   const registered = []
   const ctx = { tools: { register: (tool) => registered.push(tool) } }
-  const defineTool = (definition) => definition
   const catalog = createWorkflowCatalog([
     makeManifest(),
     makeManifest({ id: 'variant-calling', engine: { name: 'wdl' }, tags: ['variant'] }),
   ])
 
-  const tools = registerCatalogTools(ctx, defineTool, catalog)
+  const tools = registerCatalogTools(ctx, catalog)
   const listTool = tools.find((tool) => tool.name === LIST_TOOL_NAME)
   const getTool = tools.find((tool) => tool.name === GET_TOOL_NAME)
 
@@ -27,7 +26,7 @@ test('catalog tools register once and expose mandatory DSH output declarations',
   assert.deepEqual(listTool.output.schema, { type: 'string' })
   assert.deepEqual(getTool.output.render({}, 'ready'), [{ type: 'text', text: 'ready' }])
   assert.equal(listTool.isConcurrencySafe({}), true)
-  assert.equal(getTool.parameters.id.required, true)
+  assert.deepEqual(getTool.parameters.required, ['id'])
 
   const listResult = JSON.parse(await listTool.execute({ engine: 'wdl' }))
   assert.equal(listResult.count, 1)

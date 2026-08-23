@@ -18,7 +18,9 @@ test('package metadata matches the runtime identity', () => {
   assert.equal(packageJson.name, PACKAGE_NAME)
   assert.equal(packageJson.version, PACKAGE_VERSION)
   assert.equal(packageJson.dsh.bundle.patch, './cordis.patch.yml')
-  assert.equal(packageJson.peerDependencies['@deepseek-ai/dsh-tools'], '^0.1.1-rc.2')
+  assert.equal(packageJson.dependencies, undefined)
+  assert.equal(packageJson.devDependencies, undefined)
+  assert.equal(packageJson.peerDependencies, undefined)
   assert.equal(packageJson.publishConfig.registry, 'https://registry.npmjs.org/')
   assert.equal(packageJson.exports['./catalog'], './src/catalog.js')
   assert.equal(packageJson.exports['./manifest'], './src/manifest.js')
@@ -54,15 +56,13 @@ test('the info tool is read-only and registers once', async () => {
       },
     },
   }
-  const defineTool = (definition) => definition
-
-  const tool = registerInfoTool(ctx, defineTool, 3, 2)
+  const tool = registerInfoTool(ctx, 3, 2)
   const result = JSON.parse(await tool.execute({}))
 
   assert.equal(registered.length, 1)
   assert.equal(registered[0], tool)
   assert.equal(tool.name, TOOL_NAME)
-  assert.deepEqual(tool.parameters, {})
+  assert.deepEqual(tool.parameters, { type: 'object', properties: {} })
   assert.deepEqual(tool.output.schema, { type: 'string' })
   assert.deepEqual(tool.output.render({}, 'ready'), [{ type: 'text', text: 'ready' }])
   assert.equal(tool.isConcurrencySafe({}), true)

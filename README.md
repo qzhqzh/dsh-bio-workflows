@@ -6,7 +6,7 @@ Bioinformatics workflow orchestration foundation for
 `workflows` is intentionally plural: this package is intended to provide one
 DSH integration surface for multiple workflow definitions and engines.
 
-> `0.3.0` is a read-only catalog and declarative preflight release. It validates
+> `0.3.x` is a read-only catalog and declarative preflight release. It validates
 > configured workflow metadata, supplied input values, and a configured engine
 > snapshot, but it does not inspect files, probe engines, or execute workflows.
 
@@ -74,7 +74,7 @@ Workflow ids are unique within one catalog. Invalid manifests and duplicate ids
 fail at plugin startup instead of producing a partially valid catalog.
 
 The versioned contract is published as
-[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.3.0/schema/workflow-manifest.schema.json).
+[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.3.1/schema/workflow-manifest.schema.json).
 The zero-dependency runtime API is also available through package subpaths:
 
 ```js
@@ -131,7 +131,7 @@ architecture boundary, completion assessment, and next milestones.
 
 ## 中文说明
 
-`0.3.0` 在只读目录上增加输入与声明式环境预检。它会检查输入类型、必填项、
+`0.3.x` 在只读目录上增加输入与声明式环境预检。它会检查输入类型、必填项、
 集合基数和配置中声明的引擎版本，但不会检查文件是否存在、探测本机引擎或
 执行 Nextflow、WDL、Snakemake。即使预检通过，`executionReady` 仍固定为
 `false`，直到后续显式实现安全探测和执行授权链路。

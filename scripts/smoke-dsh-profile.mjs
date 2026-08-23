@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'dsh-bio-workflows-profile-smoke-'))
@@ -31,6 +31,17 @@ try {
     ['plugin', '--profile', 'headless', 'add', tarball],
     { cwd: packageRoot, env: environment, encoding: 'utf8' },
   )
+  const installedPlugin = await import(pathToFileURL(join(
+    dshHome,
+    'profiles',
+    'headless',
+    'node_modules',
+    'dsh-bio-workflows',
+    'index.js',
+  )).href)
+  assert.equal(installedPlugin.name, 'dsh-bio-workflows')
+  assert.equal(typeof installedPlugin.apply, 'function')
+
   const config = execFileSync(
     dshCommand,
     ['--profile', 'headless', '--dump-config'],

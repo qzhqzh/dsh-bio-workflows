@@ -11,20 +11,20 @@ import { makeManifest } from './fixtures.mjs'
 test('preflight tool registers a read-only dynamic input object', async () => {
   const registered = []
   const ctx = { tools: { register: (tool) => registered.push(tool) } }
-  const defineTool = (definition) => definition
   const catalog = createWorkflowCatalog([makeManifest()])
   const environment = {
     engines: { nextflow: { available: true, version: '24.04' } },
   }
 
-  const tool = registerPreflightTool(ctx, defineTool, catalog, environment)
+  const tool = registerPreflightTool(ctx, catalog, environment)
 
   assert.equal(registered.length, 1)
   assert.equal(registered[0], tool)
   assert.equal(tool.name, PREFLIGHT_TOOL_NAME)
-  assert.equal(tool.parameters.inputs.type, 'object')
-  assert.equal(tool.parameters.inputs.additionalProperties, true)
-  assert.equal(tool.parameters.inputs.required, true)
+  assert.equal(tool.parameters.type, 'object')
+  assert.equal(tool.parameters.properties.inputs.type, 'object')
+  assert.equal(tool.parameters.properties.inputs.additionalProperties, true)
+  assert.deepEqual(tool.parameters.required, ['id', 'inputs'])
   assert.deepEqual(tool.output.schema, { type: 'string' })
   assert.equal(tool.isConcurrencySafe({}), true)
 

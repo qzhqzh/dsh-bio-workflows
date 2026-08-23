@@ -2,21 +2,24 @@ import { parsePreflightEnvironment, preflightWorkflow } from './preflight.js'
 
 export const PREFLIGHT_TOOL_NAME = 'bio_workflows_preflight'
 
-export function createPreflightTool(defineTool, catalog, environmentValue = {}) {
+export function createPreflightTool(catalog, environmentValue = {}) {
   const environment = parsePreflightEnvironment(environmentValue)
 
-  return defineTool({
+  return {
     name: PREFLIGHT_TOOL_NAME,
     description:
       'Validate supplied workflow input values and a configured environment declaration. This tool does not inspect files, probe engines, or execute workflows.',
     parameters: {
-      id: { type: 'string', required: true, description: 'Exact workflow manifest id.' },
-      inputs: {
-        type: 'object',
-        additionalProperties: true,
-        required: true,
-        description: 'Input values keyed by manifest input id.',
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Exact workflow manifest id.' },
+        inputs: {
+          type: 'object',
+          additionalProperties: true,
+          description: 'Input values keyed by manifest input id.',
+        },
       },
+      required: ['id', 'inputs'],
     },
     output: {
       schema: { type: 'string' },
@@ -42,11 +45,11 @@ export function createPreflightTool(defineTool, catalog, environmentValue = {}) 
         error: null,
       }, null, 2)
     },
-  })
+  }
 }
 
-export function registerPreflightTool(ctx, defineTool, catalog, environmentValue = {}) {
-  const tool = createPreflightTool(defineTool, catalog, environmentValue)
+export function registerPreflightTool(ctx, catalog, environmentValue = {}) {
+  const tool = createPreflightTool(catalog, environmentValue)
   ctx.tools.register(tool)
   return tool
 }
