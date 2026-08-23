@@ -38,6 +38,14 @@
   ],
   "author": "zhuqin",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qzhqzh/dsh-bio-workflows.git"
+  },
+  "homepage": "https://github.com/qzhqzh/dsh-bio-workflows#readme",
+  "bugs": {
+    "url": "https://github.com/qzhqzh/dsh-bio-workflows/issues"
+  },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },
