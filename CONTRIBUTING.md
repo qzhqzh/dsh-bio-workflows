@@ -6,6 +6,8 @@
 - Use Conventional Commits such as `feat:`, `fix:`, `docs:`, and `test:`.
 - Keep manifest registration and declaration-only preflight free of filesystem,
   network, subprocess, and workflow execution side effects.
+- Keep Workflow Store writes confined to the configured root, non-overwriting,
+  disabled by default, and behind a DSH approval decision.
 - Treat npm publishing, remote creation, push, and tagging as separate actions.
 
 ## Required checks
@@ -31,8 +33,8 @@ npm run smoke:dsh
 ```
 
 This installs the tarball in an isolated profile, imports and applies the
-installed plugin, checks all four tool contracts, and boots the real DSH
-headless help path.
+installed plugin, checks all eight tool contracts, loads both built-in WDL
+bundles, and boots the real DSH headless help path.
 
 ## Version synchronization
 
@@ -40,6 +42,6 @@ When bumping the package version, keep these values aligned:
 
 - `package.json` version;
 - `PACKAGE_VERSION` in `src/info.js`;
-- the versioned JSON Schema `$id`;
+- both versioned JSON Schema `$id` values;
 - README schema URL and release description;
 - `CHANGELOG.md`.

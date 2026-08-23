@@ -31,20 +31,25 @@ try {
     { cwd: consumer, encoding: 'utf8' },
   )
 
-  const smokeProgram = `
+  const smokeProgram = String.raw`
     import assert from 'node:assert/strict'
     import * as plugin from 'dsh-bio-workflows'
     import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
     import { MANIFEST_SCHEMA_VERSION } from 'dsh-bio-workflows/manifest'
     import metadata from 'dsh-bio-workflows/package.json' with { type: 'json' }
     import { preflightWorkflow } from 'dsh-bio-workflows/preflight'
+    import { createWorkflowStore } from 'dsh-bio-workflows/store'
+    import { WDL_BUNDLE_SCHEMA_VERSION } from 'dsh-bio-workflows/wdl-bundle'
     import schema from 'dsh-bio-workflows/schema/workflow-manifest.schema.json' with { type: 'json' }
+    import bundleSchema from 'dsh-bio-workflows/schema/wdl-bundle.schema.json' with { type: 'json' }
 
     assert.equal(typeof createWorkflowCatalog, 'function')
     assert.equal(typeof preflightWorkflow, 'function')
+    assert.equal(typeof createWorkflowStore, 'function')
     assert.equal(metadata.name, plugin.name)
-    assert.equal(metadata.version, '0.3.1')
+    assert.equal(metadata.version, '0.4.0')
     assert.equal(schema.properties.schemaVersion.const, MANIFEST_SCHEMA_VERSION)
+    assert.equal(bundleSchema.properties.bundleVersion.const, WDL_BUNDLE_SCHEMA_VERSION)
 
     const registered = []
     const listeners = new Map()
@@ -118,9 +123,98 @@ try {
           },
           output: { type: 'string' },
         },
+        {
+          name: 'bio_workflows_search',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: 'Optional case-insensitive text query.' },
+              language: { type: 'string', description: 'Optional exact language filter; currently wdl.' },
+              tag: { type: 'string', description: 'Optional exact tag filter.' },
+              source: { type: 'string', description: 'Optional source filter: builtin, installed, or draft.' },
+            },
+          },
+          output: { type: 'string' },
+        },
+        {
+          name: 'bio_workflows_validate',
+          parameters: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Exact workflow bundle id.' },
+              version: { type: 'string', description: 'Optional exact semantic version; latest is selected when omitted.' },
+              source: { type: 'string', description: 'Optional source; defaults to builtin.' },
+            },
+            required: ['id'],
+          },
+          output: { type: 'string' },
+        },
+        {
+          name: 'bio_workflows_install',
+          parameters: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                pattern: '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$',
+                description: 'Exact workflow bundle id.',
+              },
+              version: {
+                type: 'string',
+                pattern: '^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$',
+                description: 'Exact semantic version returned by search.',
+              },
+              expectedDigest: {
+                type: 'string',
+                pattern: '^sha256:[a-f0-9]{64}$',
+                description: 'Exact sha256 bundle digest returned by search.',
+              },
+              source: {
+                type: 'string',
+                enum: ['builtin', 'installed', 'draft'],
+                description: 'Optional source; defaults to builtin.',
+              },
+            },
+            required: ['id', 'version', 'expectedDigest'],
+          },
+          output: { type: 'string' },
+        },
+        {
+          name: 'bio_workflows_scaffold',
+          parameters: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                pattern: '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$',
+                description: 'Lowercase workflow identifier.',
+              },
+              version: {
+                type: 'string',
+                pattern: '^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$',
+                description: 'Semantic version; defaults to 0.1.0.',
+              },
+              name: {
+                type: 'string',
+                minLength: 1,
+                maxLength: 160,
+                description: 'Human-readable workflow name.',
+              },
+              summary: {
+                type: 'string',
+                minLength: 1,
+                maxLength: 1000,
+                description: 'Short workflow purpose.',
+              },
+            },
+            required: ['id', 'name', 'summary'],
+          },
+          output: { type: 'string' },
+        },
       ],
     )
-    const result = JSON.parse(await registered.at(-1).execute(
+    const preflight = registered.find((tool) => tool.name === 'bio_workflows_preflight')
+    const result = JSON.parse(await preflight.execute(
       { id: 'fastq-qc', inputs: { reads: ['sample.fastq.gz'] } },
       { signal: new AbortController().signal },
     ))
@@ -134,6 +228,18 @@ try {
       name: 'ToolArgsError',
       code: 'INVALID_ARGS',
     })
+    const search = registered.find((tool) => tool.name === 'bio_workflows_search')
+    const searchResult = JSON.parse(await search.execute({ query: 'qc' }))
+    const fastq = searchResult.workflows.find((workflow) => workflow.id === 'fastq-qc')
+    const approval = await listeners.get('tools/pre-execute')(
+      {
+        name: 'bio_workflows_install',
+        arguments: { id: fastq.id, version: fastq.version, expectedDigest: fastq.digest },
+      },
+      async () => assert.fail('mutating store tool bypassed approval'),
+    )
+    assert.equal(approval.kind, 'deny')
+    assert.equal(searchResult.count, 2)
   `
   execFileSync(
     process.execPath,

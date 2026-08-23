@@ -5,3 +5,5 @@
         manifests: []
         environment:
           engines: {}
+        store:
+          writeEnabled: false

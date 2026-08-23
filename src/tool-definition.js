@@ -37,11 +37,28 @@ function validateArguments(schema, value) {
     const item = value[name]
     if (definition.type === 'string' && typeof item !== 'string') {
       violations.push(`$.${name} must be a string`)
+    } else if (definition.type === 'string') {
+      if (definition.minLength !== undefined && item.length < definition.minLength) {
+        violations.push(`$.${name} must contain at least ${definition.minLength} character(s)`)
+      }
+      if (definition.maxLength !== undefined && item.length > definition.maxLength) {
+        violations.push(`$.${name} must contain at most ${definition.maxLength} character(s)`)
+      }
+      if (definition.pattern !== undefined && !new RegExp(definition.pattern).test(item)) {
+        violations.push(`$.${name} must match ${definition.pattern}`)
+      }
+      if (definition.enum !== undefined && !definition.enum.includes(item)) {
+        violations.push(`$.${name} must be one of: ${definition.enum.join(', ')}`)
+      }
     } else if (definition.type === 'object' && !isPlainObject(item)) {
       violations.push(`$.${name} must be an object`)
     }
   }
   return violations
+}
+
+export function validateToolArguments(tool, value) {
+  return validateArguments(tool.parameters, value)
 }
 
 function invalidArgumentsResult(violations) {
@@ -100,7 +117,7 @@ export function registerToolArgumentGuard(ctx, tools) {
     const tool = ctx.tools.get(exec.name, exec.agent)
     if (!ownedTools.has(tool)) return next()
 
-    const violations = validateArguments(tool.parameters, exec.arguments)
+    const violations = validateToolArguments(tool, exec.arguments)
     return violations.length === 0 ? next() : invalidArgumentsResult(violations)
   })
 }
