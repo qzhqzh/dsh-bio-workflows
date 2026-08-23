@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1 - 2026-08-23
+
+- Remove the runtime import of `@deepseek-ai/dsh-tools` so an isolated DSH
+  profile can load the plugin without copying the host's peer dependency graph.
+- Compile equivalent registry-ready JSON Schema tool definitions locally while
+  preserving fail-closed argument validation and structured `INVALID_ARGS`
+  results through the DSH execution hook.
+- Extend the DSH profile smoke test to import and apply the installed plugin,
+  verify all four tool contracts, and boot the real headless help path.
+
 ## 0.3.0 - 2026-08-23
 
 - Add deterministic workflow input validation for required values, types, and cardinality.

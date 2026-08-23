@@ -7,12 +7,12 @@ import {
   LIST_TOOL_NAME,
   registerCatalogTools,
 } from '../src/catalog-tools.js'
+import { defineTool } from '../src/tool-definition.js'
 import { makeManifest } from './fixtures.mjs'
 
 test('catalog tools register once and expose mandatory DSH output declarations', async () => {
   const registered = []
   const ctx = { tools: { register: (tool) => registered.push(tool) } }
-  const defineTool = (definition) => definition
   const catalog = createWorkflowCatalog([
     makeManifest(),
     makeManifest({ id: 'variant-calling', engine: { name: 'wdl' }, tags: ['variant'] }),
@@ -27,7 +27,7 @@ test('catalog tools register once and expose mandatory DSH output declarations',
   assert.deepEqual(listTool.output.schema, { type: 'string' })
   assert.deepEqual(getTool.output.render({}, 'ready'), [{ type: 'text', text: 'ready' }])
   assert.equal(listTool.isConcurrencySafe({}), true)
-  assert.equal(getTool.parameters.id.required, true)
+  assert.deepEqual(getTool.parameters.required, ['id'])
 
   const listResult = JSON.parse(await listTool.execute({ engine: 'wdl' }))
   assert.equal(listResult.count, 1)

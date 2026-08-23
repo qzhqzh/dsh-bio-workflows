@@ -1,6 +1,6 @@
 {
   "name": "dsh-bio-workflows",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Read-only bioinformatics workflow catalog and declarative preflight for DeepSeek Harness.",
   "type": "module",
   "main": "./index.js",
@@ -49,10 +49,8 @@
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },
-  "peerDependencies": {
-    "@deepseek-ai/dsh-tools": "^0.1.1-rc.2"
-  },
   "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
     "@deepseek-ai/dsh-tools": "0.1.1-rc.2"
   },
   "publishConfig": {

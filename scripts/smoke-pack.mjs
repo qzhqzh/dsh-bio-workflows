@@ -43,11 +43,18 @@ try {
     assert.equal(typeof createWorkflowCatalog, 'function')
     assert.equal(typeof preflightWorkflow, 'function')
     assert.equal(metadata.name, plugin.name)
-    assert.equal(metadata.version, '0.3.0')
+    assert.equal(metadata.version, '0.3.1')
     assert.equal(schema.properties.schemaVersion.const, MANIFEST_SCHEMA_VERSION)
 
     const registered = []
-    plugin.apply({ tools: { register: (tool) => registered.push(tool) } }, {
+    const listeners = new Map()
+    plugin.apply({
+      tools: {
+        register: (tool) => registered.push(tool),
+        get: (name) => registered.find((tool) => tool.name === name),
+      },
+      on: (event, listener) => listeners.set(event, listener),
+    }, {
       manifests: [{
         schemaVersion: '1',
         id: 'fastq-qc',
@@ -60,13 +67,73 @@ try {
       }],
       environment: { engines: { nextflow: { available: true, version: '24.04' } } },
     })
-    assert.equal(registered.length, 4)
+    assert.deepEqual(
+      registered.map((tool) => ({
+        name: tool.name,
+        parameters: tool.parameters,
+        output: tool.output.schema,
+      })),
+      [
+        {
+          name: 'bio_workflows_info',
+          parameters: { type: 'object', properties: {} },
+          output: { type: 'string' },
+        },
+        {
+          name: 'bio_workflows_list',
+          parameters: {
+            type: 'object',
+            properties: {
+              engine: { type: 'string', description: 'Optional exact engine name filter.' },
+              status: { type: 'string', description: 'Optional exact status filter.' },
+              tag: { type: 'string', description: 'Optional exact tag filter.' },
+            },
+          },
+          output: { type: 'string' },
+        },
+        {
+          name: 'bio_workflows_get',
+          parameters: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Exact workflow manifest id.' },
+            },
+            required: ['id'],
+          },
+          output: { type: 'string' },
+        },
+        {
+          name: 'bio_workflows_preflight',
+          parameters: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Exact workflow manifest id.' },
+              inputs: {
+                type: 'object',
+                additionalProperties: true,
+                description: 'Input values keyed by manifest input id.',
+              },
+            },
+            required: ['id', 'inputs'],
+          },
+          output: { type: 'string' },
+        },
+      ],
+    )
     const result = JSON.parse(await registered.at(-1).execute(
       { id: 'fastq-qc', inputs: { reads: ['sample.fastq.gz'] } },
       { signal: new AbortController().signal },
     ))
     assert.equal(result.preflight.status, 'pass')
     assert.equal(result.preflight.executionReady, false)
+    const guarded = await listeners.get('tools/execute')(
+      { name: 'bio_workflows_get', arguments: {} },
+      async () => assert.fail('invalid arguments reached the tool body'),
+    )
+    assert.deepEqual(guarded.error.info, {
+      name: 'ToolArgsError',
+      code: 'INVALID_ARGS',
+    })
   `
   execFileSync(
     process.execPath,
