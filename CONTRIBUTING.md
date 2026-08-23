@@ -14,12 +14,15 @@ Run before committing a release candidate:
 
 ```bash
 npm test
-node --test --experimental-test-coverage test/*.test.mjs
+npm run test:coverage
 npm run pack:check
+npm run smoke:pack
 ```
 
-Also verify package self-references for every public subpath and inspect the npm
-tarball allowlist. Public schema or API changes require a compatibility review.
+The integration test compiles tool definitions with the real DSH peer. The pack
+smoke test installs the produced tarball in an isolated temporary consumer and
+loads every public subpath. Public schema or API changes require a compatibility
+review.
 
 ## Version synchronization
 
