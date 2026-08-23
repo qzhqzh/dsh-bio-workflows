@@ -19,16 +19,20 @@ npm run pack:check
 npm run smoke:pack
 ```
 
-The integration test compiles tool definitions with the real DSH peer. The pack
-smoke test installs the produced tarball in an isolated temporary consumer and
-loads every public subpath. Public schema or API changes require a compatibility
-review.
+The integration test verifies the registry-ready tool schemas and fail-closed
+argument validation. The pack smoke test installs the produced tarball in an
+isolated temporary consumer and loads every public subpath. Public schema or API
+changes require a compatibility review.
 
 When the DSH CLI is installed, also run an isolated profile smoke test:
 
 ```bash
 npm run smoke:dsh
 ```
+
+This installs the tarball in an isolated profile, imports and applies the
+installed plugin, checks all four tool contracts, and boots the real DSH
+headless help path.
 
 ## Version synchronization
 

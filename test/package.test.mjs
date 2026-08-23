@@ -9,6 +9,7 @@ import {
   getPackageInfo,
   registerInfoTool,
 } from '../src/info.js'
+import { defineTool } from '../src/tool-definition.js'
 
 const packageJson = JSON.parse(
   await readFile(new URL('../package.json', import.meta.url), 'utf8'),
@@ -56,7 +57,7 @@ test('the info tool is read-only and registers once', async () => {
       },
     },
   }
-  const tool = registerInfoTool(ctx, 3, 2)
+  const tool = registerInfoTool(ctx, defineTool, 3, 2)
   const result = JSON.parse(await tool.execute({}))
 
   assert.equal(registered.length, 1)

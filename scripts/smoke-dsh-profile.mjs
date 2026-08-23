@@ -41,6 +41,67 @@ try {
   )).href)
   assert.equal(installedPlugin.name, 'dsh-bio-workflows')
   assert.equal(typeof installedPlugin.apply, 'function')
+  const registered = []
+  installedPlugin.apply({ tools: { register: (tool) => registered.push(tool) } })
+  assert.deepEqual(
+    registered.map((tool) => ({
+      name: tool.name,
+      parameters: tool.parameters,
+      output: tool.output.schema,
+    })),
+    [
+      {
+        name: 'bio_workflows_info',
+        parameters: { type: 'object', properties: {} },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_list',
+        parameters: {
+          type: 'object',
+          properties: {
+            engine: { type: 'string', description: 'Optional exact engine name filter.' },
+            status: { type: 'string', description: 'Optional exact status filter.' },
+            tag: { type: 'string', description: 'Optional exact tag filter.' },
+          },
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_get',
+        parameters: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Exact workflow manifest id.' },
+          },
+          required: ['id'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_preflight',
+        parameters: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Exact workflow manifest id.' },
+            inputs: {
+              type: 'object',
+              additionalProperties: true,
+              description: 'Input values keyed by manifest input id.',
+            },
+          },
+          required: ['id', 'inputs'],
+        },
+        output: { type: 'string' },
+      },
+    ],
+  )
+  const help = execFileSync(
+    dshCommand,
+    ['--profile', 'headless', '--help'],
+    { cwd: packageRoot, env: environment, encoding: 'utf8' },
+  )
+  assert.match(help, /Usage:/)
 
   const config = execFileSync(
     dshCommand,

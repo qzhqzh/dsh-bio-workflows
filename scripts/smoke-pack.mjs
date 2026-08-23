@@ -60,7 +60,59 @@ try {
       }],
       environment: { engines: { nextflow: { available: true, version: '24.04' } } },
     })
-    assert.equal(registered.length, 4)
+    assert.deepEqual(
+      registered.map((tool) => ({
+        name: tool.name,
+        parameters: tool.parameters,
+        output: tool.output.schema,
+      })),
+      [
+        {
+          name: 'bio_workflows_info',
+          parameters: { type: 'object', properties: {} },
+          output: { type: 'string' },
+        },
+        {
+          name: 'bio_workflows_list',
+          parameters: {
+            type: 'object',
+            properties: {
+              engine: { type: 'string', description: 'Optional exact engine name filter.' },
+              status: { type: 'string', description: 'Optional exact status filter.' },
+              tag: { type: 'string', description: 'Optional exact tag filter.' },
+            },
+          },
+          output: { type: 'string' },
+        },
+        {
+          name: 'bio_workflows_get',
+          parameters: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Exact workflow manifest id.' },
+            },
+            required: ['id'],
+          },
+          output: { type: 'string' },
+        },
+        {
+          name: 'bio_workflows_preflight',
+          parameters: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Exact workflow manifest id.' },
+              inputs: {
+                type: 'object',
+                additionalProperties: true,
+                description: 'Input values keyed by manifest input id.',
+              },
+            },
+            required: ['id', 'inputs'],
+          },
+          output: { type: 'string' },
+        },
+      ],
+    )
     const result = JSON.parse(await registered.at(-1).execute(
       { id: 'fastq-qc', inputs: { reads: ['sample.fastq.gz'] } },
       { signal: new AbortController().signal },

@@ -29,12 +29,56 @@ test('public self-references and the dependency-free root DSH apply entry work',
   })
 
   assert.deepEqual(
-    registered.map((tool) => tool.name),
+    registered.map((tool) => ({
+      name: tool.name,
+      parameters: tool.parameters,
+      output: tool.output.schema,
+    })),
     [
-      'bio_workflows_info',
-      'bio_workflows_list',
-      'bio_workflows_get',
-      'bio_workflows_preflight',
+      {
+        name: 'bio_workflows_info',
+        parameters: { type: 'object', properties: {} },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_list',
+        parameters: {
+          type: 'object',
+          properties: {
+            engine: { type: 'string', description: 'Optional exact engine name filter.' },
+            status: { type: 'string', description: 'Optional exact status filter.' },
+            tag: { type: 'string', description: 'Optional exact tag filter.' },
+          },
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_get',
+        parameters: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Exact workflow manifest id.' },
+          },
+          required: ['id'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_preflight',
+        parameters: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Exact workflow manifest id.' },
+            inputs: {
+              type: 'object',
+              additionalProperties: true,
+              description: 'Input values keyed by manifest input id.',
+            },
+          },
+          required: ['id', 'inputs'],
+        },
+        output: { type: 'string' },
+      },
     ],
   )
 
@@ -49,4 +93,14 @@ test('public self-references and the dependency-free root DSH apply entry work',
   ))
   assert.equal(result.preflight.status, 'pass')
   assert.equal(result.preflight.executionReady, false)
+  await assert.rejects(
+    registered[1].execute(null),
+    (error) => error.code === 'INVALID_ARGS',
+  )
+  await assert.rejects(
+    registered[2].execute({}),
+    (error) => error.code === 'INVALID_ARGS',
+  )
+  assert.equal(registered[2].isConcurrencySafe({}), false)
+  assert.equal(tool.isConcurrencySafe({ id: 'fastq-qc', inputs: [] }), false)
 })

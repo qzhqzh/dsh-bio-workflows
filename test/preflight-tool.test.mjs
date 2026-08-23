@@ -6,6 +6,7 @@ import {
   PREFLIGHT_TOOL_NAME,
   registerPreflightTool,
 } from '../src/preflight-tool.js'
+import { defineTool } from '../src/tool-definition.js'
 import { makeManifest } from './fixtures.mjs'
 
 test('preflight tool registers a read-only dynamic input object', async () => {
@@ -16,7 +17,7 @@ test('preflight tool registers a read-only dynamic input object', async () => {
     engines: { nextflow: { available: true, version: '24.04' } },
   }
 
-  const tool = registerPreflightTool(ctx, catalog, environment)
+  const tool = registerPreflightTool(ctx, defineTool, catalog, environment)
 
   assert.equal(registered.length, 1)
   assert.equal(registered[0], tool)
@@ -26,7 +27,8 @@ test('preflight tool registers a read-only dynamic input object', async () => {
   assert.equal(tool.parameters.properties.inputs.additionalProperties, true)
   assert.deepEqual(tool.parameters.required, ['id', 'inputs'])
   assert.deepEqual(tool.output.schema, { type: 'string' })
-  assert.equal(tool.isConcurrencySafe({}), true)
+  assert.equal(tool.isConcurrencySafe({}), false)
+  assert.equal(tool.isConcurrencySafe({ id: 'fastq-qc', inputs: {} }), true)
 
   const found = JSON.parse(await tool.execute({
     id: 'fastq-qc',

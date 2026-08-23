@@ -7,6 +7,7 @@ import {
   LIST_TOOL_NAME,
   registerCatalogTools,
 } from '../src/catalog-tools.js'
+import { defineTool } from '../src/tool-definition.js'
 import { makeManifest } from './fixtures.mjs'
 
 test('catalog tools register once and expose mandatory DSH output declarations', async () => {
@@ -17,7 +18,7 @@ test('catalog tools register once and expose mandatory DSH output declarations',
     makeManifest({ id: 'variant-calling', engine: { name: 'wdl' }, tags: ['variant'] }),
   ])
 
-  const tools = registerCatalogTools(ctx, catalog)
+  const tools = registerCatalogTools(ctx, defineTool, catalog)
   const listTool = tools.find((tool) => tool.name === LIST_TOOL_NAME)
   const getTool = tools.find((tool) => tool.name === GET_TOOL_NAME)
 

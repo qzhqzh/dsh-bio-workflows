@@ -4,8 +4,10 @@
 
 - Remove the runtime import of `@deepseek-ai/dsh-tools` so an isolated DSH
   profile can load the plugin without copying the host's peer dependency graph.
-- Register equivalent JSON Schema tool definitions directly and extend the DSH
-  profile smoke test to import the installed plugin entry.
+- Compile equivalent registry-ready JSON Schema tool definitions locally while
+  preserving fail-closed argument validation.
+- Extend the DSH profile smoke test to import and apply the installed plugin,
+  verify all four tool contracts, and boot the real headless help path.
 
 ## 0.3.0 - 2026-08-23
 

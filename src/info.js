@@ -20,15 +20,12 @@ export function getPackageInfo(workflowCount = 0, declaredEngineCount = 0) {
   }
 }
 
-export function createInfoTool(workflowCount = 0, declaredEngineCount = 0) {
-  return {
+export function createInfoTool(defineTool, workflowCount = 0, declaredEngineCount = 0) {
+  return defineTool({
     name: TOOL_NAME,
     description:
       'Report the installed dsh-bio-workflows package status. This tool is read-only and does not run bioinformatics workflows.',
-    parameters: {
-      type: 'object',
-      properties: {},
-    },
+    parameters: {},
     output: {
       schema: { type: 'string' },
       render: (_args, value) => [{ type: 'text', text: value }],
@@ -39,11 +36,11 @@ export function createInfoTool(workflowCount = 0, declaredEngineCount = 0) {
       null,
       2,
     ),
-  }
+  })
 }
 
-export function registerInfoTool(ctx, workflowCount = 0, declaredEngineCount = 0) {
-  const tool = createInfoTool(workflowCount, declaredEngineCount)
+export function registerInfoTool(ctx, defineTool, workflowCount = 0, declaredEngineCount = 0) {
+  const tool = createInfoTool(defineTool, workflowCount, declaredEngineCount)
   ctx.tools.register(tool)
   return tool
 }
