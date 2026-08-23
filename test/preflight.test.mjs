@@ -77,6 +77,15 @@ test('an undeclared engine makes preflight incomplete, not successful', () => {
   assert.equal(result.checks.environment.errors[0].code, 'engine_not_declared')
 })
 
+test('an engine name inherited from Object.prototype is still undeclared', () => {
+  const manifest = makeManifest({ engine: { name: 'constructor' } })
+  const result = preflightWorkflow(manifest, { reads: ['sample.fastq.gz'] }, {})
+
+  assert.equal(result.status, 'incomplete')
+  assert.equal(result.checks.environment.declared, null)
+  assert.equal(result.checks.environment.errors[0].code, 'engine_not_declared')
+})
+
 test('an unavailable or mismatched engine fails preflight', () => {
   const unavailable = preflightWorkflow(
     makeManifest(),

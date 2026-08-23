@@ -170,7 +170,9 @@ function validateEnvironment(manifest, environment) {
     name: manifest.engine.name,
     ...(manifest.engine.version === undefined ? {} : { version: manifest.engine.version }),
   }
-  const declared = environment.engines[manifest.engine.name] ?? null
+  const declared = Object.hasOwn(environment.engines, manifest.engine.name)
+    ? environment.engines[manifest.engine.name]
+    : null
   const errors = []
   let status = 'pass'
 
