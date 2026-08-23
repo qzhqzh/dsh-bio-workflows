@@ -44,6 +44,21 @@ function validateArguments(schema, value) {
   return violations
 }
 
+function invalidArgumentsResult(violations) {
+  const message = `invalid arguments: ${violations.join('; ')}`
+  return {
+    content: [{ type: 'text', text: `Error: ${message}` }],
+    isError: true,
+    error: {
+      message,
+      info: {
+        name: 'ToolArgsError',
+        code: 'INVALID_ARGS',
+      },
+    },
+  }
+}
+
 export class ToolArgsError extends Error {
   constructor(violations) {
     super(`invalid arguments: ${violations.join('; ')}`)
@@ -76,4 +91,16 @@ export function defineTool(options) {
           },
         }),
   }
+}
+
+export function registerToolArgumentGuard(ctx, tools) {
+  const ownedTools = new Set(tools)
+
+  ctx.on('tools/execute', async (exec, next) => {
+    const tool = ctx.tools.get(exec.name, exec.agent)
+    if (!ownedTools.has(tool)) return next()
+
+    const violations = validateArguments(tool.parameters, exec.arguments)
+    return violations.length === 0 ? next() : invalidArgumentsResult(violations)
+  })
 }

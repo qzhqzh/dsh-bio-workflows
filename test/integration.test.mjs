@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { Context } from '@deepseek-ai/cordis'
+import { ToolRuntime } from '@deepseek-ai/dsh-tools'
 import * as plugin from 'dsh-bio-workflows'
 import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
 import { MANIFEST_SCHEMA_VERSION } from 'dsh-bio-workflows/manifest'
@@ -20,7 +22,14 @@ test('public self-references and the dependency-free root DSH apply entry work',
   assert.equal(schema.properties.schemaVersion.const, MANIFEST_SCHEMA_VERSION)
 
   const registered = []
-  const ctx = { tools: { register: (tool) => registered.push(tool) } }
+  const listeners = new Map()
+  const ctx = {
+    tools: {
+      register: (tool) => registered.push(tool),
+      get: (name) => registered.find((tool) => tool.name === name),
+    },
+    on: (event, listener) => listeners.set(event, listener),
+  }
   plugin.apply(ctx, {
     manifests: [makeManifest()],
     environment: {
@@ -103,4 +112,32 @@ test('public self-references and the dependency-free root DSH apply entry work',
   )
   assert.equal(registered[2].isConcurrencySafe({}), false)
   assert.equal(tool.isConcurrencySafe({ id: 'fastq-qc', inputs: [] }), false)
+  const guarded = await listeners.get('tools/execute')(
+    { name: 'bio_workflows_get', arguments: {} },
+    async () => assert.fail('invalid arguments reached the tool body'),
+  )
+  assert.deepEqual(guarded.error.info, {
+    name: 'ToolArgsError',
+    code: 'INVALID_ARGS',
+  })
+})
+
+test('the real DSH ToolRuntime preserves structured invalid-argument identity', async () => {
+  const ctx = new Context()
+  ctx.provide('systemPrompt', { tools: () => () => {} })
+  const runtime = new ToolRuntime(ctx, { mode: 'native' })
+  plugin.apply(ctx)
+
+  const result = await runtime.execute({
+    callId: 'invalid-arguments',
+    name: 'bio_workflows_get',
+    arguments: {},
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(result.isError, true)
+  assert.deepEqual(result.error.info, {
+    name: 'ToolArgsError',
+    code: 'INVALID_ARGS',
+  })
 })

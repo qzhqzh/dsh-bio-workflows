@@ -47,7 +47,14 @@ try {
     assert.equal(schema.properties.schemaVersion.const, MANIFEST_SCHEMA_VERSION)
 
     const registered = []
-    plugin.apply({ tools: { register: (tool) => registered.push(tool) } }, {
+    const listeners = new Map()
+    plugin.apply({
+      tools: {
+        register: (tool) => registered.push(tool),
+        get: (name) => registered.find((tool) => tool.name === name),
+      },
+      on: (event, listener) => listeners.set(event, listener),
+    }, {
       manifests: [{
         schemaVersion: '1',
         id: 'fastq-qc',
@@ -119,6 +126,14 @@ try {
     ))
     assert.equal(result.preflight.status, 'pass')
     assert.equal(result.preflight.executionReady, false)
+    const guarded = await listeners.get('tools/execute')(
+      { name: 'bio_workflows_get', arguments: {} },
+      async () => assert.fail('invalid arguments reached the tool body'),
+    )
+    assert.deepEqual(guarded.error.info, {
+      name: 'ToolArgsError',
+      code: 'INVALID_ARGS',
+    })
   `
   execFileSync(
     process.execPath,

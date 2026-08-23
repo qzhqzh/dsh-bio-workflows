@@ -42,7 +42,14 @@ try {
   assert.equal(installedPlugin.name, 'dsh-bio-workflows')
   assert.equal(typeof installedPlugin.apply, 'function')
   const registered = []
-  installedPlugin.apply({ tools: { register: (tool) => registered.push(tool) } })
+  const listeners = new Map()
+  installedPlugin.apply({
+    tools: {
+      register: (tool) => registered.push(tool),
+      get: (name) => registered.find((tool) => tool.name === name),
+    },
+    on: (event, listener) => listeners.set(event, listener),
+  })
   assert.deepEqual(
     registered.map((tool) => ({
       name: tool.name,
@@ -96,6 +103,14 @@ try {
       },
     ],
   )
+  const guarded = await listeners.get('tools/execute')(
+    { name: 'bio_workflows_get', arguments: {} },
+    async () => assert.fail('invalid arguments reached the tool body'),
+  )
+  assert.deepEqual(guarded.error.info, {
+    name: 'ToolArgsError',
+    code: 'INVALID_ARGS',
+  })
   const help = execFileSync(
     dshCommand,
     ['--profile', 'headless', '--help'],
