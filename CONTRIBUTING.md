@@ -24,6 +24,12 @@ smoke test installs the produced tarball in an isolated temporary consumer and
 loads every public subpath. Public schema or API changes require a compatibility
 review.
 
+When the DSH CLI is installed, also run an isolated profile smoke test:
+
+```bash
+npm run smoke:dsh
+```
+
 ## Version synchronization
 
 When bumping the package version, keep these values aligned:

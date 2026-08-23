@@ -41,7 +41,7 @@ execution authority boundary.
 
 | Capability | Status | Evidence | Remaining gap |
 | --- | --- | --- | --- |
-| DSH bundle installation | Implemented | Isolated headless-profile install and config dump | Automate the full profile smoke in CI |
+| DSH bundle installation | Implemented | `npm run smoke:dsh` installs the tarball into an isolated headless profile and dumps its config | Run the smoke in CI |
 | Manifest v1 schema | Implemented | JSON Schema plus zero-dependency runtime validator | Schema migration policy when v2 is needed |
 | Workflow catalog | Implemented | Strict startup validation, unique ids, deterministic list/get | Dynamic provider registration if needed |
 | Input declaration preflight | Implemented | Required, unknown, scalar type, and cardinality checks | File existence, readability, size, and checksum checks |

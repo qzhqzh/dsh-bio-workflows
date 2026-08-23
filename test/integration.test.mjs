@@ -4,6 +4,7 @@ import test from 'node:test'
 import * as plugin from 'dsh-bio-workflows'
 import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
 import { MANIFEST_SCHEMA_VERSION } from 'dsh-bio-workflows/manifest'
+import metadata from 'dsh-bio-workflows/package.json' with { type: 'json' }
 import { preflightWorkflow } from 'dsh-bio-workflows/preflight'
 import schema from 'dsh-bio-workflows/schema/workflow-manifest.schema.json' with { type: 'json' }
 
@@ -11,6 +12,8 @@ import { makeManifest } from './fixtures.mjs'
 
 test('public self-references and the root DSH apply entry work with the real peer', async () => {
   assert.equal(plugin.name, 'dsh-bio-workflows')
+  assert.equal(metadata.name, plugin.name)
+  assert.equal(metadata.version, '0.3.0')
   assert.deepEqual(plugin.inject, ['tools'])
   assert.equal(typeof createWorkflowCatalog, 'function')
   assert.equal(typeof preflightWorkflow, 'function')

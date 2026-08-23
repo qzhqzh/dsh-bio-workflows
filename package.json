@@ -26,7 +26,8 @@
     "test": "node --test test/*.test.mjs",
     "test:coverage": "node --test --experimental-test-coverage test/*.test.mjs",
     "pack:check": "npm pack --dry-run",
-    "smoke:pack": "node scripts/smoke-pack.mjs"
+    "smoke:pack": "node scripts/smoke-pack.mjs",
+    "smoke:dsh": "node scripts/smoke-dsh-profile.mjs"
   },
   "keywords": [
     "deepseek-harness",

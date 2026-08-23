@@ -36,11 +36,14 @@ try {
     import * as plugin from 'dsh-bio-workflows'
     import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
     import { MANIFEST_SCHEMA_VERSION } from 'dsh-bio-workflows/manifest'
+    import metadata from 'dsh-bio-workflows/package.json' with { type: 'json' }
     import { preflightWorkflow } from 'dsh-bio-workflows/preflight'
     import schema from 'dsh-bio-workflows/schema/workflow-manifest.schema.json' with { type: 'json' }
 
     assert.equal(typeof createWorkflowCatalog, 'function')
     assert.equal(typeof preflightWorkflow, 'function')
+    assert.equal(metadata.name, plugin.name)
+    assert.equal(metadata.version, '0.3.0')
     assert.equal(schema.properties.schemaVersion.const, MANIFEST_SCHEMA_VERSION)
 
     const registered = []
