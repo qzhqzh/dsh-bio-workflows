@@ -1,0 +1,7 @@
+- insert:
+    - id: bio-workflows
+      name: dsh-bio-workflows
+      config:
+        manifests: []
+        environment:
+          engines: {}
