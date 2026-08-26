@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "1",
+  "status": "completed",
+  "generatedAt": "2026-08-26T08:45:00.000Z",
+  "workflow": {
+    "id": "fastq-qc",
+    "version": "1.2.0",
+    "bundleDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "planDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "artifacts": [
+    {
+      "outputId": "html_reports",
+      "type": "file",
+      "cardinality": "many",
+      "items": [
+        {
+          "ordinal": 0,
+          "path": "/srv/dsh-bio/runs/run-example/engine/out/html_reports/0/sample_fastqc.html",
+          "relativePath": "out/html_reports/0/sample_fastqc.html",
+          "sizeBytes": "377991",
+          "sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ]
+    },
+    {
+      "outputId": "zip_reports",
+      "type": "file",
+      "cardinality": "many",
+      "items": [
+        {
+          "ordinal": 0,
+          "path": "/srv/dsh-bio/runs/run-example/engine/out/zip_reports/0/sample_fastqc.zip",
+          "relativePath": "out/zip_reports/0/sample_fastqc.zip",
+          "sizeBytes": "288628",
+          "sha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ]
+    },
+    {
+      "outputId": "summary_reports",
+      "type": "file",
+      "cardinality": "many",
+      "items": [
+        {
+          "ordinal": 0,
+          "path": "/srv/dsh-bio/runs/run-example/engine/out/summary_reports/0/summary.txt",
+          "relativePath": "out/summary_reports/0/summary.txt",
+          "sizeBytes": "489",
+          "sha256": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+        }
+      ]
+    }
+  ],
+  "summaries": {
+    "fastqc": {
+      "schemaVersion": "1",
+      "reportCount": 1,
+      "moduleCounts": {
+        "pass": 1,
+        "warn": 1,
+        "fail": 1
+      },
+      "reports": [
+        {
+          "artifact": {
+            "outputId": "summary_reports",
+            "ordinal": 0
+          },
+          "sample": "sample.fastq.gz",
+          "overallStatus": "fail",
+          "counts": {
+            "pass": 1,
+            "warn": 1,
+            "fail": 1
+          },
+          "modules": [
+            {
+              "name": "Basic Statistics",
+              "status": "pass"
+            },
+            {
+              "name": "Per base sequence quality",
+              "status": "warn"
+            },
+            {
+              "name": "Adapter Content",
+              "status": "fail"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "diagnostics": []
+}

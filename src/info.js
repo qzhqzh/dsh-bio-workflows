@@ -1,5 +1,5 @@
 export const PACKAGE_NAME = 'dsh-bio-workflows'
-export const PACKAGE_VERSION = '0.6.0'
+export const PACKAGE_VERSION = '0.7.0'
 export const TOOL_NAME = 'bio_workflows_info'
 
 export function getPackageInfo(
@@ -16,7 +16,7 @@ export function getPackageInfo(
     package: PACKAGE_NAME,
     version: PACKAGE_VERSION,
     status: 'preflight',
-    phase: 'durable-run-history',
+    phase: 'normalized-results',
     readOnly: store.writesEnabled !== true && !executionEnabled,
     workflowCount,
     declaredEngineCount,
@@ -45,6 +45,10 @@ export function getPackageInfo(
       backgroundJobLifecycle: executionReady,
       provenanceReporting: executionEnabled,
       durableRunHistory: executionEnabled,
+      normalizedWorkflowResults: executionEnabled,
+      outputChecksums: executionEnabled,
+      fastqcSummaries: executionEnabled
+        && (execution.supportedWorkflows ?? []).includes('fastq-qc@1.2.0'),
     },
   }
 }

@@ -1,0 +1,167 @@
+{
+  "schemaVersion": "1",
+  "recordedAt": "2026-08-26T09:32:49.474Z",
+  "scope": "real-bioworkflow-result-acceptance",
+  "packageVersion": "0.7.0",
+  "adapterSources": {
+    "index.js": "52680f7abea5da4f8f9d1a92d3bc30e1c5e2b24e1e5366637b30fe3e5521b537",
+    "src/execution.js": "7329362bb07966ee2290b4fb559dbc88a46f33dd57b41d51e03939c96049fa0b",
+    "src/execution-tools.js": "0ec7fdfbfbf35dc921cdac62109e6674331d17f59270f76d4082366b96a13c5b",
+    "src/workflow-store.js": "cf5c3e3a17ba630bde839649eb0b34dc5de4747f1bce1bf23b6d59b80c7741b9"
+  },
+  "workflow": {
+    "id": "fastq-qc",
+    "version": "1.2.0",
+    "bundleDigest": "sha256:6dac1d1a37672462a1e4539fccf967f6a1204a9667c94799f36351d8d92e564e",
+    "planDigest": "sha256:34d2399b9f178f278dfca7e417d2842a011aab1a2060d5d2988f92396b725884"
+  },
+  "runner": {
+    "name": "miniwdl",
+    "version": "1.15.0",
+    "subprocessProvider": "@deepseek-ai/dsh-subprocess-local@0.1.1-rc.2"
+  },
+  "jobRuntime": {
+    "provider": "@deepseek-ai/dsh-jobs-local@0.1.1-rc.2",
+    "jobId": "bio-1",
+    "ownerSession": "bio-workflow-result-acceptance",
+    "statusBeforeWait": "running",
+    "statusAfterWait": "completed"
+  },
+  "containerRuntime": {
+    "name": "docker",
+    "host": "unix:///var/run/docker.sock",
+    "engineId": "a655bc50-1abf-401e-be3b-7acb4df01893",
+    "serverVersion": "29.3.1",
+    "daemonCheck": "pass",
+    "swarm": {
+      "localNodeState": "active",
+      "controlAvailable": true,
+      "autoInit": false
+    },
+    "images": [
+      "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0@sha256:e194048df39c3145d9b4e0a14f4da20b59d59250465b6f2a9cb698445fd45900"
+    ]
+  },
+  "input": {
+    "description": "One synthetic, non-sensitive 12-base FASTQ read compressed with gzip.",
+    "snapshotBytes": "43",
+    "snapshotSha256": "9bb412d8028e72ae21b4e50c8045a5a17487717b56283dafdc856b2c525251d8"
+  },
+  "resultPolicy": {
+    "maxArtifacts": 1024,
+    "maxArtifactBytes": "17179869184",
+    "maxTotalArtifactBytes": "68719476736",
+    "maxFastqcSummaryBytes": 1048576,
+    "maxTotalFastqcSummaryBytes": 8388608,
+    "maxFastqcSummaryLines": 512,
+    "maxTotalFastqcSummaryLines": 16384,
+    "maxFastqcSummaryLineBytes": 4096,
+    "canonicalTargetNoFollowOpen": true,
+    "descriptorIdentityRechecked": true,
+    "hostZipExtraction": false
+  },
+  "result": {
+    "status": "completed",
+    "schemaVersion": "1",
+    "artifacts": [
+      {
+        "outputId": "html_reports",
+        "ordinal": 0,
+        "sizeBytes": "377991",
+        "sha256": "sha256:af44263f5c399a5d31c43eafab897089194065a0c58faacddfe832fcc6838ff9",
+        "directSha256": "sha256:af44263f5c399a5d31c43eafab897089194065a0c58faacddfe832fcc6838ff9"
+      },
+      {
+        "outputId": "zip_reports",
+        "ordinal": 0,
+        "sizeBytes": "288628",
+        "sha256": "sha256:e5754ce8901f9a90b38df42c9324e0dd321928ced4d7b76f586e7b48a1d9d7a2",
+        "directSha256": "sha256:e5754ce8901f9a90b38df42c9324e0dd321928ced4d7b76f586e7b48a1d9d7a2"
+      },
+      {
+        "outputId": "summary_reports",
+        "ordinal": 0,
+        "sizeBytes": "489",
+        "sha256": "sha256:075b1e70d6958960c20221fcc0a3682346e3fcef19f9455b79d993e67c85e262",
+        "directSha256": "sha256:075b1e70d6958960c20221fcc0a3682346e3fcef19f9455b79d993e67c85e262"
+      }
+    ],
+    "summaries": {
+      "fastqc": {
+        "schemaVersion": "1",
+        "reportCount": 1,
+        "moduleCounts": {
+          "pass": 5,
+          "warn": 2,
+          "fail": 3
+        },
+        "reports": [
+          {
+            "artifact": {
+              "outputId": "summary_reports",
+              "ordinal": 0
+            },
+            "sample": "input-0000.fastq.gz",
+            "overallStatus": "fail",
+            "counts": {
+              "pass": 5,
+              "warn": 2,
+              "fail": 3
+            },
+            "modules": [
+              {
+                "name": "Basic Statistics",
+                "status": "pass"
+              },
+              {
+                "name": "Per base sequence quality",
+                "status": "pass"
+              },
+              {
+                "name": "Per sequence quality scores",
+                "status": "fail"
+              },
+              {
+                "name": "Per base sequence content",
+                "status": "fail"
+              },
+              {
+                "name": "Per sequence GC content",
+                "status": "warn"
+              },
+              {
+                "name": "Per base N content",
+                "status": "pass"
+              },
+              {
+                "name": "Sequence Length Distribution",
+                "status": "pass"
+              },
+              {
+                "name": "Sequence Duplication Levels",
+                "status": "pass"
+              },
+              {
+                "name": "Overrepresented sequences",
+                "status": "fail"
+              },
+              {
+                "name": "Adapter Content",
+                "status": "warn"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "assertions": [
+    "exact bundle and plan digests matched before launch",
+    "miniwdl 1.15.0 and Docker Swarm completed the pinned FastQC container",
+    "all declared output files remained confined to the run engine directory",
+    "every recorded artifact SHA-256 matched an independent post-run calculation",
+    "FastQC plain-text summary parsing returned bounded PASS, WARN, and FAIL module states",
+    "no FastQC ZIP archive was extracted by the host plugin",
+    "the real LocalJobRegistry preserved owner-scoped running and completed lifecycle states"
+  ]
+}

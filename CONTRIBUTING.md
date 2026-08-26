@@ -23,6 +23,7 @@ npm run test:coverage
 npm run pack:check
 npm run smoke:pack
 npm run smoke:dsh
+npm run smoke:dsh-agent
 ```
 
 The integration test verifies the registry-ready tool schemas and fail-closed
@@ -38,12 +39,15 @@ npm run smoke:dsh
 ```
 
 This installs the tarball in an isolated profile, imports and applies the
-installed plugin, checks all twelve tool contracts, loads all three versioned
+installed plugin, checks all twelve tool contracts, loads all four versioned
 built-in WDL bundles, and boots the real DSH headless help path.
 
 The CI WDL job also installs exact `miniwdl==1.15.0` and checks all built-in
 entrypoints. Expanding the executable allowlist additionally requires a real
 container-backed success and cancellation record for each new workflow.
+Changes to result collection or a currently executable WDL revision also require
+the real `accept:fastq-qc-result` check with explicit safe miniwdl and Docker
+executable paths.
 
 ## Version synchronization
 
@@ -51,6 +55,6 @@ When bumping the package version, keep these values aligned:
 
 - `package.json` version;
 - `PACKAGE_VERSION` in `src/info.js`;
-- both versioned JSON Schema `$id` values;
+- all versioned JSON Schema `$id` values;
 - README schema URL and release description;
 - `CHANGELOG.md`.

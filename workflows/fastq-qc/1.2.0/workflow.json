@@ -1,0 +1,116 @@
+{
+  "bundleVersion": "1",
+  "manifest": {
+    "schemaVersion": "1",
+    "id": "fastq-qc",
+    "version": "1.2.0",
+    "name": "FASTQ quality control",
+    "summary": "Run FastQC and return checksummed HTML, ZIP, and parsed summary reports.",
+    "status": "ready",
+    "engine": {
+      "name": "miniwdl"
+    },
+    "inputs": [
+      {
+        "id": "reads",
+        "type": "file",
+        "required": true,
+        "cardinality": "many",
+        "description": "FASTQ files to inspect. The execution adapter snapshots each file before launch."
+      },
+      {
+        "id": "threads",
+        "type": "integer",
+        "required": false,
+        "description": "Threads allocated to each FastQC task."
+      }
+    ],
+    "outputs": [
+      {
+        "id": "html_reports",
+        "type": "file",
+        "cardinality": "many",
+        "description": "FastQC HTML reports."
+      },
+      {
+        "id": "zip_reports",
+        "type": "file",
+        "cardinality": "many",
+        "description": "FastQC ZIP archives."
+      },
+      {
+        "id": "summary_reports",
+        "type": "file",
+        "cardinality": "many",
+        "description": "Extracted FastQC summary.txt reports for bounded result parsing."
+      }
+    ],
+    "tags": [
+      "fastq",
+      "qc",
+      "starter",
+      "wdl"
+    ]
+  },
+  "wdl": {
+    "version": "1.0",
+    "entrypoint": "main.wdl",
+    "engines": [
+      {
+        "name": "miniwdl",
+        "version": "1.15.0"
+      },
+      {
+        "name": "cromwell"
+      }
+    ]
+  },
+  "source": {
+    "kind": "builtin",
+    "repository": "https://github.com/qzhqzh/dsh-bio-workflows",
+    "revision": "0.7.0"
+  },
+  "authors": [
+    "dsh-bio-workflows maintainers"
+  ],
+  "license": "MIT",
+  "verification": {
+    "status": "verified",
+    "checks": [
+      "bundle-file-digests",
+      "local-import-closure",
+      "wdl-source-shape",
+      "miniwdl-check@1.15.0",
+      "miniwdl-run@1.15.0",
+      "container-digest-pinned",
+      "docker-swarm-run@29.3.1",
+      "input-snapshot-sha256",
+      "output-artifact-sha256",
+      "fastqc-summary-v1",
+      "host-zip-extraction-disabled",
+      "example-json"
+    ]
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "role": "license",
+      "sha256": "8e02f8ac03fd6bc80b43d27ae6ccba78a2af6fc5fb2698c99793bec3e9b29549"
+    },
+    {
+      "path": "README.md",
+      "role": "documentation",
+      "sha256": "4f07b009e7b4633e50b67d6a5ee4dca45ba309e64d012dc4a7a2f293287b7c75"
+    },
+    {
+      "path": "examples/inputs.json",
+      "role": "example",
+      "sha256": "a2c3d444a8d273b723865690098e8146cd143fcb8f1171d022d47d53f3b32e0b"
+    },
+    {
+      "path": "main.wdl",
+      "role": "workflow",
+      "sha256": "0ccef9731dc4a5ff9e40f79103b715b2863989c0c78dfe046d3e5abd25254a5e"
+    }
+  ]
+}

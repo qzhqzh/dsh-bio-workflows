@@ -14,10 +14,12 @@ import {
   unlink,
 } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { TextDecoder } from 'node:util'
 
 export const EXECUTION_PLAN_SCHEMA_VERSION = '1'
 export const RUN_PROVENANCE_SCHEMA_VERSION = '1'
-export const EXECUTABLE_WORKFLOWS = Object.freeze(['fastq-qc@1.1.0'])
+export const BIO_WORKFLOW_RESULT_SCHEMA_VERSION = '1'
+export const EXECUTABLE_WORKFLOWS = Object.freeze(['fastq-qc@1.1.0', 'fastq-qc@1.2.0'])
 
 const EXECUTION_CONFIG_KEYS = new Set(['enabled', 'runsRoot', 'inputRoots', 'runner'])
 const RUNNER_CONFIG_KEYS = new Set(['executable', 'dockerExecutable'])
@@ -34,6 +36,14 @@ const SNAPSHOT_FREE_SPACE_RESERVE_BYTES = 512n * 1024n * 1024n
 const MAX_PROBE_BYTES = 64 * 1024
 const MAX_RESULT_JSON_BYTES = 2 * 1024 * 1024
 const MAX_PROVENANCE_JSON_BYTES = 32 * 1024 * 1024
+const MAX_RESULT_ARTIFACTS = 1024
+const MAX_RESULT_ARTIFACT_BYTES = 16n * 1024n * 1024n * 1024n
+const MAX_TOTAL_RESULT_ARTIFACT_BYTES = 64n * 1024n * 1024n * 1024n
+const MAX_FASTQC_SUMMARY_BYTES = 1024 * 1024
+const MAX_TOTAL_FASTQC_SUMMARY_BYTES = 8 * 1024 * 1024
+const MAX_FASTQC_SUMMARY_LINES = 512
+const MAX_TOTAL_FASTQC_SUMMARY_LINES = 16 * 1024
+const MAX_FASTQC_SUMMARY_LINE_BYTES = 4096
 const MAX_RUN_DISCOVERY_ENTRIES = 8192
 const MAX_RUN_DISCOVERY_RECORDS = 4096
 const MAX_RUN_DISCOVERY_BYTES = 32 * 1024 * 1024
@@ -60,6 +70,20 @@ const RUN_STATUSES = Object.freeze([
 ])
 const RUN_STATUS_SET = new Set(RUN_STATUSES)
 const NON_TERMINAL_RUN_STATUS_SET = new Set(['prepared', 'running', 'stopping'])
+const FASTQC_SUMMARY_STATUSES = new Set(['PASS', 'WARN', 'FAIL'])
+const FASTQC_SUMMARY_CONTROL_PATTERN = /[\u0000-\u0008\u000B-\u001F\u007F]/
+const STRICT_UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
+
+export const BIO_WORKFLOW_RESULT_LIMITS = Object.freeze({
+  maxArtifacts: MAX_RESULT_ARTIFACTS,
+  maxArtifactBytes: MAX_RESULT_ARTIFACT_BYTES.toString(),
+  maxTotalArtifactBytes: MAX_TOTAL_RESULT_ARTIFACT_BYTES.toString(),
+  maxFastqcSummaryBytes: MAX_FASTQC_SUMMARY_BYTES,
+  maxTotalFastqcSummaryBytes: MAX_TOTAL_FASTQC_SUMMARY_BYTES,
+  maxFastqcSummaryLines: MAX_FASTQC_SUMMARY_LINES,
+  maxTotalFastqcSummaryLines: MAX_TOTAL_FASTQC_SUMMARY_LINES,
+  maxFastqcSummaryLineBytes: MAX_FASTQC_SUMMARY_LINE_BYTES,
+})
 
 function createMiniwdlConfig(runDirectory) {
   return `[scheduler]
@@ -1204,30 +1228,45 @@ function outputValuesForPort(outputs, workflowName, id) {
 function outputPathsForPort(value, port) {
   if (port.cardinality === 'many') {
     if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-      throw new Error(`miniwdl returned an invalid file array for ${port.id}`)
+      throw resultCollectionError(`miniwdl returned an invalid file array for ${port.id}`)
     }
     return value
   }
   if (typeof value !== 'string') {
-    throw new Error(`miniwdl returned an invalid file path for ${port.id}`)
+    throw resultCollectionError(`miniwdl returned an invalid file path for ${port.id}`)
   }
   return [value]
 }
 
 async function inventoryOutputs(engineDirectory, manifest, workflowName, outputs) {
-  if (!isPlainObject(outputs)) throw new Error('miniwdl outputs.json must contain an object')
+  if (!isPlainObject(outputs)) throw resultCollectionError('miniwdl outputs.json must contain an object')
   const root = await realpath(engineDirectory)
   const inventory = []
   for (const port of manifest.outputs.filter((item) => item.type === 'file' || item.type === 'directory')) {
     const value = outputValuesForPort(outputs, workflowName, port.id)
-    if (value === undefined) throw new Error(`miniwdl outputs.json is missing ${workflowName}.${port.id}`)
+    if (value === undefined) {
+      throw resultCollectionError(`miniwdl outputs.json is missing ${workflowName}.${port.id}`)
+    }
     for (const path of outputPathsForPort(value, port)) {
-      if (!isAbsolute(path)) throw new Error(`miniwdl returned a non-absolute output path: ${path}`)
-      const canonical = await realpath(path)
-      if (!isContainedPath(root, canonical)) throw new Error(`miniwdl output escapes the run directory: ${path}`)
-      const metadata = await stat(canonical, { bigint: true })
+      if (inventory.length >= MAX_RESULT_ARTIFACTS) {
+        throw resultCollectionError(`workflow result exceeds the ${MAX_RESULT_ARTIFACTS} artifact limit`)
+      }
+      if (!isAbsolute(path) || path.length > MAX_PATH_LENGTH) {
+        throw resultCollectionError(`miniwdl returned an invalid absolute output path for ${port.id}`)
+      }
+      let canonical
+      let metadata
+      try {
+        canonical = await realpath(path)
+        metadata = await stat(canonical, { bigint: true })
+      } catch {
+        throw resultCollectionError(`miniwdl output could not be inspected safely: ${port.id}`)
+      }
+      if (!isContainedPath(root, canonical)) {
+        throw resultCollectionError(`miniwdl output escapes the run directory: ${path}`)
+      }
       const validType = port.type === 'file' ? metadata.isFile() : metadata.isDirectory()
-      if (!validType) throw new Error(`miniwdl output has the wrong type: ${path}`)
+      if (!validType) throw resultCollectionError(`miniwdl output has the wrong type: ${path}`)
       inventory.push({
         output: port.id,
         type: port.type,
@@ -1235,10 +1274,513 @@ async function inventoryOutputs(engineDirectory, manifest, workflowName, outputs
         canonicalPath: canonical,
         size: metadata.size.toString(),
         mtimeNs: metadata.mtimeNs.toString(),
+        ctimeNs: metadata.ctimeNs.toString(),
+        device: metadata.dev.toString(),
+        inode: metadata.ino.toString(),
       })
     }
   }
   return inventory
+}
+
+function resultCollectionError(message) {
+  return new ExecutionOperationError('result_collection_failed', message)
+}
+
+class ResultCollectionCancelledError extends Error {
+  constructor() {
+    super('workflow result collection was cancelled')
+    this.name = 'ResultCollectionCancelledError'
+  }
+}
+
+function throwIfResultCollectionCancelled(isCancelled) {
+  if (isCancelled()) throw new ResultCollectionCancelledError()
+}
+
+async function hashResultArtifact(
+  engineRoot,
+  inventory,
+  budget,
+  captureText = false,
+  isCancelled = () => false,
+) {
+  let handle
+  try {
+    throwIfResultCollectionCancelled(isCancelled)
+    let declared
+    let declaredTarget
+    try {
+      declared = await lstat(inventory.path, { bigint: true })
+      declaredTarget = await realpath(inventory.path)
+    } catch {
+      throw resultCollectionError(`declared output path could not be resolved safely: ${inventory.output}`)
+    }
+    if (
+      (!declared.isFile() && !declared.isSymbolicLink())
+      || declaredTarget !== inventory.canonicalPath
+      || !isContainedPath(engineRoot, declaredTarget)
+    ) {
+      throw resultCollectionError(`declared output path changed before hashing: ${inventory.output}`)
+    }
+    try {
+      handle = await open(
+        inventory.canonicalPath,
+        constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0),
+      )
+    } catch {
+      throw resultCollectionError(`declared output could not be opened safely: ${inventory.output}`)
+    }
+    const opened = await handle.stat({ bigint: true })
+    if (!opened.isFile()) {
+      throw resultCollectionError(`declared output is not a regular file: ${inventory.output}`)
+    }
+    if (opened.size > MAX_RESULT_ARTIFACT_BYTES) {
+      throw resultCollectionError(
+        `declared output exceeds the ${MAX_RESULT_ARTIFACT_BYTES} byte artifact limit: ${inventory.output}`,
+      )
+    }
+    if (opened.size > budget.remainingBytes) {
+      throw resultCollectionError(
+        `declared outputs exceed the ${MAX_TOTAL_RESULT_ARTIFACT_BYTES} byte aggregate hashing limit`,
+      )
+    }
+    if (captureText && opened.size > BigInt(MAX_FASTQC_SUMMARY_BYTES)) {
+      throw resultCollectionError(
+        `FastQC summary exceeds the ${MAX_FASTQC_SUMMARY_BYTES} byte parser limit`,
+      )
+    }
+    const descriptorPath = await openedDescriptorPath(handle, 'result_artifact')
+    if (
+      descriptorPath !== inventory.canonicalPath
+      || !isContainedPath(engineRoot, descriptorPath)
+      || inventory.size !== opened.size.toString()
+      || inventory.mtimeNs !== opened.mtimeNs.toString()
+      || inventory.ctimeNs !== opened.ctimeNs.toString()
+      || inventory.device !== opened.dev.toString()
+      || inventory.inode !== opened.ino.toString()
+    ) {
+      throw resultCollectionError(`declared output changed before hashing: ${inventory.output}`)
+    }
+
+    budget.remainingBytes -= opened.size
+    const digest = createHash('sha256')
+    const captured = []
+    const expectedBytes = Number(opened.size)
+    let bytes = 0
+    while (bytes < expectedBytes) {
+      throwIfResultCollectionCancelled(isCancelled)
+      const chunk = Buffer.allocUnsafe(Math.min(COPY_BUFFER_BYTES, expectedBytes - bytes))
+      const read = await handle.read(chunk, 0, chunk.length, bytes)
+      if (read.bytesRead === 0) {
+        throw resultCollectionError(`declared output ended while hashing: ${inventory.output}`)
+      }
+      const value = chunk.subarray(0, read.bytesRead)
+      digest.update(value)
+      if (captureText) captured.push(value)
+      bytes += read.bytesRead
+    }
+    throwIfResultCollectionCancelled(isCancelled)
+    let completed
+    let completedDeclared
+    let completedTarget
+    let completedDescriptorPath
+    try {
+      completed = await handle.stat({ bigint: true })
+      completedDeclared = await lstat(inventory.path, { bigint: true })
+      completedTarget = await realpath(inventory.path)
+      completedDescriptorPath = await openedDescriptorPath(handle, 'result_artifact')
+    } catch {
+      throw resultCollectionError(`declared output changed while hashing: ${inventory.output}`)
+    }
+    if (
+      !completed.isFile()
+      || !sameInputMetadata(opened, completed)
+      || !sameInputMetadata(declared, completedDeclared)
+      || completedTarget !== descriptorPath
+      || completedDescriptorPath !== descriptorPath
+    ) {
+      throw resultCollectionError(`declared output changed while hashing: ${inventory.output}`)
+    }
+    const declaredPath = resolve(inventory.path)
+    const relativePath = relative(engineRoot, declaredPath)
+    if (!isContainedPath(engineRoot, declaredPath) || relativePath === '') {
+      throw resultCollectionError(`declared output has an invalid confined path: ${inventory.output}`)
+    }
+    let capturedText = null
+    if (captureText) {
+      try {
+        capturedText = STRICT_UTF8_DECODER.decode(Buffer.concat(captured, bytes))
+      } catch {
+        throw resultCollectionError('FastQC summary is not valid UTF-8 text')
+      }
+    }
+    return {
+      artifact: {
+        path: inventory.path,
+        relativePath: relativePath.split(sep).join('/'),
+        sizeBytes: opened.size.toString(),
+        sha256: `sha256:${digest.digest('hex')}`,
+      },
+      capturedText,
+    }
+  } finally {
+    await handle?.close()
+  }
+}
+
+function parseFastqcSummary(text, artifact) {
+  if (Buffer.byteLength(text, 'utf8') > MAX_FASTQC_SUMMARY_BYTES) {
+    throw resultCollectionError(`FastQC summary exceeds the ${MAX_FASTQC_SUMMARY_BYTES} byte parser limit`)
+  }
+  const lines = text.split(/\r?\n/)
+  if (lines.at(-1) === '') lines.pop()
+  if (lines.length === 0 || lines.length > MAX_FASTQC_SUMMARY_LINES) {
+    throw resultCollectionError(
+      `FastQC summary must contain 1 to ${MAX_FASTQC_SUMMARY_LINES} module lines`,
+    )
+  }
+  let sample = null
+  const moduleNames = new Set()
+  const counts = { pass: 0, warn: 0, fail: 0 }
+  const modules = lines.map((line) => {
+    if (Buffer.byteLength(line, 'utf8') > MAX_FASTQC_SUMMARY_LINE_BYTES) {
+      throw resultCollectionError(
+        `FastQC summary line exceeds the ${MAX_FASTQC_SUMMARY_LINE_BYTES} byte limit`,
+      )
+    }
+    const fields = line.split('\t')
+    if (
+      fields.length !== 3
+      || !FASTQC_SUMMARY_STATUSES.has(fields[0])
+      || fields[1].length === 0
+      || fields[1].length > 256
+      || fields[2].length === 0
+      || fields[2].length > 512
+      || FASTQC_SUMMARY_CONTROL_PATTERN.test(line)
+      || moduleNames.has(fields[1])
+      || (sample !== null && fields[2] !== sample)
+    ) {
+      throw resultCollectionError('FastQC summary contains an invalid or ambiguous module line')
+    }
+    sample = fields[2]
+    moduleNames.add(fields[1])
+    const status = fields[0].toLowerCase()
+    counts[status] += 1
+    return { name: fields[1], status }
+  })
+  return {
+    artifact,
+    sample,
+    overallStatus: counts.fail > 0 ? 'fail' : counts.warn > 0 ? 'warn' : 'pass',
+    counts,
+    modules,
+  }
+}
+
+function pushResultSemanticError(errors, path, code, message) {
+  if (errors.length < 32) errors.push({ path, code, message })
+}
+
+function sameStatusCounts(left, right) {
+  return isPlainObject(left)
+    && left.pass === right.pass
+    && left.warn === right.warn
+    && left.fail === right.fail
+}
+
+export function validateBioWorkflowResultSemantics(value) {
+  const errors = []
+  if (!isPlainObject(value)) {
+    return {
+      valid: false,
+      errors: [{ path: '$', code: 'type', message: 'result must be an object' }],
+    }
+  }
+
+  const summaryArtifactReferences = new Set()
+  const outputIds = new Set()
+  let artifactCount = 0
+  let inspectedArtifactItems = 0
+  if (!Array.isArray(value.artifacts)) {
+    pushResultSemanticError(errors, '$.artifacts', 'type', 'artifacts must be an array')
+  } else {
+    for (const [groupIndex, group] of value.artifacts.entries()) {
+      if (!isPlainObject(group) || !Array.isArray(group.items)) continue
+      if (typeof group.outputId === 'string') {
+        if (outputIds.has(group.outputId)) {
+          pushResultSemanticError(
+            errors,
+            `$.artifacts[${groupIndex}].outputId`,
+            'duplicate_output',
+            'artifact outputId groups must be unique',
+          )
+        } else {
+          outputIds.add(group.outputId)
+        }
+      }
+      artifactCount += group.items.length
+      const inspectCount = Math.min(
+        group.items.length,
+        Math.max(0, MAX_RESULT_ARTIFACTS + 1 - inspectedArtifactItems),
+      )
+      for (let itemIndex = 0; itemIndex < inspectCount; itemIndex += 1) {
+        const item = group.items[itemIndex]
+        if (!isPlainObject(item)) continue
+        if (item.ordinal !== itemIndex) {
+          pushResultSemanticError(
+            errors,
+            `$.artifacts[${groupIndex}].items[${itemIndex}].ordinal`,
+            'ordinal_mismatch',
+            'artifact ordinal must equal its declared array position',
+          )
+        }
+        if (typeof group.outputId === 'string' && Number.isInteger(item.ordinal)) {
+          if (group.outputId === 'summary_reports') {
+            summaryArtifactReferences.add(`${group.outputId}\u0000${item.ordinal}`)
+          }
+        }
+      }
+      inspectedArtifactItems += inspectCount
+    }
+    if (artifactCount > MAX_RESULT_ARTIFACTS) {
+      pushResultSemanticError(
+        errors,
+        '$.artifacts',
+        'aggregate_limit',
+        `artifact groups contain ${artifactCount} items; at most ${MAX_RESULT_ARTIFACTS} are allowed in total`,
+      )
+    }
+  }
+
+  const fastqc = value.summaries?.fastqc
+  if (fastqc !== undefined && isPlainObject(fastqc) && Array.isArray(fastqc.reports)) {
+    if (fastqc.reportCount !== fastqc.reports.length) {
+      pushResultSemanticError(
+        errors,
+        '$.summaries.fastqc.reportCount',
+        'count_mismatch',
+        'reportCount must equal reports.length',
+      )
+    }
+    const aggregate = { pass: 0, warn: 0, fail: 0 }
+    const reportArtifactReferences = new Set()
+    let totalModules = 0
+    const reportCount = Math.min(fastqc.reports.length, MAX_RESULT_ARTIFACTS + 1)
+    for (let reportIndex = 0; reportIndex < reportCount; reportIndex += 1) {
+      const report = fastqc.reports[reportIndex]
+      if (!isPlainObject(report) || !Array.isArray(report.modules)) continue
+      const counts = { pass: 0, warn: 0, fail: 0 }
+      for (const module of report.modules.slice(0, MAX_FASTQC_SUMMARY_LINES + 1)) {
+        if (isPlainObject(module) && Object.hasOwn(counts, module.status)) counts[module.status] += 1
+      }
+      totalModules += report.modules.length
+      for (const status of Object.keys(aggregate)) aggregate[status] += counts[status]
+      if (!sameStatusCounts(report.counts, counts)) {
+        pushResultSemanticError(
+          errors,
+          `$.summaries.fastqc.reports[${reportIndex}].counts`,
+          'count_mismatch',
+          'report counts must equal its module status counts',
+        )
+      }
+      const expectedOverall = counts.fail > 0 ? 'fail' : counts.warn > 0 ? 'warn' : 'pass'
+      if (report.overallStatus !== expectedOverall) {
+        pushResultSemanticError(
+          errors,
+          `$.summaries.fastqc.reports[${reportIndex}].overallStatus`,
+          'status_mismatch',
+          'overallStatus must reflect the worst module status',
+        )
+      }
+      const reference = report.artifact
+      const referenceKey = isPlainObject(reference)
+        ? `${reference.outputId}\u0000${reference.ordinal}`
+        : null
+      if (
+        !isPlainObject(reference)
+        || typeof reference.outputId !== 'string'
+        || reference.outputId !== 'summary_reports'
+        || !Number.isInteger(reference.ordinal)
+        || !summaryArtifactReferences.has(referenceKey)
+        || reportArtifactReferences.has(referenceKey)
+      ) {
+        pushResultSemanticError(
+          errors,
+          `$.summaries.fastqc.reports[${reportIndex}].artifact`,
+          'missing_reference',
+          'summary artifact must reference an artifact item in this result',
+        )
+      } else {
+        reportArtifactReferences.add(referenceKey)
+      }
+    }
+    if (totalModules > MAX_TOTAL_FASTQC_SUMMARY_LINES) {
+      pushResultSemanticError(
+        errors,
+        '$.summaries.fastqc.reports',
+        'aggregate_limit',
+        `FastQC reports contain ${totalModules} modules; at most ${MAX_TOTAL_FASTQC_SUMMARY_LINES} are allowed in total`,
+      )
+    }
+    if (
+      reportArtifactReferences.size !== summaryArtifactReferences.size
+      || [...summaryArtifactReferences].some((reference) => !reportArtifactReferences.has(reference))
+    ) {
+      pushResultSemanticError(
+        errors,
+        '$.summaries.fastqc.reports',
+        'reference_mismatch',
+        'FastQC reports must reference every summary_reports artifact exactly once',
+      )
+    }
+    if (!sameStatusCounts(fastqc.moduleCounts, aggregate)) {
+      pushResultSemanticError(
+        errors,
+        '$.summaries.fastqc.moduleCounts',
+        'count_mismatch',
+        'moduleCounts must equal the aggregate report module counts',
+      )
+    }
+  }
+
+  return { valid: errors.length === 0, errors }
+}
+
+async function createBioWorkflowResult(
+  engineDirectory,
+  manifest,
+  workflow,
+  planDigest,
+  outputInventory,
+  generatedAt,
+  isCancelled = () => false,
+) {
+  throwIfResultCollectionCancelled(isCancelled)
+  const engineRoot = await realpath(engineDirectory)
+  const outputTypes = new Map(manifest.outputs.map((port) => [port.id, port.type]))
+  let declaredBytes = 0n
+  let declaredSummaryBytes = 0n
+  const seenEntities = new Set()
+  for (const item of outputInventory) {
+    if (outputTypes.get(item.output) !== 'file') continue
+    const entity = `${item.device}:${item.inode}`
+    if (seenEntities.has(entity)) {
+      throw resultCollectionError(`workflow result repeats the same file entity: ${item.output}`)
+    }
+    seenEntities.add(entity)
+    const size = BigInt(item.size)
+    if (size > MAX_RESULT_ARTIFACT_BYTES) {
+      throw resultCollectionError(
+        `declared output exceeds the ${MAX_RESULT_ARTIFACT_BYTES} byte artifact limit: ${item.output}`,
+      )
+    }
+    declaredBytes += size
+    if (declaredBytes > MAX_TOTAL_RESULT_ARTIFACT_BYTES) {
+      throw resultCollectionError(
+        `declared outputs exceed the ${MAX_TOTAL_RESULT_ARTIFACT_BYTES} byte aggregate hashing limit`,
+      )
+    }
+    if (
+      workflow.id === 'fastq-qc'
+      && workflow.version === '1.2.0'
+      && item.output === 'summary_reports'
+    ) {
+      declaredSummaryBytes += size
+      if (declaredSummaryBytes > BigInt(MAX_TOTAL_FASTQC_SUMMARY_BYTES)) {
+        throw resultCollectionError(
+          `FastQC summaries exceed the ${MAX_TOTAL_FASTQC_SUMMARY_BYTES} byte aggregate parser limit`,
+        )
+      }
+    }
+  }
+  const budget = { remainingBytes: MAX_TOTAL_RESULT_ARTIFACT_BYTES }
+  const artifacts = []
+  const fastqcReports = []
+  let totalFastqcSummaryLines = 0
+  for (const port of manifest.outputs.filter((item) => item.type === 'file' || item.type === 'directory')) {
+    throwIfResultCollectionCancelled(isCancelled)
+    if (port.type !== 'file') {
+      throw resultCollectionError(`BioWorkflowResult v1 does not hash directory output: ${port.id}`)
+    }
+    const values = outputInventory.filter((item) => item.output === port.id)
+    const items = []
+    for (const [ordinal, inventory] of values.entries()) {
+      const captureText = workflow.id === 'fastq-qc'
+        && workflow.version === '1.2.0'
+        && port.id === 'summary_reports'
+      const hashed = await hashResultArtifact(
+        engineRoot,
+        inventory,
+        budget,
+        captureText,
+        isCancelled,
+      )
+      items.push({ ordinal, ...hashed.artifact })
+      if (captureText) {
+        const report = parseFastqcSummary(
+          hashed.capturedText,
+          { outputId: 'summary_reports', ordinal },
+        )
+        totalFastqcSummaryLines += report.modules.length
+        if (totalFastqcSummaryLines > MAX_TOTAL_FASTQC_SUMMARY_LINES) {
+          throw resultCollectionError(
+            `FastQC summaries exceed the ${MAX_TOTAL_FASTQC_SUMMARY_LINES} module aggregate limit`,
+          )
+        }
+        fastqcReports.push(report)
+      }
+    }
+    artifacts.push({
+      outputId: port.id,
+      type: port.type,
+      cardinality: port.cardinality,
+      items,
+    })
+  }
+
+  const summaries = {}
+  if (workflow.id === 'fastq-qc' && workflow.version === '1.2.0') {
+    if (fastqcReports.length === 0) {
+      throw resultCollectionError('FastQC result is missing declared summary reports')
+    }
+    const moduleCounts = fastqcReports.reduce(
+      (total, report) => ({
+        pass: total.pass + report.counts.pass,
+        warn: total.warn + report.counts.warn,
+        fail: total.fail + report.counts.fail,
+      }),
+      { pass: 0, warn: 0, fail: 0 },
+    )
+    summaries.fastqc = {
+      schemaVersion: '1',
+      reportCount: fastqcReports.length,
+      moduleCounts,
+      reports: fastqcReports,
+    }
+  }
+
+  const result = {
+    schemaVersion: BIO_WORKFLOW_RESULT_SCHEMA_VERSION,
+    status: 'completed',
+    generatedAt,
+    workflow: {
+      id: workflow.id,
+      version: workflow.version,
+      bundleDigest: workflow.bundleDigest,
+    },
+    planDigest,
+    artifacts,
+    summaries,
+    diagnostics: [],
+  }
+  const semanticValidation = validateBioWorkflowResultSemantics(result)
+  if (!semanticValidation.valid) {
+    throw resultCollectionError(
+      `generated BioWorkflowResult failed semantic validation: ${semanticValidation.errors[0].message}`,
+    )
+  }
+  return result
 }
 
 function createOutputReader(handle) {
@@ -1731,8 +2273,8 @@ export function createExecutionManager(options) {
   }
 
   function queuePersist(state) {
+    assertProvenanceSize(state.record)
     const snapshot = cloneJson(state.record)
-    assertProvenanceSize(snapshot)
     const next = state.persist.catch(() => {}).then(() => persistRecord(state.provenancePath, snapshot))
     state.persist = next
     return next
@@ -1755,16 +2297,38 @@ export function createExecutionManager(options) {
         : outcome.exitCode === 0 ? 'completed' : 'failed'
       let outputs = null
       let outputInventory = []
+      let result = null
       let error = null
       if (status === 'completed') {
         try {
           outputs = await readBoundedJson(join(engineDirectory, 'outputs.json'))
           outputInventory = await inventoryOutputs(engineDirectory, manifest, workflowName, outputs)
+          const generatedAt = now().toISOString()
+          result = await createBioWorkflowResult(
+            engineDirectory,
+            manifest,
+            state.record.plan.workflow,
+            state.record.planDigest,
+            outputInventory,
+            generatedAt,
+            () => state.cancelRequested,
+          )
+          if (state.cancelRequested) {
+            status = 'killed'
+            result = null
+          }
         } catch (collectionError) {
-          status = 'failed'
-          error = {
-            code: 'output_collection_failed',
-            message: String(collectionError?.message ?? collectionError).slice(0, 512),
+          if (collectionError instanceof ResultCollectionCancelledError) {
+            status = 'killed'
+          } else {
+            status = 'failed'
+            error = {
+              code: collectionError instanceof ExecutionOperationError
+                && collectionError.code === 'result_collection_failed'
+                ? collectionError.code
+                : 'output_collection_failed',
+              message: String(collectionError?.message ?? collectionError).slice(0, 512),
+            }
           }
         }
       } else if (status === 'failed') {
@@ -1780,12 +2344,15 @@ export function createExecutionManager(options) {
       state.record.exit = { exitCode: outcome.exitCode, signal: outcome.signal }
       state.record.outputs = outputs
       state.record.outputInventory = outputInventory
+      state.record.result = result
       state.record.error = error
       await queuePersist(state)
       activeRuns.delete(state.record.runId)
       return {
         status,
-        detail: outcome.exitCode === null ? String(outcome.signal ?? status) : `exit code: ${outcome.exitCode}`,
+        detail: error === null
+          ? outcome.exitCode === null ? String(outcome.signal ?? status) : `exit code: ${outcome.exitCode}`
+          : `${error.code}: ${error.message}`,
       }
     } catch (error) {
       state.record.status = state.cancelRequested ? 'killed' : 'failed'
@@ -1893,6 +2460,7 @@ export function createExecutionManager(options) {
           exit: null,
           outputs: null,
           outputInventory: [],
+          result: null,
           error: null,
         },
       }
