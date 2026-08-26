@@ -50,6 +50,8 @@ jobs:
       - run: npm run test:coverage
       - run: npm run pack:check
       - run: npm run smoke:pack
+      - name: Install pinned pnpm required by DSH profile plugin management
+        run: npm install --global pnpm@11.7.0
       - name: Install the pinned DeepSeek Harness CLI
         run: npm install --global @deepseek-ai/dsh@0.1.1-rc.2
       - run: npm run smoke:dsh
