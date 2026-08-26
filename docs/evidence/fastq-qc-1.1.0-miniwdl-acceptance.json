@@ -2,7 +2,7 @@
   "schemaVersion": "1",
   "recordedAt": "2026-08-26T06:30:46.166Z",
   "scope": "local-container-and-job-control-acceptance",
-  "packageVersion": "0.5.0",
+  "packageVersion": "0.6.0",
   "adapterSources": {
     "index.js": "52680f7abea5da4f8f9d1a92d3bc30e1c5e2b24e1e5366637b30fe3e5521b537",
     "src/execution.js": "4c2d9c0c7e1b83d424ef8ecdd19b3275d2a2c85ef3886a42408c90ca8a4ce00a",

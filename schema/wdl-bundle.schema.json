@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/dsh-bio-workflows@0.5.0/schema/wdl-bundle.schema.json",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.6.0/schema/wdl-bundle.schema.json",
   "title": "dsh-bio-workflows WDL bundle descriptor v1",
   "description": "A versioned, non-executable WDL asset bundle. Validation does not authorize workflow execution.",
   "type": "object",

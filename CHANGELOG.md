@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 - 2026-08-26
 
 - Add bounded, newest-first `bio_workflows_run_list` discovery with fixed
   cursor pagination, exact status filters, and silent owner isolation.

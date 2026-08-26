@@ -7,9 +7,10 @@ Bioinformatics workflow catalog, WDL asset store, and preflight foundation for
 surface for multiple workflow definitions, while execution adapters are added
 one engine and one verified workflow at a time.
 
-> `0.5.x` adds an opt-in miniwdl execution MVP for the built-in
-> `fastq-qc@1.1.0` bundle. Execution remains disabled by default and requires
-> real input checks, live miniwdl/Docker probes, an exact plan digest, DSH user
+> `0.6.0` adds bounded, owner-scoped durable run history and fail-closed restart
+> reconciliation to the opt-in miniwdl execution MVP for built-in
+> `fastq-qc@1.1.0`. Execution remains disabled by default and requires real
+> input checks, live miniwdl/Docker probes, an exact plan digest, DSH user
 > approval, background-job controls, and durable provenance.
 
 ## Install
@@ -22,7 +23,7 @@ Requirements:
 To enable execution, the DSH composition must also provide `ctx.subprocess`,
 `ctx.jobs`, and the shared `job_output` / `job_kill` tools. The host needs
 miniwdl `1.15.0` and an already-active Docker Swarm manager; the plugin never
-initializes Swarm. The `0.5.x` execution preview targets Linux Docker on the
+initializes Swarm. The `0.6.x` execution preview targets Linux Docker on the
 default local `unix:///var/run/docker.sock`; rootless, remote, and Docker
 Desktop endpoints are not yet configurable. Linux procfs must expose
 `/proc/self/fd` so the adapter can verify the path behind each opened file
@@ -35,7 +36,7 @@ Add the bundle to a DSH profile:
 dsh plugin --profile web add dsh-bio-workflows
 ```
 
-The current development bundle registers twelve tools:
+The bundle registers twelve tools:
 
 - `bio_workflows_info`: reports the installed package version and current
   capability flags without reading files, accessing the network, or starting
@@ -104,7 +105,7 @@ Workflow ids are unique within one catalog. Invalid manifests and duplicate ids
 fail at plugin startup instead of producing a partially valid catalog.
 
 The versioned contract is published as
-[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.5.0/schema/workflow-manifest.schema.json).
+[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.6.0/schema/workflow-manifest.schema.json).
 The zero-dependency runtime API is also available through package subpaths:
 
 ```js
@@ -165,7 +166,7 @@ imports, path traversal, symlinked bundle files, undeclared files, and digest
 mismatches fail closed. File, bundle, discovery, aggregate-byte, and diagnostic
 limits keep malformed local stores from producing unbounded reads or output.
 The descriptor contract is published as
-[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.5.0/schema/wdl-bundle.schema.json).
+[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.6.0/schema/wdl-bundle.schema.json).
 
 The built-in store is searchable without configuration. Local writes are off
 by default. To enable install and scaffold operations, configure an absolute,
@@ -292,8 +293,8 @@ Releases add independently reviewable layers:
 2. Input and declared-environment preflight — available in `0.3.0`
 3. WDL bundles, local Workflow Store, and starter assets — available in `0.4.0`
 4. Opt-in miniwdl execution adapter and run lifecycle — MVP available in `0.5.0`
-5. Owner-scoped durable run history and restart reconciliation — `0.6.0`
-   development candidate
+5. Owner-scoped durable run history and restart reconciliation — available in
+   `0.6.0`
 6. Extend the execution allowlist, add Cromwell/WES adapters, and normalize reports
 
 Execution support remains explicit, auditable, and disabled by default.
@@ -317,8 +318,9 @@ architecture boundary, completion assessment, and next milestones.
 
 ## 中文说明
 
-`0.5.x` 在原有 WDL Bundle 与本地 Workflow Store 上增加了默认关闭的 miniwdl
-执行 MVP。目前只有内置 `fastq-qc@1.1.0` 进入执行白名单；`bam-qc`、旧版
+`0.6.0` 在默认关闭的 miniwdl 执行 MVP 上增加了 owner 隔离、资源有界的运行
+历史，以及重启后 fail-closed 的 `interrupted` 状态收敛。目前只有内置
+`fastq-qc@1.1.0` 进入执行白名单；`bam-qc`、旧版
 `fastq-qc@1.0.0` 和自定义
 WDL 仍只能搜索、校验、安装或生成草稿。执行前会检查真实输入文件、探测
 miniwdl/Docker 与已启用的 Swarm manager、生成 `planDigest`，并把审批绑定到精确

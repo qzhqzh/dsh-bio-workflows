@@ -2,11 +2,11 @@
 
 ## Executive assessment
 
-The `0.5.0` candidate moves `dsh-bio-workflows` from a control-plane foundation
-to an **opt-in execution MVP**. One pinned path, built-in
-`fastq-qc@1.1.0` through miniwdl `1.15.0`, now implements discovery, trusted
-planning, approval, background execution, status/log/cancellation integration,
-and durable provenance.
+The `0.6.0` candidate adds bounded, owner-scoped durable run discovery and
+fail-closed restart reconciliation to the **opt-in execution MVP** introduced
+in `0.5.0`. One pinned path, built-in `fastq-qc@1.1.0` through miniwdl
+`1.15.0`, implements discovery, trusted planning, approval, background
+execution, status/log/cancellation integration, and durable provenance.
 
 This is intentionally narrower than general WDL execution. `bam-qc`, installed
 bundles, and user drafts remain non-executable. Execution is disabled by
@@ -128,12 +128,14 @@ not a general-purpose or production WDL runner.
 
 ## Next milestones
 
-1. Add an explicit optional pre-approval input-checksum policy and a deployable container
-   egress/isolation profile.
-2. Promote `bam-qc` into the executable allowlist after the same real-run and
+1. Define `BioWorkflowResult v1`, add checksummed output artifacts, and normalize
+   the FastQC report.
+2. Add an explicit optional pre-approval input-checksum policy, deployable
+   container egress/isolation, storage budgets, and retention controls.
+3. Promote `bam-qc` into the executable allowlist after the same real-run and
    cancellation tests, including BAM index handling if required.
-3. Normalize FastQC/samtools reports and add checksummed output artifacts.
-4. Only then generalize the adapter contract to Cromwell/WES and add Git/TRS or
+4. Add a controlled custom-WDL review and promotion lifecycle.
+5. Only then generalize the adapter contract to Cromwell/WES and add Git/TRS or
    visual Store surfaces.
 
 ## Execution MVP definition of done

@@ -1,5 +1,5 @@
 export const PACKAGE_NAME = 'dsh-bio-workflows'
-export const PACKAGE_VERSION = '0.5.0'
+export const PACKAGE_VERSION = '0.6.0'
 export const TOOL_NAME = 'bio_workflows_info'
 
 export function getPackageInfo(
@@ -16,7 +16,7 @@ export function getPackageInfo(
     package: PACKAGE_NAME,
     version: PACKAGE_VERSION,
     status: 'preflight',
-    phase: 'miniwdl-execution-mvp',
+    phase: 'durable-run-history',
     readOnly: store.writesEnabled !== true && !executionEnabled,
     workflowCount,
     declaredEngineCount,

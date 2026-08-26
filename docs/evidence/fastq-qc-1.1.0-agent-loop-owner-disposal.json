@@ -3,7 +3,7 @@
   "recordedAt": "2026-08-26T06:30:04.575Z",
   "purpose": "Model-driven DSH Agent-loop and owner-disposal lifecycle acceptance",
   "candidate": {
-    "package": "dsh-bio-workflows@0.5.0",
+    "package": "dsh-bio-workflows@0.6.0",
     "branch": "feat/durable-run-history",
     "dsh": "0.1.1-rc.2"
   },

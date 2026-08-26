@@ -21,7 +21,7 @@ import { makeManifest } from './fixtures.mjs'
 test('public self-references and the dependency-free root DSH apply entry work', async () => {
   assert.equal(plugin.name, 'dsh-bio-workflows')
   assert.equal(metadata.name, plugin.name)
-  assert.equal(metadata.version, '0.5.0')
+  assert.equal(metadata.version, '0.6.0')
   assert.deepEqual(plugin.inject, ['tools'])
   assert.equal(typeof createWorkflowCatalog, 'function')
   assert.equal(typeof preflightWorkflow, 'function')
