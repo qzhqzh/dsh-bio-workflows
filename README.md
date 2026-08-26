@@ -35,7 +35,7 @@ Add the bundle to a DSH profile:
 dsh plugin --profile web add dsh-bio-workflows
 ```
 
-The bundle registers eleven tools:
+The current development bundle registers twelve tools:
 
 - `bio_workflows_info`: reports the installed package version and current
   capability flags without reading files, accessing the network, or starting
@@ -59,6 +59,10 @@ The bundle registers eleven tools:
 - `bio_workflows_run_get`: returns owner-scoped status, provenance, exit facts,
   and output inventory. Logs and cancellation use DSH's shared `job_output` and
   `job_kill` tools with the returned `jobId`.
+- `bio_workflows_run_list`: returns bounded, newest-first, owner-scoped run
+  summaries with exact status filtering and fixed cursor pagination. After a
+  runtime restart it records definitively orphaned non-terminal runs as
+  `interrupted`; it never retries them or signals a stale PID.
 
 ## Configure the catalog
 
@@ -238,7 +242,8 @@ cross this execution adapter yet. A normal run is:
    `expectedPlanDigest`. DSH asks for approval with the bundle and plan digests,
    then the tool replans before starting anything.
 4. Use `job_output` and `job_kill` with `jobId`; use
-   `bio_workflows_run_get` with `runId` for durable status and provenance.
+   `bio_workflows_run_get` with `runId` for durable status and provenance, or
+   `bio_workflows_run_list` to discover the current owner's historical runs.
 
 Each run receives a new mode-`0700` directory. After approval, the adapter opens
 each input with no-follow semantics, checks its approved filesystem identity,
@@ -287,7 +292,9 @@ Releases add independently reviewable layers:
 2. Input and declared-environment preflight — available in `0.3.0`
 3. WDL bundles, local Workflow Store, and starter assets — available in `0.4.0`
 4. Opt-in miniwdl execution adapter and run lifecycle — MVP available in `0.5.0`
-5. Extend the execution allowlist, add Cromwell/WES adapters, and normalize reports
+5. Owner-scoped durable run history and restart reconciliation — `0.6.0`
+   development candidate
+6. Extend the execution allowlist, add Cromwell/WES adapters, and normalize reports
 
 Execution support remains explicit, auditable, and disabled by default.
 

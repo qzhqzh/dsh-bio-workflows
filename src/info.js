@@ -44,6 +44,7 @@ export function getPackageInfo(
       workflowExecution: executionReady,
       backgroundJobLifecycle: executionReady,
       provenanceReporting: executionEnabled,
+      durableRunHistory: executionEnabled,
     },
   }
 }

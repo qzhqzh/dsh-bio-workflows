@@ -51,6 +51,8 @@ flowchart LR
   N --> Q[job_output and job_kill]
   A --> R[bio_workflows_run_get]
   R --> P
+  A --> T[bio_workflows_run_list]
+  T --> P
 ```
 
 Manifest v1 remains metadata-only. WDL source lives in digest-verified bundles,
@@ -71,7 +73,7 @@ model-authored command fragments or environment names to a host shell.
 | Trusted execution plan | Implemented for `fastq-qc@1.1.0` | Canonical input checks, total snapshot bytes and 1 TiB cap, file facts, executable identities, active Swarm probe, deterministic `planDigest` | Optional pre-approval full content checksums for large inputs |
 | Execution authorization | Implemented | `tools/pre-execute` asks with exact bundle and plan digests; tool body replans | Policy presets beyond one-shot user approval |
 | miniwdl adapter | Implemented MVP | Exact executable/version, real semantic check, fixed argv, no ambient environment inheritance, fixed Docker host and Engine ID, no host shell | Docker egress confinement and additional backends |
-| Run lifecycle | Implemented | Real LocalJobRegistry success/read/kill/wait acceptance plus model-driven AgentLoop search/plan/run, approval audit, owner disposal, process-tree termination, owner fencing, and terminal status | Retry and resume |
+| Run lifecycle | Implemented | Real LocalJobRegistry success/read/kill/wait acceptance plus model-driven AgentLoop search/plan/run, approval audit, owner disposal, process-tree termination, owner fencing, bounded owner-scoped history, and fail-closed restart interruption reconciliation | Deliberate retry/resume policy; no automatic retry |
 | Provenance and outputs | Implemented foundation | Atomic `run.json`, input snapshot hashes, plan/command/exit facts, bounded outputs and inventory | Checksummed outputs and normalized bioinformatics reports |
 
 ## Is the main functionality implemented?

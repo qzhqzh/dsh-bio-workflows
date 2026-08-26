@@ -106,6 +106,7 @@ test('the info tool is read-only and registers once', async () => {
   assert.equal(result.capabilities.liveExecutionPlanning, false)
   assert.equal(result.capabilities.backgroundJobLifecycle, false)
   assert.equal(result.capabilities.provenanceReporting, false)
+  assert.equal(result.capabilities.durableRunHistory, false)
 })
 
 test('the info tool reports explicitly enabled local store mutations', async () => {
@@ -138,4 +139,5 @@ test('the info tool separates execution configuration from live service readines
   assert.equal(info.capabilities.liveExecutionPlanning, true)
   assert.equal(info.capabilities.workflowExecution, false)
   assert.equal(info.capabilities.provenanceReporting, true)
+  assert.equal(info.capabilities.durableRunHistory, true)
 })

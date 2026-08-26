@@ -1,10 +1,10 @@
 {
   "schemaVersion": "1",
-  "recordedAt": "2026-08-26T03:30:29Z",
+  "recordedAt": "2026-08-26T06:30:04.575Z",
   "purpose": "Model-driven DSH Agent-loop and owner-disposal lifecycle acceptance",
   "candidate": {
     "package": "dsh-bio-workflows@0.5.0",
-    "branch": "feat/miniwdl-execution-mvp",
+    "branch": "feat/durable-run-history",
     "dsh": "0.1.1-rc.2"
   },
   "runtime": {
@@ -25,7 +25,7 @@
   "workflow": {
     "key": "fastq-qc@1.1.0",
     "bundleDigest": "sha256:fb20354f19760a69fd3827c835b27ee2e2871e94ebd578b94d0352347a6e5e8c",
-    "planDigest": "sha256:e8da954515dc256433be7510f4750e12c1ca4394ebd10763754abded19db18eb"
+    "planDigest": "sha256:38493001938c822f6d3b72e488d2b4a79936030bbc76eb5f6e3dd0a6b891467a"
   },
   "model": {
     "requests": 4,
@@ -54,8 +54,12 @@
     "statusBeforeDispose": "running",
     "removedAfterDispose": true
   },
+  "runHistory": {
+    "countBeforeDispose": 1,
+    "reconciliationStatus": "active"
+  },
   "run": {
-    "id": "run-5a96ebc9-b85f-4156-aa6f-be3724c058a6",
+    "id": "run-872eb4f9-2cf1-41e6-918b-06085827892b",
     "statusAfterDispose": "killed",
     "exit": {
       "exitCode": 143,
@@ -66,9 +70,9 @@
     "terminalProvenancePersisted": true
   },
   "sourceSha256": {
-    "scripts/smoke-dsh-agent-loop.mjs": "6d4992a06588e7c9c1b4da684d0e43ac0ff9b226b92b43d2ebd6cdca46d365fb",
-    "src/execution.js": "e086a1034b4ae53850a2ec6dfb009d5cfc5e50a1f65e85ada02d78f68566c2da",
-    "src/execution-tools.js": "56215141689f541e73267d55dc57ecd7c4c5e04b3b1a3acb6072e3592fcb2309",
+    "scripts/smoke-dsh-agent-loop.mjs": "b7f6de35d32e787bff12163188bc055d041dd54df58d5ef6035f22f38c6f6c53",
+    "src/execution.js": "4c2d9c0c7e1b83d424ef8ecdd19b3275d2a2c85ef3886a42408c90ca8a4ce00a",
+    "src/execution-tools.js": "3f9ab957a51030e7b2b06a173558811154277269e8a97305b182e90588ce8f20",
     "index.js": "52680f7abea5da4f8f9d1a92d3bc30e1c5e2b24e1e5366637b30fe3e5521b537",
     "workflows/fastq-qc/1.1.0/main.wdl": "633f355763427038b9a6cb823f64ab9198a54c3a77ac94135127fbd43825fcd2",
     "workflows/fastq-qc/1.1.0/workflow.json": "9bed856dd749d1ab00968b3ab39d79de3b4276898dbf8ad16103d25c7a6856e6"

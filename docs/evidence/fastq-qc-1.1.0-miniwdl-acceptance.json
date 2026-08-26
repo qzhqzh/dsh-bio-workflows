@@ -1,19 +1,19 @@
 {
   "schemaVersion": "1",
-  "recordedAt": "2026-08-25T19:53:33Z",
+  "recordedAt": "2026-08-26T06:30:46.166Z",
   "scope": "local-container-and-job-control-acceptance",
   "packageVersion": "0.5.0",
   "adapterSources": {
     "index.js": "52680f7abea5da4f8f9d1a92d3bc30e1c5e2b24e1e5366637b30fe3e5521b537",
-    "src/execution.js": "e086a1034b4ae53850a2ec6dfb009d5cfc5e50a1f65e85ada02d78f68566c2da",
-    "src/execution-tools.js": "56215141689f541e73267d55dc57ecd7c4c5e04b3b1a3acb6072e3592fcb2309",
+    "src/execution.js": "4c2d9c0c7e1b83d424ef8ecdd19b3275d2a2c85ef3886a42408c90ca8a4ce00a",
+    "src/execution-tools.js": "3f9ab957a51030e7b2b06a173558811154277269e8a97305b182e90588ce8f20",
     "src/workflow-store.js": "cf5c3e3a17ba630bde839649eb0b34dc5de4747f1bce1bf23b6d59b80c7741b9"
   },
   "workflow": {
     "id": "fastq-qc",
     "version": "1.1.0",
     "bundleDigest": "sha256:fb20354f19760a69fd3827c835b27ee2e2871e94ebd578b94d0352347a6e5e8c",
-    "planDigest": "sha256:4a524f796550b28bb6fd308c656b4b91ce5472faa7cb6d0ae913841fbf927e02"
+    "planDigest": "sha256:75418b5efe74ee28d3d69e82bf721791648d0f9a8f8fc634225fa5a5ceb2757a"
   },
   "host": {
     "os": "Linux 6.8.0-138-generic x86_64",
@@ -78,11 +78,11 @@
     ]
   },
   "cancellation": {
-    "planDigest": "sha256:bf207916ed0250192905d51897c17a5449763a3063624aa1fdfb1e54a0a6db52",
+    "planDigest": "sha256:75418b5efe74ee28d3d69e82bf721791648d0f9a8f8fc634225fa5a5ceb2757a",
     "status": "killed",
     "exitCode": null,
     "signal": "SIGTERM",
-    "jobId": "bio-1",
+    "jobId": "bio-2",
     "ownerSession": "acceptance-owner",
     "killOutcome": "requested",
     "outputReadBeforeKill": "running",
