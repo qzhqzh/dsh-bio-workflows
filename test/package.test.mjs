@@ -25,6 +25,7 @@ test('package metadata matches the runtime identity', () => {
   assert.equal(packageJson.peerDependencies, undefined)
   assert.equal(packageJson.publishConfig.registry, 'https://registry.npmjs.org/')
   assert.equal(packageJson.exports['./catalog'], './src/catalog.js')
+  assert.equal(packageJson.exports['./execution'], './src/execution.js')
   assert.equal(packageJson.exports['./manifest'], './src/manifest.js')
   assert.equal(packageJson.exports['./preflight'], './src/preflight.js')
   assert.equal(packageJson.exports['./store'], './src/workflow-store.js')
@@ -55,6 +56,8 @@ test('the bundle patch installs the expected package', async () => {
   assert.match(patch, /manifests: \[\]/)
   assert.match(patch, /engines: \{\}/)
   assert.match(patch, /writeEnabled: false/)
+  assert.match(patch, /execution:/)
+  assert.match(patch, /enabled: false/)
 })
 
 test('the info tool is read-only and registers once', async () => {
@@ -85,6 +88,13 @@ test('the info tool is read-only and registers once', async () => {
     localStoreConfigured: false,
     writesEnabled: false,
   })
+  assert.deepEqual(result.execution, {
+    enabled: false,
+    configured: false,
+    subprocessAvailable: false,
+    jobsAvailable: false,
+    supportedWorkflows: [],
+  })
   assert.equal(result.capabilities.workflowCatalog, true)
   assert.equal(result.capabilities.manifestValidation, true)
   assert.equal(result.capabilities.preflightValidation, true)
@@ -93,6 +103,9 @@ test('the info tool is read-only and registers once', async () => {
   assert.equal(result.capabilities.workflowInstallation, false)
   assert.equal(result.capabilities.workflowScaffolding, false)
   assert.equal(result.capabilities.workflowExecution, false)
+  assert.equal(result.capabilities.liveExecutionPlanning, false)
+  assert.equal(result.capabilities.backgroundJobLifecycle, false)
+  assert.equal(result.capabilities.provenanceReporting, false)
 })
 
 test('the info tool reports explicitly enabled local store mutations', async () => {
@@ -107,4 +120,22 @@ test('the info tool reports explicitly enabled local store mutations', async () 
   assert.equal(info.capabilities.workflowInstallation, true)
   assert.equal(info.capabilities.workflowScaffolding, true)
   assert.equal(info.capabilities.workflowExecution, false)
+})
+
+test('the info tool separates execution configuration from live service readiness', () => {
+  const info = getPackageInfo(0, 0, {}, {
+    enabled: true,
+    configured: true,
+    subprocessAvailable: true,
+    jobsAvailable: false,
+    supportedWorkflows: ['fastq-qc@1.1.0'],
+  })
+
+  assert.equal(info.readOnly, false)
+  assert.equal(info.execution.enabled, true)
+  assert.equal(info.execution.jobsAvailable, false)
+  assert.deepEqual(info.execution.supportedWorkflows, ['fastq-qc@1.1.0'])
+  assert.equal(info.capabilities.liveExecutionPlanning, true)
+  assert.equal(info.capabilities.workflowExecution, false)
+  assert.equal(info.capabilities.provenanceReporting, true)
 })

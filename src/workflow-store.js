@@ -724,6 +724,21 @@ export function createWorkflowStore(configValue = {}) {
         diagnostics: resolved.diagnostics,
       }
     },
+    async resolve(options, operation = {}) {
+      const resolved = await resolveEntry(options, operation.signal)
+      if (resolved.entry === null) {
+        return errorResult('workflow_not_found', 'workflow bundle was not found', {
+          diagnostics: resolved.diagnostics,
+        })
+      }
+      return {
+        ok: true,
+        source: resolved.entry.source,
+        directory: resolved.entry.directory,
+        bundle: resolved.entry.bundle,
+        diagnostics: resolved.diagnostics,
+      }
+    },
     prepareInstall,
     prepareScaffold,
     async install(options, operation = {}) {

@@ -15,17 +15,22 @@ test('the workflow store searches and structurally validates built-in starters',
   const all = await store.search()
   const qc = await store.search({ query: 'FASTQ', language: 'wdl', tag: 'qc' })
   const validation = await store.validate({ id: 'fastq-qc' })
+  const resolved = await store.resolve({ id: 'fastq-qc', version: '1.1.0' })
 
-  assert.deepEqual(all.workflows.map((workflow) => workflow.id), ['bam-qc', 'fastq-qc'])
-  assert.equal(all.count, 2)
+  assert.deepEqual(all.workflows.map((workflow) => workflow.id), ['bam-qc', 'fastq-qc', 'fastq-qc'])
+  assert.equal(all.count, 3)
   assert.deepEqual(all.diagnostics, [])
-  assert.equal(qc.count, 1)
+  assert.equal(qc.count, 2)
   assert.equal(qc.workflows[0].source, 'builtin')
   assert.equal(qc.workflows[0].trust, 'builtin')
   assert.equal(qc.workflows[0].installed, false)
   assert.equal(validation.ok, true)
   assert.equal(validation.validation.valid, true)
   assert.equal(validation.validation.executionReady, false)
+  assert.equal(resolved.ok, true)
+  assert.equal(resolved.source, 'builtin')
+  assert.equal(resolved.bundle.digest, qc.workflows[0].digest)
+  assert.equal(Object.isFrozen(resolved.bundle), true)
 })
 
 test('store config is strict and writes remain disabled by default', async () => {
@@ -72,7 +77,7 @@ test('opt-in stores install immutable bundles and scaffold local WDL drafts', as
     const repeated = await store.install(installOptions)
     const alreadyInstalled = await store.install({
       id: 'fastq-qc',
-      version: '1.0.0',
+      version: fastq.version,
       expectedDigest: fastq.digest,
       source: 'installed',
     })
@@ -101,10 +106,10 @@ test('opt-in stores install immutable bundles and scaffold local WDL drafts', as
     assert.equal(repeatedScaffold.ok, false)
     assert.equal(repeatedScaffold.status, 'already_present')
 
-    await access(join(root, 'installed', 'fastq-qc', '1.0.0', 'main.wdl'))
+    await access(join(root, 'installed', 'fastq-qc', fastq.version, 'main.wdl'))
     if (process.platform !== 'win32') {
       assert.equal(
-        (await stat(join(root, 'installed', 'fastq-qc', '1.0.0', 'main.wdl'))).mode & 0o777,
+        (await stat(join(root, 'installed', 'fastq-qc', fastq.version, 'main.wdl'))).mode & 0o777,
         0o600,
       )
     }
@@ -128,10 +133,10 @@ test('opt-in stores install immutable bundles and scaffold local WDL drafts', as
     assert.equal(draftSearch.count, 1)
     assert.equal(draftSearch.workflows[0].id, 'custom-qc')
     assert.equal(draftSearch.workflows[0].trust, 'local')
-    assert.equal(combinedSearch.count, 3)
+    assert.equal(combinedSearch.count, 4)
     assert.equal(
       combinedSearch.workflows.filter((workflow) => workflow.id === 'fastq-qc').length,
-      1,
+      2,
     )
     assert.equal(
       combinedSearch.workflows.find((workflow) => workflow.id === 'fastq-qc').installed,
@@ -143,7 +148,7 @@ test('opt-in stores install immutable bundles and scaffold local WDL drafts', as
       (warning) => warning.code === 'wdl_engine_semantics_not_checked',
     ))
 
-    await writeFile(join(root, 'installed', 'fastq-qc', '1.0.0', 'workflow.json'), '{}\n')
+    await writeFile(join(root, 'installed', 'fastq-qc', fastq.version, 'workflow.json'), '{}\n')
     const conflict = await store.install(installOptions)
     assert.equal(conflict.ok, false)
     assert.equal(conflict.status, 'conflict')

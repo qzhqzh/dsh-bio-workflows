@@ -7,3 +7,5 @@
           engines: {}
         store:
           writeEnabled: false
+        execution:
+          enabled: false

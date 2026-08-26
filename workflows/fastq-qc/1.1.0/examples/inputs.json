@@ -1,0 +1,7 @@
+{
+  "reads": [
+    "/data/sample_R1.fastq.gz",
+    "/data/sample_R2.fastq.gz"
+  ],
+  "threads": 2
+}

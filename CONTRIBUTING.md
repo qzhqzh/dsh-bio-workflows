@@ -8,6 +8,9 @@
   network, subprocess, and workflow execution side effects.
 - Keep Workflow Store writes confined to the configured root, non-overwriting,
   disabled by default, and behind a DSH approval decision.
+- Keep workflow execution disabled by default, built-in-allowlisted, bound to
+  exact bundle and plan digests, owner-scoped, and routed through the DSH
+  subprocess/jobs seams without shell interpolation.
 - Treat npm publishing, remote creation, push, and tagging as separate actions.
 
 ## Required checks
@@ -19,6 +22,7 @@ npm test
 npm run test:coverage
 npm run pack:check
 npm run smoke:pack
+npm run smoke:dsh
 ```
 
 The integration test verifies the registry-ready tool schemas and fail-closed
@@ -26,15 +30,20 @@ argument validation. The pack smoke test installs the produced tarball in an
 isolated temporary consumer and loads every public subpath. Public schema or API
 changes require a compatibility review.
 
-When the DSH CLI is installed, also run an isolated profile smoke test:
+The GitHub Actions workflow installs the pinned DSH CLI and runs the isolated
+profile smoke. Locally, run it when the DSH CLI is installed:
 
 ```bash
 npm run smoke:dsh
 ```
 
 This installs the tarball in an isolated profile, imports and applies the
-installed plugin, checks all eight tool contracts, loads both built-in WDL
-bundles, and boots the real DSH headless help path.
+installed plugin, checks all eleven tool contracts, loads all three versioned
+built-in WDL bundles, and boots the real DSH headless help path.
+
+The CI WDL job also installs exact `miniwdl==1.15.0` and checks all built-in
+entrypoints. Expanding the executable allowlist additionally requires a real
+container-backed success and cancellation record for each new workflow.
 
 ## Version synchronization
 

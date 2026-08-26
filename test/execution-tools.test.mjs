@@ -1,0 +1,128 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import {
+  EXECUTION_PLAN_TOOL_NAME,
+  EXECUTION_RUN_GET_TOOL_NAME,
+  EXECUTION_RUN_TOOL_NAME,
+  createExecutionTools,
+  registerExecutionApprovalGate,
+} from '../src/execution-tools.js'
+import { defineTool } from '../src/tool-definition.js'
+
+const bundleDigest = `sha256:${'1'.repeat(64)}`
+const planDigest = `sha256:${'2'.repeat(64)}`
+const request = {
+  id: 'fastq-qc',
+  version: '1.1.0',
+  expectedDigest: bundleDigest,
+  inputs: { reads: ['/data/sample.fastq.gz'] },
+}
+
+test('execution tools expose exact selection, plan binding, and run lookup schemas', async () => {
+  const calls = []
+  const execution = {
+    plan: async (value, operation) => {
+      calls.push(['plan', value, operation])
+      return { ok: true, planDigest }
+    },
+    run: async (value, operation) => {
+      calls.push(['run', value, operation])
+      return { ok: true, runId: 'run-123e4567-e89b-42d3-a456-426614174000' }
+    },
+    getRun: async (runId, operation) => {
+      calls.push(['get', runId, operation])
+      return { ok: true, run: { runId } }
+    },
+  }
+  const tools = createExecutionTools(defineTool, execution)
+
+  assert.deepEqual(tools.map((tool) => tool.name), [
+    EXECUTION_PLAN_TOOL_NAME,
+    EXECUTION_RUN_TOOL_NAME,
+    EXECUTION_RUN_GET_TOOL_NAME,
+  ])
+  assert.deepEqual(tools[0].parameters.required, ['id', 'version', 'expectedDigest', 'inputs'])
+  assert.deepEqual(tools[1].parameters.required, [
+    'id',
+    'version',
+    'expectedDigest',
+    'inputs',
+    'expectedPlanDigest',
+  ])
+  assert.deepEqual(tools[2].parameters.required, ['runId'])
+
+  const signal = new AbortController().signal
+  const agent = { id: 'owner' }
+  assert.equal(JSON.parse(await tools[0].execute(request, { signal, agent })).planDigest, planDigest)
+  assert.equal(JSON.parse(await tools[1].execute({
+    ...request,
+    expectedPlanDigest: planDigest,
+  }, { signal, agent })).ok, true)
+  assert.equal(JSON.parse(await tools[2].execute({
+    runId: 'run-123e4567-e89b-42d3-a456-426614174000',
+  }, { signal, agent })).ok, true)
+  assert.equal(calls.length, 3)
+})
+
+test('execution approval is denied on preparation failure and bound to the exact live plan', async () => {
+  let prepared = {
+    result: {
+      planDigest,
+      plan: {
+        workflow: {
+          id: 'fastq-qc',
+          version: '1.1.0',
+          bundleDigest,
+        },
+        runner: { version: '1.15.0' },
+        inputSnapshotPolicy: { totalBytes: '18' },
+        runsRoot: '/runs',
+      },
+    },
+  }
+  const execution = { prepareRun: async () => prepared }
+  const tools = createExecutionTools(defineTool, {
+    ...execution,
+    plan: async () => ({}),
+    run: async () => ({}),
+    getRun: async () => ({}),
+  })
+  let listener
+  const ctx = {
+    tools: { get: (name) => tools.find((tool) => tool.name === name) },
+    on: (_event, value) => { listener = value },
+  }
+  registerExecutionApprovalGate(ctx, tools, execution)
+
+  const approved = await listener({
+    name: EXECUTION_RUN_TOOL_NAME,
+    arguments: { ...request, expectedPlanDigest: planDigest },
+    signal: new AbortController().signal,
+    agent: { id: 'owner' },
+  }, async () => ({ kind: 'allow' }))
+  assert.equal(approved.kind, 'ask')
+  assert.match(approved.reason, new RegExp(bundleDigest))
+  assert.match(approved.reason, new RegExp(planDigest))
+  assert.match(approved.reason, /miniwdl 1\.15\.0/)
+  assert.match(approved.reason, /snapshot 18 input bytes/)
+
+  prepared = { ok: false, error: { code: 'plan_digest_mismatch' } }
+  const denied = await listener({
+    name: EXECUTION_RUN_TOOL_NAME,
+    arguments: { ...request, expectedPlanDigest: planDigest },
+    signal: new AbortController().signal,
+  }, async () => ({ kind: 'allow' }))
+  assert.deepEqual(denied, {
+    kind: 'deny',
+    reason: 'workflow execution preparation failed: plan_digest_mismatch',
+  })
+
+  let delegated = false
+  const unrelated = await listener({ name: 'other', arguments: {} }, async () => {
+    delegated = true
+    return { kind: 'allow' }
+  })
+  assert.equal(delegated, true)
+  assert.equal(unrelated.kind, 'allow')
+})
