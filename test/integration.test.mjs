@@ -21,7 +21,7 @@ import { makeManifest } from './fixtures.mjs'
 test('public self-references and the dependency-free root DSH apply entry work', async () => {
   assert.equal(plugin.name, 'dsh-bio-workflows')
   assert.equal(metadata.name, plugin.name)
-  assert.equal(metadata.version, '0.5.0')
+  assert.equal(metadata.version, '0.6.0')
   assert.deepEqual(plugin.inject, ['tools'])
   assert.equal(typeof createWorkflowCatalog, 'function')
   assert.equal(typeof preflightWorkflow, 'function')
@@ -270,6 +270,25 @@ test('public self-references and the dependency-free root DSH apply entry work',
             },
           },
           required: ['runId'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_run_list',
+        parameters: {
+          type: 'object',
+          properties: {
+            status: {
+              type: 'string',
+              enum: ['prepared', 'running', 'stopping', 'completed', 'failed', 'killed', 'interrupted'],
+              description: 'Optional exact lifecycle status filter.',
+            },
+            cursor: {
+              type: 'string',
+              pattern: '^run-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+              description: 'Last runId returned by the previous page for the same owner and status filter.',
+            },
+          },
         },
         output: { type: 'string' },
       },

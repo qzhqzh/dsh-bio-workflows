@@ -90,6 +90,8 @@ test('built-in WDL bundles load with verified files and explicit limitations', a
   assert.equal(agentAcceptance.owner.sessionRemoved, true)
   assert.equal(agentAcceptance.job.statusBeforeDispose, 'running')
   assert.equal(agentAcceptance.job.removedAfterDispose, true)
+  assert.equal(agentAcceptance.runHistory.countBeforeDispose, 1)
+  assert.equal(agentAcceptance.runHistory.reconciliationStatus, 'active')
   assert.equal(agentAcceptance.run.statusAfterDispose, 'killed')
   assert.equal(agentAcceptance.run.runnerProcessStopped, true)
   assert.equal(agentAcceptance.run.childProcessStopped, true)

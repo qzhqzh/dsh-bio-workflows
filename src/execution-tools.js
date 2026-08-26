@@ -3,6 +3,7 @@ import { validateToolArguments } from './tool-definition.js'
 export const EXECUTION_PLAN_TOOL_NAME = 'bio_workflows_plan'
 export const EXECUTION_RUN_TOOL_NAME = 'bio_workflows_run'
 export const EXECUTION_RUN_GET_TOOL_NAME = 'bio_workflows_run_get'
+export const EXECUTION_RUN_LIST_TOOL_NAME = 'bio_workflows_run_list'
 
 const IDENTIFIER_PATTERN = '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
 const SEMVER_PATTERN = '^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$'
@@ -104,7 +105,33 @@ export function createExecutionTools(defineTool, execution) {
     })),
   })
 
-  return [plan, run, getRun]
+  const listRuns = defineTool({
+    name: EXECUTION_RUN_LIST_TOOL_NAME,
+    description:
+      'List bounded, newest-first, owner-scoped durable workflow run summaries and reconcile restart-interrupted runs without retrying them.',
+    parameters: {
+      status: {
+        type: 'string',
+        enum: ['prepared', 'running', 'stopping', 'completed', 'failed', 'killed', 'interrupted'],
+        required: false,
+        description: 'Optional exact lifecycle status filter.',
+      },
+      cursor: {
+        type: 'string',
+        pattern: RUN_ID_PATTERN,
+        required: false,
+        description: 'Last runId returned by the previous page for the same owner and status filter.',
+      },
+    },
+    output: textOutput(),
+    isConcurrencySafe: () => false,
+    execute: async (request, exec) => stringify(await execution.listRuns(request, {
+      signal: exec?.signal,
+      agent: exec?.agent,
+    })),
+  })
+
+  return [plan, run, getRun, listRuns]
 }
 
 export function registerExecutionApprovalGate(ctx, tools, execution) {

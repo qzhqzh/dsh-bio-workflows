@@ -1,6 +1,6 @@
 {
   "name": "dsh-bio-workflows",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Bioinformatics WDL catalog, workflow store, trusted planning, and opt-in miniwdl execution for DeepSeek Harness.",
   "type": "module",
   "main": "./index.js",

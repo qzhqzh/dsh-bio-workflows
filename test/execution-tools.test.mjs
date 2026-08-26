@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   EXECUTION_PLAN_TOOL_NAME,
   EXECUTION_RUN_GET_TOOL_NAME,
+  EXECUTION_RUN_LIST_TOOL_NAME,
   EXECUTION_RUN_TOOL_NAME,
   createExecutionTools,
   registerExecutionApprovalGate,
@@ -34,6 +35,10 @@ test('execution tools expose exact selection, plan binding, and run lookup schem
       calls.push(['get', runId, operation])
       return { ok: true, run: { runId } }
     },
+    listRuns: async (value, operation) => {
+      calls.push(['list', value, operation])
+      return { ok: true, runs: [] }
+    },
   }
   const tools = createExecutionTools(defineTool, execution)
 
@@ -41,6 +46,7 @@ test('execution tools expose exact selection, plan binding, and run lookup schem
     EXECUTION_PLAN_TOOL_NAME,
     EXECUTION_RUN_TOOL_NAME,
     EXECUTION_RUN_GET_TOOL_NAME,
+    EXECUTION_RUN_LIST_TOOL_NAME,
   ])
   assert.deepEqual(tools[0].parameters.required, ['id', 'version', 'expectedDigest', 'inputs'])
   assert.deepEqual(tools[1].parameters.required, [
@@ -51,6 +57,16 @@ test('execution tools expose exact selection, plan binding, and run lookup schem
     'expectedPlanDigest',
   ])
   assert.deepEqual(tools[2].parameters.required, ['runId'])
+  assert.equal(tools[3].parameters.required, undefined)
+  assert.deepEqual(tools[3].parameters.properties.status.enum, [
+    'prepared',
+    'running',
+    'stopping',
+    'completed',
+    'failed',
+    'killed',
+    'interrupted',
+  ])
 
   const signal = new AbortController().signal
   const agent = { id: 'owner' }
@@ -62,7 +78,12 @@ test('execution tools expose exact selection, plan binding, and run lookup schem
   assert.equal(JSON.parse(await tools[2].execute({
     runId: 'run-123e4567-e89b-42d3-a456-426614174000',
   }, { signal, agent })).ok, true)
-  assert.equal(calls.length, 3)
+  assert.equal(JSON.parse(await tools[3].execute({ status: 'completed' }, { signal, agent })).ok, true)
+  await assert.rejects(
+    tools[3].execute({ status: 'unknown' }, { signal, agent }),
+    (error) => error.code === 'INVALID_ARGS',
+  )
+  assert.equal(calls.length, 4)
 })
 
 test('execution approval is denied on preparation failure and bound to the exact live plan', async () => {
@@ -87,6 +108,7 @@ test('execution approval is denied on preparation failure and bound to the exact
     plan: async () => ({}),
     run: async () => ({}),
     getRun: async () => ({}),
+    listRuns: async () => ({}),
   })
   let listener
   const ctx = {

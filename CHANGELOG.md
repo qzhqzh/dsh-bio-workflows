@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0 - 2026-08-26
+
+- Add bounded, newest-first `bio_workflows_run_list` discovery with fixed
+  cursor pagination, exact status filters, and silent owner isolation.
+- Reconcile persisted `prepared`, `running`, and `stopping` records after a
+  runtime restart. An exact owner/job/kind/label match preserves the live run;
+  a definitive missing match is atomically recorded as `interrupted` without
+  retrying the workflow or signaling a stale PID. Unavailable job discovery
+  leaves provenance unchanged.
+- Bound run discovery by directory entries, record count, aggregate bytes, and
+  diagnostics while rejecting symlinked, escaped, malformed, and oversized
+  records.
+
 ## 0.5.0 - 2026-08-26
 
 - Add default-off trusted execution planning for the built-in

@@ -206,7 +206,7 @@ exit 2
     includeRuntimeContext: false,
     persona: 'Use the bioinformatics workflow tools exactly as requested.',
   })
-  new runtime.ToolRuntime(ctx, { mode: 'native' })
+  const toolRuntime = new runtime.ToolRuntime(ctx, { mode: 'native' })
   new runtime.LocalSubprocessRuntime(ctx)
   const jobs = new runtime.LocalJobRegistry(ctx, { maxConcurrentJobsPerOwner: 1 })
   jobs.attachController('dsh-bio-workflows-agent-loop-acceptance')
@@ -240,6 +240,7 @@ exit 2
       assert.ok(options.tools.some((tool) => tool.name === 'bio_workflows_search'))
       assert.ok(options.tools.some((tool) => tool.name === 'bio_workflows_plan'))
       assert.ok(options.tools.some((tool) => tool.name === 'bio_workflows_run'))
+      assert.ok(options.tools.some((tool) => tool.name === 'bio_workflows_run_list'))
 
       let chunks
       if (this.calls.length === 1) {
@@ -315,6 +316,18 @@ exit 2
   const beforeDispose = jobs.get(started.jobId, ownerAgent)
   assert.equal(beforeDispose.status, 'running')
   assert.equal(beforeDispose.ownerSession, sessionId)
+  const historyResult = await toolRuntime.execute({
+    callId: 'acceptance-run-list',
+    name: 'bio_workflows_run_list',
+    arguments: { status: 'running' },
+    agent: ownerAgent,
+    signal: new AbortController().signal,
+  })
+  assert.equal(historyResult.isError, false)
+  const history = JSON.parse(historyResult.value)
+  assert.equal(history.reconciledCount, 0)
+  assert.deepEqual(history.runs.map((run) => run.runId), [started.runId])
+  assert.equal(history.runs[0].reconciliationStatus, 'active')
   const [runnerPid, childPid] = (await waitForFile(join(started.runDirectory, 'runner.pids')))
     .trim()
     .split(' ')
@@ -357,6 +370,7 @@ exit 2
   assert.equal(provenance.finishedAt === null, false)
 
   process.stdout.write(`${JSON.stringify({
+    recordedAt: new Date().toISOString(),
     dshVersion: DSH_VERSION,
     workflow: {
       key: `${adapter.selectedWorkflow.id}@${adapter.selectedWorkflow.version}`,
@@ -379,6 +393,10 @@ exit 2
       id: started.jobId,
       statusBeforeDispose: beforeDispose.status,
       removedAfterDispose: jobs.list(ownerAgent).length === 0,
+    },
+    runHistory: {
+      countBeforeDispose: history.count,
+      reconciliationStatus: history.runs[0].reconciliationStatus,
     },
     run: {
       id: started.runId,

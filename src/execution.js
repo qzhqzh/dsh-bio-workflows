@@ -5,6 +5,7 @@ import {
   lstat,
   mkdir,
   open,
+  opendir,
   realpath,
   rename,
   rm,
@@ -33,6 +34,12 @@ const SNAPSHOT_FREE_SPACE_RESERVE_BYTES = 512n * 1024n * 1024n
 const MAX_PROBE_BYTES = 64 * 1024
 const MAX_RESULT_JSON_BYTES = 2 * 1024 * 1024
 const MAX_PROVENANCE_JSON_BYTES = 32 * 1024 * 1024
+const MAX_RUN_DISCOVERY_ENTRIES = 8192
+const MAX_RUN_DISCOVERY_RECORDS = 4096
+const MAX_RUN_DISCOVERY_BYTES = 32 * 1024 * 1024
+const MAX_ACTIVE_RUN_RECORDS = 256
+const MAX_RUN_LIST_DIAGNOSTICS = 32
+const RUN_LIST_PAGE_SIZE = 50
 const JOB_OUTPUT_LIMIT_BYTES = 256 * 1024
 const COPY_BUFFER_BYTES = 1024 * 1024
 const PROCESS_GRACE_MS = 10_000
@@ -42,6 +49,17 @@ const EXECUTABLE_SET = new Set(EXECUTABLE_WORKFLOWS)
 const SAFE_RUNS_ROOT_PATTERN = /^[A-Za-z0-9_./:+,@=-]+$/
 const PLACEHOLDER_PATTERN = '[A-Za-z0-9_./:@+=,-]+'
 const FASTQ_SUFFIXES = Object.freeze(['.fastq.gz', '.fq.gz', '.fastq', '.fq'])
+const RUN_STATUSES = Object.freeze([
+  'prepared',
+  'running',
+  'stopping',
+  'completed',
+  'failed',
+  'killed',
+  'interrupted',
+])
+const RUN_STATUS_SET = new Set(RUN_STATUSES)
+const NON_TERMINAL_RUN_STATUS_SET = new Set(['prepared', 'running', 'stopping'])
 
 function createMiniwdlConfig(runDirectory) {
   return `[scheduler]
@@ -1126,13 +1144,27 @@ async function snapshotInputs(runDirectory, inputs, facts, totalSnapshotBytes, s
   return { stagedInputs, snapshots }
 }
 
-async function readBoundedJson(path, optional = false, maxBytes = MAX_RESULT_JSON_BYTES) {
+async function readBoundedJson(
+  path,
+  optional = false,
+  maxBytes = MAX_RESULT_JSON_BYTES,
+  aggregateBudget = null,
+) {
   let handle
   try {
     handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0))
     const opened = await handle.stat()
     if (!opened.isFile()) throw new Error(`expected a regular JSON file: ${path}`)
     if (opened.size > maxBytes) throw new Error(`JSON file exceeds ${maxBytes} bytes: ${path}`)
+    if (aggregateBudget !== null) {
+      if (opened.size > aggregateBudget.remainingBytes) {
+        throw new ExecutionOperationError(
+          'run_discovery_budget_exceeded',
+          `run discovery exceeds the ${aggregateBudget.maximumBytes} byte aggregate read limit`,
+        )
+      }
+      aggregateBudget.remainingBytes -= opened.size
+    }
     const chunks = []
     let bytes = 0
     while (bytes <= maxBytes) {
@@ -1243,6 +1275,107 @@ function assertRunAccess(record, agent) {
   }
 }
 
+function assertProvenanceSize(record) {
+  const serializedBytes = Buffer.byteLength(`${JSON.stringify(record, null, 2)}\n`, 'utf8')
+  if (serializedBytes > MAX_PROVENANCE_JSON_BYTES) {
+    throw new ExecutionOperationError(
+      'run_provenance_limit_exceeded',
+      `run provenance exceeds the ${MAX_PROVENANCE_JSON_BYTES} byte limit`,
+    )
+  }
+}
+
+function validateRunListRequest(request) {
+  if (!isPlainObject(request)) {
+    throw new ExecutionOperationError('invalid_run_list_request', 'run list request must be an object')
+  }
+  for (const key of Object.keys(request)) {
+    if (key !== 'status' && key !== 'cursor') {
+      throw new ExecutionOperationError(
+        'invalid_run_list_request',
+        `unsupported run list request property: ${key}`,
+      )
+    }
+  }
+  if (request.status !== undefined && !RUN_STATUS_SET.has(request.status)) {
+    throw new ExecutionOperationError(
+      'invalid_run_list_request',
+      `status must be one of: ${RUN_STATUSES.join(', ')}`,
+    )
+  }
+  if (request.cursor !== undefined && (
+    typeof request.cursor !== 'string'
+    || !RUN_ID_PATTERN.test(request.cursor)
+  )) {
+    throw new ExecutionOperationError(
+      'invalid_run_cursor',
+      'cursor must be the last runId returned by bio_workflows_run_list',
+    )
+  }
+}
+
+function expectedJobLabel(record) {
+  const workflow = record?.plan?.workflow
+  if (
+    typeof record?.runId !== 'string'
+    || !RUN_ID_PATTERN.test(record.runId)
+    || typeof workflow?.id !== 'string'
+    || typeof workflow?.version !== 'string'
+  ) {
+    return null
+  }
+  return `${workflow.id}@${workflow.version} ${record.runId}`
+}
+
+function findExactOwnerJob(record, owner, snapshots) {
+  const label = expectedJobLabel(record)
+  if (label === null || typeof record.jobId !== 'string') return null
+  return snapshots.find((job) => (
+    isPlainObject(job)
+    && job.id === record.jobId
+    && job.kind === 'bio'
+    && job.ownerSession === owner.id
+    && job.label === label
+  )) ?? null
+}
+
+function compactRunSummary(record, job, reconciliationStatus) {
+  const workflow = record?.plan?.workflow
+  const startedAtMs = Date.parse(record?.startedAt)
+  if (
+    !isPlainObject(record)
+    || typeof record.runId !== 'string'
+    || !RUN_ID_PATTERN.test(record.runId)
+    || !RUN_STATUS_SET.has(record.status)
+    || !Number.isFinite(startedAtMs)
+    || (record.jobId !== null && typeof record.jobId !== 'string')
+    || !isPlainObject(workflow)
+    || typeof workflow.id !== 'string'
+    || typeof workflow.version !== 'string'
+    || typeof workflow.bundleDigest !== 'string'
+  ) {
+    return null
+  }
+  return {
+    startedAtMs,
+    summary: {
+      runId: record.runId,
+      jobId: record.jobId,
+      workflow: {
+        id: workflow.id,
+        version: workflow.version,
+        bundleDigest: workflow.bundleDigest,
+      },
+      status: record.status,
+      startedAt: record.startedAt,
+      finishedAt: typeof record.finishedAt === 'string' ? record.finishedAt : null,
+      planDigest: typeof record.planDigest === 'string' ? record.planDigest : null,
+      jobStatus: typeof job?.status === 'string' ? job.status : null,
+      reconciliationStatus,
+    },
+  }
+}
+
 export function createExecutionManager(options) {
   if (!isPlainObject(options) || options.store === undefined) {
     throw new TypeError('execution manager requires a workflow store')
@@ -1280,6 +1413,129 @@ export function createExecutionManager(options) {
       subprocessAvailable: typeof subprocess?.resolveExecutable === 'function' && typeof subprocess?.spawn === 'function',
       jobsAvailable: typeof jobs?.start === 'function',
       supportedWorkflows: [...EXECUTABLE_WORKFLOWS],
+    }
+  }
+
+  async function readPersistedRun(roots, runId, aggregateBudget = null) {
+    const runDirectory = join(roots.runsRoot, runId)
+    const canonicalRunDirectory = await inspectDirectory(
+      runDirectory,
+      'run_directory',
+      constants.R_OK | constants.X_OK,
+    )
+    if (!isContainedPath(roots.runsRoot, canonicalRunDirectory)) {
+      throw new ExecutionOperationError(
+        'run_directory_unsafe',
+        'workflow run directory escapes the configured runs root',
+      )
+    }
+    const runDirectoryIdentity = await inspectDirectoryIdentity(
+      canonicalRunDirectory,
+      'run_directory',
+    )
+    const provenancePath = join(canonicalRunDirectory, 'run.json')
+    const record = await readBoundedJson(
+      provenancePath,
+      true,
+      MAX_PROVENANCE_JSON_BYTES,
+      aggregateBudget,
+    )
+    return { record, provenancePath, runDirectoryIdentity }
+  }
+
+  async function readOwnerJobs(owner) {
+    const jobs = getJobs()
+    if (typeof jobs?.list !== 'function') {
+      return { available: false, snapshots: [] }
+    }
+    try {
+      const snapshots = await jobs.list(owner)
+      if (!Array.isArray(snapshots)) return { available: false, snapshots: [] }
+      return { available: true, snapshots }
+    } catch {
+      return { available: false, snapshots: [] }
+    }
+  }
+
+  async function reconcilePersistedRun(
+    record,
+    owner,
+    roots,
+    persisted,
+    ownerJobs,
+  ) {
+    if (!NON_TERMINAL_RUN_STATUS_SET.has(record.status)) {
+      return {
+        record,
+        job: null,
+        reconciled: false,
+        reconciliation: { status: 'not_needed' },
+      }
+    }
+    if (ownerJobs.available !== true) {
+      return {
+        record,
+        job: null,
+        reconciled: false,
+        reconciliation: {
+          status: 'unavailable',
+          reason: 'jobs_service_unavailable',
+        },
+      }
+    }
+    if (expectedJobLabel(record) === null) {
+      return {
+        record,
+        job: null,
+        reconciled: false,
+        reconciliation: {
+          status: 'unavailable',
+          reason: 'invalid_run_provenance',
+        },
+      }
+    }
+    const job = findExactOwnerJob(record, owner, ownerJobs.snapshots)
+    if (job !== null) {
+      return {
+        record,
+        job,
+        reconciled: false,
+        reconciliation: { status: 'live_job_found' },
+      }
+    }
+
+    const observedAt = now().toISOString()
+    const updated = cloneJson(record)
+    updated.status = 'interrupted'
+    updated.finishedAt = observedAt
+    updated.error = {
+      code: 'run_interrupted',
+      message: 'the exact owner-scoped DSH job is absent after runtime restart; automatic retry is disabled',
+    }
+    updated.reconciliation = {
+      status: 'interrupted',
+      observedAt,
+      previousStatus: record.status,
+      reason: 'owner_job_missing_after_runtime_restart',
+      automaticRetry: false,
+      processSignalAttempted: false,
+    }
+    assertProvenanceSize(updated)
+    await assertDirectoryUnchanged(roots.runsRootIdentity, 'runs_root')
+    await assertDirectoryUnchanged(persisted.runDirectoryIdentity, 'run_directory')
+    try {
+      await persistRecord(persisted.provenancePath, updated)
+    } catch {
+      throw new ExecutionOperationError(
+        'run_reconciliation_failed',
+        'workflow run interruption state could not be persisted',
+      )
+    }
+    return {
+      record: updated,
+      job: null,
+      reconciled: true,
+      reconciliation: cloneJson(updated.reconciliation),
     }
   }
 
@@ -1476,13 +1732,7 @@ export function createExecutionManager(options) {
 
   function queuePersist(state) {
     const snapshot = cloneJson(state.record)
-    const serializedBytes = Buffer.byteLength(`${JSON.stringify(snapshot, null, 2)}\n`, 'utf8')
-    if (serializedBytes > MAX_PROVENANCE_JSON_BYTES) {
-      throw new ExecutionOperationError(
-        'run_provenance_limit_exceeded',
-        `run provenance exceeds the ${MAX_PROVENANCE_JSON_BYTES} byte limit`,
-      )
-    }
+    assertProvenanceSize(snapshot)
     const next = state.persist.catch(() => {}).then(() => persistRecord(state.provenancePath, snapshot))
     state.persist = next
     return next
@@ -1748,6 +1998,193 @@ export function createExecutionManager(options) {
     }
   }
 
+  async function listRuns(request = {}, operation = {}) {
+    try {
+      validateRunListRequest(request)
+      throwIfAborted(operation.signal)
+      if (!config.enabled) {
+        throw new ExecutionOperationError('execution_disabled', 'workflow execution is disabled by plugin configuration')
+      }
+      const owner = requireOwner(operation)
+      const roots = await inspectRunsRoot(config, constants.R_OK | constants.X_OK)
+      const diagnostics = []
+      const addDiagnostic = (code, message) => {
+        const existing = diagnostics.find((item) => item.code === code)
+        if (existing !== undefined) {
+          existing.count += 1
+        } else if (diagnostics.length < MAX_RUN_LIST_DIAGNOSTICS) {
+          diagnostics.push({ code, message, count: 1 })
+        }
+      }
+      let truncated = false
+      const discovered = new Map()
+      for (const [runId, state] of activeRuns) {
+        if (state.record.ownerSession !== owner.id) continue
+        if (discovered.size >= MAX_ACTIVE_RUN_RECORDS) {
+          truncated = true
+          addDiagnostic(
+            'active_run_record_limit',
+            `active run discovery stopped at ${MAX_ACTIVE_RUN_RECORDS} records`,
+          )
+          break
+        }
+        discovered.set(runId, {
+          active: true,
+          persisted: null,
+          record: cloneJson(state.record),
+        })
+      }
+
+      const candidateNames = []
+      let entriesObserved = 0
+      const directory = await opendir(roots.runsRoot)
+      for await (const entry of directory) {
+        throwIfAborted(operation.signal)
+        if (entriesObserved >= MAX_RUN_DISCOVERY_ENTRIES) {
+          truncated = true
+          addDiagnostic(
+            'run_discovery_entry_limit',
+            `run discovery stopped at ${MAX_RUN_DISCOVERY_ENTRIES} directory entries`,
+          )
+          break
+        }
+        entriesObserved += 1
+        if (RUN_ID_PATTERN.test(entry.name) && !activeRuns.has(entry.name)) {
+          candidateNames.push(entry.name)
+        }
+      }
+      candidateNames.sort()
+      if (candidateNames.length > MAX_RUN_DISCOVERY_RECORDS) {
+        candidateNames.length = MAX_RUN_DISCOVERY_RECORDS
+        truncated = true
+        addDiagnostic(
+          'run_discovery_record_limit',
+          `run discovery stopped at ${MAX_RUN_DISCOVERY_RECORDS} candidate records`,
+        )
+      }
+
+      const aggregateBudget = {
+        maximumBytes: MAX_RUN_DISCOVERY_BYTES,
+        remainingBytes: MAX_RUN_DISCOVERY_BYTES,
+      }
+      for (const runId of candidateNames) {
+        throwIfAborted(operation.signal)
+        try {
+          const persisted = await readPersistedRun(roots, runId, aggregateBudget)
+          if (persisted.record === null) {
+            addDiagnostic('run_record_unreadable', 'a run record could not be read safely')
+            continue
+          }
+          if (persisted.record?.ownerSession !== owner.id) continue
+          if (persisted.record.runId !== runId) {
+            addDiagnostic('run_record_invalid', 'an owner-visible run record has an invalid run id')
+            continue
+          }
+          discovered.set(runId, {
+            active: false,
+            persisted,
+            record: persisted.record,
+          })
+        } catch (error) {
+          if (error instanceof ExecutionOperationError && error.code === 'run_discovery_budget_exceeded') {
+            truncated = true
+            addDiagnostic(error.code, error.message)
+            continue
+          }
+          addDiagnostic('run_record_unreadable', 'a run record could not be read safely')
+        }
+      }
+
+      const needsReconciliation = [...discovered.values()].some((item) => (
+        item.active !== true && NON_TERMINAL_RUN_STATUS_SET.has(item.record.status)
+      ))
+      const ownerJobs = needsReconciliation
+        ? await readOwnerJobs(owner)
+        : { available: false, snapshots: [] }
+      const summaries = []
+      let reconciledCount = 0
+      let reconciliationUnavailable = false
+      for (const item of discovered.values()) {
+        throwIfAborted(operation.signal)
+        let record = item.record
+        let job = null
+        let reconciliationStatus = item.active ? 'active' : 'not_needed'
+        if (item.active !== true && NON_TERMINAL_RUN_STATUS_SET.has(record.status)) {
+          try {
+            const reconciled = await reconcilePersistedRun(
+              record,
+              owner,
+              roots,
+              item.persisted,
+              ownerJobs,
+            )
+            record = reconciled.record
+            job = reconciled.job
+            reconciliationStatus = reconciled.reconciliation.status
+            if (reconciled.reconciled) reconciledCount += 1
+            if (reconciliationStatus === 'unavailable') reconciliationUnavailable = true
+          } catch {
+            reconciliationStatus = 'failed'
+            addDiagnostic(
+              'run_reconciliation_failed',
+              'an owner-visible run could not be durably reconciled',
+            )
+          }
+        }
+        if (job === null && typeof record.jobId === 'string') {
+          const jobs = getJobs()
+          if (typeof jobs?.get === 'function') {
+            try {
+              const candidate = await jobs.get(record.jobId, owner)
+              job = findExactOwnerJob(record, owner, [candidate])
+            } catch {
+              job = null
+            }
+          }
+        }
+        const compact = compactRunSummary(record, job, reconciliationStatus)
+        if (compact === null) {
+          addDiagnostic('run_record_invalid', 'an owner-visible run record has an invalid summary shape')
+          continue
+        }
+        if (request.status !== undefined && compact.summary.status !== request.status) continue
+        summaries.push(compact)
+      }
+      summaries.sort((left, right) => (
+        right.startedAtMs - left.startedAtMs
+        || right.summary.runId.localeCompare(left.summary.runId)
+      ))
+
+      let offset = 0
+      if (request.cursor !== undefined) {
+        const cursorIndex = summaries.findIndex((item) => item.summary.runId === request.cursor)
+        if (cursorIndex === -1) {
+          throw new ExecutionOperationError(
+            'invalid_run_cursor',
+            'cursor is not present in the current owner-scoped filtered run history',
+          )
+        }
+        offset = cursorIndex + 1
+      }
+      const page = summaries.slice(offset, offset + RUN_LIST_PAGE_SIZE)
+      const hasMore = offset + page.length < summaries.length
+      return {
+        ok: true,
+        count: page.length,
+        pageSize: RUN_LIST_PAGE_SIZE,
+        runs: page.map((item) => item.summary),
+        nextCursor: hasMore && page.length > 0 ? page.at(-1).summary.runId : null,
+        reconciledCount,
+        reconciliationUnavailable,
+        truncated,
+        diagnostics,
+        error: null,
+      }
+    } catch (error) {
+      return operationFailure(error)
+    }
+  }
+
   async function getRun(runId, operation = {}) {
     try {
       if (typeof runId !== 'string' || !RUN_ID_PATTERN.test(runId)) {
@@ -1760,44 +2197,52 @@ export function createExecutionManager(options) {
       const roots = await inspectRunsRoot(config, constants.R_OK | constants.X_OK)
       const state = activeRuns.get(runId)
       let record
+      let persisted = null
       if (state === undefined) {
-        const runDirectory = join(roots.runsRoot, runId)
-        let canonicalRunDirectory
         try {
-          canonicalRunDirectory = await inspectDirectory(
-            runDirectory,
-            'run_directory',
-            constants.R_OK | constants.X_OK,
-          )
+          persisted = await readPersistedRun(roots, runId)
         } catch (error) {
           if (error instanceof ExecutionOperationError && error.code === 'run_directory_missing') {
             return failure('run_not_found', `workflow run not found: ${runId}`)
           }
           throw error
         }
-        if (!isContainedPath(roots.runsRoot, canonicalRunDirectory)) {
-          throw new ExecutionOperationError('run_directory_unsafe', 'workflow run directory escapes the configured runs root')
-        }
-        record = await readBoundedJson(
-          join(canonicalRunDirectory, 'run.json'),
-          true,
-          MAX_PROVENANCE_JSON_BYTES,
-        )
+        record = persisted.record
         if (record === null) return failure('run_not_found', `workflow run not found: ${runId}`)
       } else {
         record = cloneJson(state.record)
       }
       assertRunAccess(record, owner)
+      if (record.runId !== runId) {
+        throw new ExecutionOperationError(
+          'run_provenance_invalid',
+          'workflow run provenance does not match the requested runId',
+        )
+      }
       let job = null
+      let reconciliation = { status: state === undefined ? 'not_needed' : 'active' }
+      if (state === undefined && NON_TERMINAL_RUN_STATUS_SET.has(record.status)) {
+        const reconciled = await reconcilePersistedRun(
+          record,
+          owner,
+          roots,
+          persisted,
+          await readOwnerJobs(owner),
+        )
+        record = reconciled.record
+        job = reconciled.job
+        reconciliation = reconciled.reconciliation
+      }
       const jobs = getJobs()
-      if (record.jobId !== null && typeof jobs?.get === 'function') {
+      if (job === null && typeof record.jobId === 'string' && typeof jobs?.get === 'function') {
         try {
-          job = jobs.get(record.jobId, owner)
+          const candidate = await jobs.get(record.jobId, owner)
+          job = findExactOwnerJob(record, owner, [candidate])
         } catch {
           job = null
         }
       }
-      return { ok: true, run: record, job, error: null }
+      return { ok: true, run: record, job, reconciliation, error: null }
     } catch (error) {
       return operationFailure(error)
     }
@@ -1817,6 +2262,7 @@ export function createExecutionManager(options) {
     },
     prepareRun,
     run,
+    listRuns,
     getRun,
   })
 }

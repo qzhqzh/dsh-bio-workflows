@@ -38,7 +38,7 @@ npm run smoke:dsh
 ```
 
 This installs the tarball in an isolated profile, imports and applies the
-installed plugin, checks all eleven tool contracts, loads all three versioned
+installed plugin, checks all twelve tool contracts, loads all three versioned
 built-in WDL bundles, and boots the real DSH headless help path.
 
 The CI WDL job also installs exact `miniwdl==1.15.0` and checks all built-in

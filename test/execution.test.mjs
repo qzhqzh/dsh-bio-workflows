@@ -188,6 +188,12 @@ class FakeJobs {
     }
   }
 
+  list(caller) {
+    return [...this.records.values()]
+      .filter((record) => record.owner === undefined || record.owner.id === caller?.id)
+      .map((record) => this.get(record.id, caller))
+  }
+
   read(id, caller) {
     const record = this.#record(id, caller)
     return { text: record.hooks.readOutput?.() ?? '', snapshot: this.get(id, caller) }
@@ -237,7 +243,7 @@ async function makeFixture(options = {}) {
     getSubprocess: () => subprocess,
     getJobs: () => jobs,
     createId: options.createId ?? (() => TEST_UUID),
-    now: () => new Date('2026-08-25T12:00:00.000Z'),
+    now: options.now ?? (() => new Date('2026-08-25T12:00:00.000Z')),
     ...(options.persistRecord === undefined ? {} : { persistRecord: options.persistRecord }),
   })
   const request = {
@@ -251,6 +257,7 @@ async function makeFixture(options = {}) {
     inputRoot,
     runsRoot,
     input,
+    store,
     workflow,
     subprocess,
     jobs,
@@ -259,6 +266,57 @@ async function makeFixture(options = {}) {
     miniwdlExecutable,
     dockerExecutable,
   }
+}
+
+function runIdFor(index) {
+  return `run-00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`
+}
+
+function recreateManager(fixture, options = {}) {
+  const jobs = options.jobs === null ? undefined : options.jobs ?? fixture.jobs
+  return createExecutionManager({
+    store: fixture.store,
+    config: fixture.manager.config,
+    getSubprocess: () => fixture.subprocess,
+    getJobs: () => jobs,
+    createId: options.createId ?? (() => TEST_UUID),
+    now: options.now ?? (() => new Date('2026-08-25T12:30:00.000Z')),
+    ...(options.persistRecord === undefined ? {} : { persistRecord: options.persistRecord }),
+  })
+}
+
+async function writePersistedRun(fixture, overrides = {}) {
+  const runId = overrides.runId ?? runIdFor(1)
+  const runDirectory = join(fixture.runsRoot, runId)
+  await mkdir(runDirectory, { mode: 0o700 })
+  const status = overrides.status ?? 'completed'
+  const startedAt = overrides.startedAt ?? '2026-08-25T12:00:00.000Z'
+  const record = {
+    schemaVersion: '1',
+    runId,
+    jobId: null,
+    ownerSession: 'owner-session',
+    status,
+    startedAt,
+    finishedAt: ['completed', 'failed', 'killed', 'interrupted'].includes(status) ? startedAt : null,
+    runDirectory,
+    planDigest: `sha256:${'2'.repeat(64)}`,
+    plan: {
+      workflow: {
+        id: fixture.workflow.id,
+        version: fixture.workflow.version,
+        bundleDigest: fixture.workflow.digest,
+      },
+    },
+    pid: null,
+    exit: null,
+    outputs: null,
+    outputInventory: [],
+    error: null,
+    ...overrides,
+  }
+  await writeFile(join(runDirectory, 'run.json'), `${JSON.stringify(record, null, 2)}\n`)
+  return { record, runDirectory, provenancePath: join(runDirectory, 'run.json') }
 }
 
 test('execution config is strict, disabled by default, and requires disjoint dedicated roots', () => {
@@ -725,10 +783,231 @@ test('an approved plan starts a background run and persists terminal provenance'
   }
 })
 
+test('durable run history is owner-scoped, newest-first, filtered, and cursor-paginated', async () => {
+  const fixture = await makeFixture()
+  const owner = { id: 'owner-session' }
+  const otherOwner = { id: 'other-session' }
+  try {
+    for (let index = 1; index <= 51; index += 1) {
+      await writePersistedRun(fixture, {
+        runId: runIdFor(index),
+        startedAt: new Date(Date.parse('2026-08-25T12:00:00.000Z') + index * 1000).toISOString(),
+      })
+    }
+    const otherRun = await writePersistedRun(fixture, {
+      runId: runIdFor(999),
+      ownerSession: otherOwner.id,
+      startedAt: '2026-08-25T13:00:00.000Z',
+    })
+
+    const first = await fixture.manager.listRuns({ status: 'completed' }, { agent: owner })
+    assert.equal(first.ok, true)
+    assert.equal(first.count, 50)
+    assert.equal(first.pageSize, 50)
+    assert.equal(first.runs[0].runId, runIdFor(51))
+    assert.equal(first.runs.some((run) => run.runId === otherRun.record.runId), false)
+    assert.equal(first.nextCursor, runIdFor(2))
+    assert.equal(first.truncated, false)
+
+    const second = await fixture.manager.listRuns({
+      status: 'completed',
+      cursor: first.nextCursor,
+    }, { agent: owner })
+    assert.equal(second.count, 1)
+    assert.equal(second.runs[0].runId, runIdFor(1))
+    assert.equal(second.nextCursor, null)
+
+    const isolated = await fixture.manager.listRuns({}, { agent: otherOwner })
+    assert.deepEqual(isolated.runs.map((run) => run.runId), [otherRun.record.runId])
+    const foreignCursor = await fixture.manager.listRuns({
+      cursor: otherRun.record.runId,
+    }, { agent: owner })
+    assert.equal(foreignCursor.error.code, 'invalid_run_cursor')
+    const invalid = await fixture.manager.listRuns({ unexpected: true }, { agent: owner })
+    assert.equal(invalid.error.code, 'invalid_run_list_request')
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('persisted non-terminal runs reconcile to interrupted without retrying or signaling a PID', async () => {
+  const fixture = await makeFixture()
+  const owner = { id: 'owner-session' }
+  try {
+    const persistedRun = await writePersistedRun(fixture, {
+      runId: runIdFor(101),
+      status: 'running',
+      jobId: 'bio-77',
+      pid: 987654,
+    })
+    const restarted = recreateManager(fixture)
+    const result = await restarted.getRun(persistedRun.record.runId, { agent: owner })
+    assert.equal(result.ok, true)
+    assert.equal(result.run.status, 'interrupted')
+    assert.equal(result.run.pid, 987654)
+    assert.equal(result.run.error.code, 'run_interrupted')
+    assert.equal(result.reconciliation.status, 'interrupted')
+    assert.deepEqual(result.run.reconciliation, {
+      status: 'interrupted',
+      observedAt: '2026-08-25T12:30:00.000Z',
+      previousStatus: 'running',
+      reason: 'owner_job_missing_after_runtime_restart',
+      automaticRetry: false,
+      processSignalAttempted: false,
+    })
+    assert.equal(fixture.subprocess.terminated, false)
+
+    const durable = JSON.parse(await readFile(persistedRun.provenancePath, 'utf8'))
+    assert.equal(durable.status, 'interrupted')
+    assert.equal(durable.finishedAt, '2026-08-25T12:30:00.000Z')
+    const secondStaleRun = await writePersistedRun(fixture, {
+      runId: runIdFor(102),
+      status: 'stopping',
+      jobId: 'bio-78',
+    })
+    const listed = await restarted.listRuns({ status: 'interrupted' }, { agent: owner })
+    assert.equal(listed.reconciledCount, 1)
+    assert.deepEqual(listed.runs.map((run) => run.runId), [
+      secondStaleRun.record.runId,
+      persistedRun.record.runId,
+    ])
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('restart reconciliation requires an exact owner job label and rejects a reused job id', async () => {
+  const fixture = await makeFixture()
+  const owner = { id: 'owner-session' }
+  try {
+    const liveRun = await writePersistedRun(fixture, {
+      runId: runIdFor(201),
+      status: 'running',
+      jobId: 'bio-1',
+    })
+    const pending = new Promise(() => {})
+    assert.equal(fixture.jobs.start({
+      kind: 'bio',
+      label: `${fixture.workflow.id}@${fixture.workflow.version} ${liveRun.record.runId}`,
+      owner,
+      run: () => ({ done: pending, cancel() {} }),
+    }), 'bio-1')
+    const restarted = recreateManager(fixture)
+    const live = await restarted.getRun(liveRun.record.runId, { agent: owner })
+    assert.equal(live.run.status, 'running')
+    assert.equal(live.job.id, 'bio-1')
+    assert.equal(live.reconciliation.status, 'live_job_found')
+
+    const reusedId = await writePersistedRun(fixture, {
+      runId: runIdFor(202),
+      status: 'running',
+      jobId: 'bio-1',
+    })
+    const interrupted = await restarted.getRun(reusedId.record.runId, { agent: owner })
+    assert.equal(interrupted.run.status, 'interrupted')
+    assert.equal(interrupted.job, null)
+    assert.equal(interrupted.reconciliation.status, 'interrupted')
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('unavailable job discovery leaves persisted non-terminal provenance unchanged', async () => {
+  const fixture = await makeFixture()
+  const owner = { id: 'owner-session' }
+  try {
+    const persistedRun = await writePersistedRun(fixture, {
+      runId: runIdFor(301),
+      status: 'prepared',
+      jobId: null,
+    })
+    const restarted = recreateManager(fixture, { jobs: null })
+    const result = await restarted.getRun(persistedRun.record.runId, { agent: owner })
+    assert.equal(result.run.status, 'prepared')
+    assert.deepEqual(result.reconciliation, {
+      status: 'unavailable',
+      reason: 'jobs_service_unavailable',
+    })
+    const unchanged = JSON.parse(await readFile(persistedRun.provenancePath, 'utf8'))
+    assert.equal(unchanged.status, 'prepared')
+    assert.equal(Object.hasOwn(unchanged, 'reconciliation'), false)
+    const listed = await restarted.listRuns({}, { agent: owner })
+    assert.equal(listed.reconciliationUnavailable, true)
+    assert.equal(listed.runs[0].reconciliationStatus, 'unavailable')
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('reconciliation persistence failures never report an in-memory interrupted state as durable', async () => {
+  const fixture = await makeFixture()
+  const owner = { id: 'owner-session' }
+  try {
+    const persistedRun = await writePersistedRun(fixture, {
+      runId: runIdFor(302),
+      status: 'running',
+      jobId: 'bio-99',
+    })
+    const restarted = recreateManager(fixture, {
+      persistRecord: async () => { throw new Error('simulated read-only filesystem') },
+    })
+    const result = await restarted.getRun(persistedRun.record.runId, { agent: owner })
+    assert.equal(result.error.code, 'run_reconciliation_failed')
+    const listed = await restarted.listRuns({}, { agent: owner })
+    assert.equal(listed.runs[0].status, 'running')
+    assert.equal(listed.runs[0].reconciliationStatus, 'failed')
+    assert.ok(listed.diagnostics.some((item) => item.code === 'run_reconciliation_failed'))
+    const unchanged = JSON.parse(await readFile(persistedRun.provenancePath, 'utf8'))
+    assert.equal(unchanged.status, 'running')
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('run discovery skips unsafe and oversized records with bounded diagnostics', async () => {
+  const fixture = await makeFixture()
+  const outsideRoot = await mkdtemp(join(tmpdir(), 'dsh-bio-run-list-outside-'))
+  const owner = { id: 'owner-session' }
+  try {
+    const valid = await writePersistedRun(fixture, { runId: runIdFor(401) })
+    const oversized = await writePersistedRun(fixture, { runId: runIdFor(402) })
+    await truncate(oversized.provenancePath, 32 * 1024 * 1024 + 1)
+    await symlink(outsideRoot, join(fixture.runsRoot, runIdFor(403)), 'dir')
+    const withinBudget = await writePersistedRun(fixture, {
+      runId: runIdFor(404),
+      acceptancePadding: 'x'.repeat(17 * 1024 * 1024),
+    })
+    await writePersistedRun(fixture, {
+      runId: runIdFor(405),
+      acceptancePadding: 'x'.repeat(17 * 1024 * 1024),
+    })
+
+    const result = await fixture.manager.listRuns({}, { agent: owner })
+    assert.equal(result.ok, true)
+    assert.deepEqual(result.runs.map((run) => run.runId), [
+      withinBudget.record.runId,
+      valid.record.runId,
+    ])
+    assert.equal(result.truncated, true)
+    assert.ok(result.diagnostics.some((item) => (
+      item.code === 'run_record_unreadable' && item.count === 2
+    )))
+    assert.ok(result.diagnostics.some((item) => item.code === 'run_discovery_budget_exceeded'))
+    assert.equal(result.diagnostics.some((item) => JSON.stringify(item).includes(outsideRoot)), false)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+    await rm(outsideRoot, { recursive: true, force: true })
+  }
+})
+
 test('plan changes are rejected and DSH job cancellation terminates the runner tree', async () => {
   const fixture = await makeFixture({ holdRun: true })
   const agent = { id: 'owner-session' }
   try {
+    const historical = await writePersistedRun(fixture, {
+      runId: runIdFor(500),
+      startedAt: '2026-08-25T11:00:00.000Z',
+    })
     const planned = await fixture.manager.plan(fixture.request, { agent })
     const mismatch = await fixture.manager.run({
       ...fixture.request,
@@ -741,6 +1020,11 @@ test('plan changes are rejected and DSH job cancellation terminates the runner t
       expectedPlanDigest: planned.planDigest,
     }, { agent })
     assert.equal(started.ok, true)
+    const active = await fixture.manager.listRuns({}, { agent })
+    assert.equal(active.reconciledCount, 0)
+    assert.equal(active.runs[0].runId, started.runId)
+    assert.equal(active.runs[0].reconciliationStatus, 'active')
+    assert.equal(active.runs[1].runId, historical.record.runId)
     assert.equal(fixture.jobs.kill(started.jobId, agent), 'requested')
     await fixture.jobs.records.get(started.jobId).settled
     assert.equal(fixture.subprocess.terminated, true)
@@ -818,6 +1102,16 @@ test('the real DSH ToolRuntime approves the exact plan and completes the starter
     const completed = JSON.parse(getResult.value)
     assert.equal(completed.run.status, 'completed')
     assert.equal(completed.run.outputInventory.length, 2)
+    const listResult = await runtime.execute({
+      callId: 'execution-list',
+      name: 'bio_workflows_run_list',
+      arguments: { status: 'completed' },
+      agent,
+      signal,
+    })
+    assert.equal(listResult.isError, false)
+    const history = JSON.parse(listResult.value)
+    assert.deepEqual(history.runs.map((run) => run.runId), [started.runId])
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
   }
