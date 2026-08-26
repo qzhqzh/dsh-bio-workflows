@@ -321,7 +321,7 @@ try {
   const searchResult = JSON.parse(await search.execute({ source: 'builtin' }))
   assert.deepEqual(
     searchResult.workflows.map((workflow) => `${workflow.id}@${workflow.version}`),
-    ['bam-qc@1.0.0', 'fastq-qc@1.1.0', 'fastq-qc@1.0.0'],
+    ['bam-qc@1.0.0', 'fastq-qc@1.2.0', 'fastq-qc@1.1.0', 'fastq-qc@1.0.0'],
   )
   const help = execFileSync(
     dshCommand,

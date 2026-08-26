@@ -21,7 +21,7 @@ import { makeManifest } from './fixtures.mjs'
 test('public self-references and the dependency-free root DSH apply entry work', async () => {
   assert.equal(plugin.name, 'dsh-bio-workflows')
   assert.equal(metadata.name, plugin.name)
-  assert.equal(metadata.version, '0.6.0')
+  assert.equal(metadata.version, '0.7.0')
   assert.deepEqual(plugin.inject, ['tools'])
   assert.equal(typeof createWorkflowCatalog, 'function')
   assert.equal(typeof preflightWorkflow, 'function')
@@ -342,7 +342,7 @@ test('public self-references and the dependency-free root DSH apply entry work',
   )
   assert.equal(approval.kind, 'deny')
 
-  assert.equal(searchResult.count, 3)
+  assert.equal(searchResult.count, 4)
 })
 
 test('the real DSH ToolRuntime preserves structured invalid-argument identity', async () => {
@@ -372,7 +372,7 @@ test('the real DSH ToolRuntime preserves structured invalid-argument identity', 
   })
   assert.equal(search.isError, false)
   const searchValue = JSON.parse(search.value)
-  assert.equal(searchValue.count, 3)
+  assert.equal(searchValue.count, 4)
   const fastq = searchValue.workflows.find((workflow) => workflow.id === 'fastq-qc')
 
   const deniedInstall = await runtime.execute({

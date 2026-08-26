@@ -23,13 +23,22 @@ const fastqBundle = new URL('../workflows/fastq-qc/1.0.0/', import.meta.url)
 test('built-in WDL bundles load with verified files and explicit limitations', async () => {
   const fastq = await loadWdlBundle(fastqBundle)
   const executableFastq = await loadWdlBundle(new URL('../workflows/fastq-qc/1.1.0/', import.meta.url))
+  const resultFastq = await loadWdlBundle(new URL('../workflows/fastq-qc/1.2.0/', import.meta.url))
   const bam = await loadWdlBundle(new URL('../workflows/bam-qc/1.0.0/', import.meta.url))
-  const acceptance = JSON.parse(await readFile(
+  const historicalAcceptance = JSON.parse(await readFile(
     new URL('../docs/evidence/fastq-qc-1.1.0-miniwdl-acceptance.json', import.meta.url),
     'utf8',
   ))
-  const agentAcceptance = JSON.parse(await readFile(
+  const historicalAgentAcceptance = JSON.parse(await readFile(
     new URL('../docs/evidence/fastq-qc-1.1.0-agent-loop-owner-disposal.json', import.meta.url),
+    'utf8',
+  ))
+  const resultAcceptance = JSON.parse(await readFile(
+    new URL('../docs/evidence/fastq-qc-1.2.0-result-acceptance.json', import.meta.url),
+    'utf8',
+  ))
+  const agentAcceptance = JSON.parse(await readFile(
+    new URL('../docs/evidence/fastq-qc-1.2.0-agent-loop-owner-disposal.json', import.meta.url),
     'utf8',
   ))
   const validation = describeWdlBundleValidation(fastq)
@@ -39,45 +48,64 @@ test('built-in WDL bundles load with verified files and explicit limitations', a
   assert.equal(executableFastq.descriptor.manifest.version, '1.1.0')
   assert.equal(executableFastq.descriptor.manifest.status, 'ready')
   assert.equal(describeWdlBundleValidation(executableFastq).executionReady, false)
-  assert.equal(acceptance.schemaVersion, '1')
-  assert.equal(acceptance.packageVersion, PACKAGE_VERSION)
-  assert.equal(acceptance.workflow.bundleDigest, executableFastq.digest)
-  assert.match(acceptance.workflow.planDigest, /^sha256:[a-f0-9]{64}$/)
-  assert.equal(acceptance.runner.name, 'miniwdl')
-  assert.equal(acceptance.runner.version, '1.15.0')
-  assert.equal(acceptance.containerRuntime.host, 'unix:///var/run/docker.sock')
-  assert.match(acceptance.containerRuntime.engineId, /^[A-Za-z0-9:._-]+$/)
-  assert.equal(acceptance.containerRuntime.swarm.localNodeState, 'active')
-  assert.equal(acceptance.containerRuntime.swarm.controlAvailable, true)
-  assert.equal(acceptance.containerRuntime.swarm.autoInit, false)
-  assert.equal(acceptance.jobRuntime.provider, '@deepseek-ai/dsh-jobs-local@0.1.1-rc.2')
-  assert.equal(acceptance.jobRuntime.outputReadBeforeWait, 'running')
-  assert.equal(acceptance.jobRuntime.outputReadAfterWait, 'completed')
-  assert.equal(acceptance.executionPolicy.inheritAmbientEnvironment, false)
-  assert.equal(acceptance.executionPolicy.copyExactApprovedInputBytes, true)
-  assert.equal(acceptance.executionPolicy.memoryLimitMultiplier, 1)
-  assert.equal(acceptance.executionPolicy.maxProvenanceBytes, 32 * 1024 * 1024)
-  assert.equal(acceptance.executionPolicy.descriptorPathVerification, 'linux-procfs')
-  assert.equal(acceptance.executionPolicy.protectedRunnerAndRunsRootAncestors, true)
-  assert.equal(acceptance.result.status, 'completed')
-  assert.equal(acceptance.result.exitCode, 0)
-  assert.equal(acceptance.result.signal, null)
-  assert.equal(acceptance.result.outputs.length, 2)
-  assert.match(acceptance.cancellation.planDigest, /^sha256:[a-f0-9]{64}$/)
-  assert.equal(acceptance.cancellation.status, 'killed')
-  assert.equal(acceptance.cancellation.exitCode, null)
-  assert.equal(acceptance.cancellation.signal, 'SIGTERM')
-  assert.equal(acceptance.cancellation.killOutcome, 'requested')
-  assert.equal(acceptance.cancellation.outputReadBeforeKill, 'running')
-  assert.equal(acceptance.cancellation.outputReadAfterKill, 'killed')
-  for (const [relativePath, expectedSha256] of Object.entries(acceptance.adapterSources)) {
+  assert.equal(resultFastq.descriptor.manifest.version, '1.2.0')
+  assert.equal(resultFastq.descriptor.verification.status, 'verified')
+  assert.equal(describeWdlBundleValidation(resultFastq).executionReady, false)
+
+  assert.equal(historicalAcceptance.packageVersion, '0.6.0')
+  assert.equal(historicalAcceptance.workflow.bundleDigest, executableFastq.digest)
+  assert.equal(historicalAcceptance.cancellation.status, 'killed')
+  assert.equal(historicalAgentAcceptance.candidate.package, 'dsh-bio-workflows@0.6.0')
+  assert.equal(historicalAgentAcceptance.workflow.bundleDigest, executableFastq.digest)
+  for (const expectedSha256 of [
+    ...Object.values(historicalAcceptance.adapterSources),
+    ...Object.values(historicalAgentAcceptance.sourceSha256),
+  ]) {
+    assert.match(expectedSha256, /^[a-f0-9]{64}$/)
+  }
+
+  assert.equal(resultAcceptance.schemaVersion, '1')
+  assert.equal(resultAcceptance.packageVersion, PACKAGE_VERSION)
+  assert.equal(resultAcceptance.workflow.bundleDigest, resultFastq.digest)
+  assert.match(resultAcceptance.workflow.planDigest, /^sha256:[a-f0-9]{64}$/)
+  assert.equal(resultAcceptance.runner.name, 'miniwdl')
+  assert.equal(resultAcceptance.runner.version, '1.15.0')
+  assert.equal(resultAcceptance.containerRuntime.host, 'unix:///var/run/docker.sock')
+  assert.match(resultAcceptance.containerRuntime.engineId, /^[A-Za-z0-9:._-]+$/)
+  assert.equal(resultAcceptance.containerRuntime.swarm.localNodeState, 'active')
+  assert.equal(resultAcceptance.containerRuntime.swarm.controlAvailable, true)
+  assert.equal(resultAcceptance.containerRuntime.swarm.autoInit, false)
+  assert.equal(resultAcceptance.jobRuntime.provider, '@deepseek-ai/dsh-jobs-local@0.1.1-rc.2')
+  assert.equal(resultAcceptance.jobRuntime.statusBeforeWait, 'running')
+  assert.equal(resultAcceptance.jobRuntime.statusAfterWait, 'completed')
+  assert.equal(resultAcceptance.resultPolicy.maxArtifacts, 1024)
+  assert.equal(resultAcceptance.resultPolicy.canonicalTargetNoFollowOpen, true)
+  assert.equal(resultAcceptance.resultPolicy.hostZipExtraction, false)
+  assert.equal(resultAcceptance.result.status, 'completed')
+  assert.equal(resultAcceptance.result.schemaVersion, '1')
+  assert.deepEqual(resultAcceptance.result.artifacts.map((artifact) => artifact.outputId), [
+    'html_reports',
+    'zip_reports',
+    'summary_reports',
+  ])
+  assert.equal(resultAcceptance.result.artifacts.every((artifact) => (
+    artifact.sha256 === artifact.directSha256
+  )), true)
+  assert.deepEqual(resultAcceptance.result.summaries.fastqc.moduleCounts, {
+    pass: 5,
+    warn: 2,
+    fail: 3,
+  })
+  assert.equal(resultAcceptance.result.summaries.fastqc.reports[0].overallStatus, 'fail')
+  for (const [relativePath, expectedSha256] of Object.entries(resultAcceptance.adapterSources)) {
     const source = await readFile(new URL(`../${relativePath}`, import.meta.url), 'utf8')
     assert.equal(sha256Text(source), expectedSha256, `${relativePath} changed after acceptance`)
   }
+
   assert.equal(agentAcceptance.schemaVersion, '1')
   assert.equal(agentAcceptance.candidate.package, `dsh-bio-workflows@${PACKAGE_VERSION}`)
   assert.equal(agentAcceptance.candidate.dsh, '0.1.1-rc.2')
-  assert.equal(agentAcceptance.workflow.bundleDigest, executableFastq.digest)
+  assert.equal(agentAcceptance.workflow.bundleDigest, resultFastq.digest)
   assert.match(agentAcceptance.workflow.planDigest, /^sha256:[a-f0-9]{64}$/)
   assert.deepEqual(agentAcceptance.model.toolCalls, [
     'bio_workflows_search',

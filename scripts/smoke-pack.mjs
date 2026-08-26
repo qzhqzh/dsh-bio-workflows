@@ -35,7 +35,10 @@ try {
     import assert from 'node:assert/strict'
     import * as plugin from 'dsh-bio-workflows'
     import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
-    import { createExecutionManager } from 'dsh-bio-workflows/execution'
+    import {
+      BIO_WORKFLOW_RESULT_SCHEMA_VERSION,
+      createExecutionManager,
+    } from 'dsh-bio-workflows/execution'
     import { MANIFEST_SCHEMA_VERSION } from 'dsh-bio-workflows/manifest'
     import metadata from 'dsh-bio-workflows/package.json' with { type: 'json' }
     import { preflightWorkflow } from 'dsh-bio-workflows/preflight'
@@ -43,15 +46,17 @@ try {
     import { WDL_BUNDLE_SCHEMA_VERSION } from 'dsh-bio-workflows/wdl-bundle'
     import schema from 'dsh-bio-workflows/schema/workflow-manifest.schema.json' with { type: 'json' }
     import bundleSchema from 'dsh-bio-workflows/schema/wdl-bundle.schema.json' with { type: 'json' }
+    import resultSchema from 'dsh-bio-workflows/schema/bio-workflow-result.schema.json' with { type: 'json' }
 
     assert.equal(typeof createWorkflowCatalog, 'function')
     assert.equal(typeof createExecutionManager, 'function')
     assert.equal(typeof preflightWorkflow, 'function')
     assert.equal(typeof createWorkflowStore, 'function')
     assert.equal(metadata.name, plugin.name)
-    assert.equal(metadata.version, '0.6.0')
+    assert.equal(metadata.version, '0.7.0')
     assert.equal(schema.properties.schemaVersion.const, MANIFEST_SCHEMA_VERSION)
     assert.equal(bundleSchema.properties.bundleVersion.const, WDL_BUNDLE_SCHEMA_VERSION)
+    assert.equal(resultSchema.properties.schemaVersion.const, BIO_WORKFLOW_RESULT_SCHEMA_VERSION)
 
     const registered = []
     const listeners = new Map()
@@ -351,7 +356,7 @@ try {
       async () => assert.fail('mutating store tool bypassed approval'),
     )
     assert.equal(approval.kind, 'deny')
-    assert.equal(searchResult.count, 3)
+    assert.equal(searchResult.count, 4)
   `
   execFileSync(
     process.execPath,

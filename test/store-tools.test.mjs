@@ -46,7 +46,7 @@ test('store tools expose search, validation, install, and scaffold contracts', a
     version: search.workflows[0].version,
     expectedDigest: search.workflows[0].digest,
   }))
-  assert.equal(search.count, 2)
+  assert.equal(search.count, 3)
   assert.equal(validation.validation.level, 'structural')
   assert.equal(install.error.code, 'store_writes_disabled')
 

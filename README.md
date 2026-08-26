@@ -7,11 +7,11 @@ Bioinformatics workflow catalog, WDL asset store, and preflight foundation for
 surface for multiple workflow definitions, while execution adapters are added
 one engine and one verified workflow at a time.
 
-> `0.6.0` adds bounded, owner-scoped durable run history and fail-closed restart
-> reconciliation to the opt-in miniwdl execution MVP for built-in
-> `fastq-qc@1.1.0`. Execution remains disabled by default and requires real
-> input checks, live miniwdl/Docker probes, an exact plan digest, DSH user
-> approval, background-job controls, and durable provenance.
+> `0.7.0` adds `BioWorkflowResult v1`, bounded output SHA-256 calculation, and
+> parsed FastQC summaries through the new built-in `fastq-qc@1.2.0` bundle.
+> Execution remains disabled by default and requires real input checks, live
+> miniwdl/Docker probes, an exact plan digest, DSH user approval,
+> background-job controls, and durable provenance.
 
 ## Install
 
@@ -23,7 +23,7 @@ Requirements:
 To enable execution, the DSH composition must also provide `ctx.subprocess`,
 `ctx.jobs`, and the shared `job_output` / `job_kill` tools. The host needs
 miniwdl `1.15.0` and an already-active Docker Swarm manager; the plugin never
-initializes Swarm. The `0.6.x` execution preview targets Linux Docker on the
+initializes Swarm. The `0.7.x` execution preview targets Linux Docker on the
 default local `unix:///var/run/docker.sock`; rootless, remote, and Docker
 Desktop endpoints are not yet configurable. Linux procfs must expose
 `/proc/self/fd` so the adapter can verify the path behind each opened file
@@ -58,8 +58,9 @@ The bundle registers twelve tools:
 - `bio_workflows_run`: replans, requires the exact `planDigest`, crosses the
   execution boundary only after DSH approval, and returns `runId` plus `jobId`.
 - `bio_workflows_run_get`: returns owner-scoped status, provenance, exit facts,
-  and output inventory. Logs and cancellation use DSH's shared `job_output` and
-  `job_kill` tools with the returned `jobId`.
+  output inventory, and `BioWorkflowResult v1` for new successful runs. Logs and
+  cancellation use DSH's shared `job_output` and `job_kill` tools with the
+  returned `jobId`.
 - `bio_workflows_run_list`: returns bounded, newest-first, owner-scoped run
   summaries with exact status filtering and fixed cursor pagination. After a
   runtime restart it records definitively orphaned non-terminal runs as
@@ -105,12 +106,14 @@ Workflow ids are unique within one catalog. Invalid manifests and duplicate ids
 fail at plugin startup instead of producing a partially valid catalog.
 
 The versioned contract is published as
-[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.6.0/schema/workflow-manifest.schema.json).
+[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.7.0/schema/workflow-manifest.schema.json).
 The zero-dependency runtime API is also available through package subpaths:
 
 ```js
 import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
 import {
+  BIO_WORKFLOW_RESULT_LIMITS,
+  BIO_WORKFLOW_RESULT_SCHEMA_VERSION,
   createExecutionManager,
   parseExecutionConfig,
 } from 'dsh-bio-workflows/execution'
@@ -134,20 +137,22 @@ entrypoint field, so catalog registration cannot grant execution authority.
 
 ## Workflow Store and WDL bundles
 
-Two workflow families and three structurally checked versioned bundles ship
+Two workflow families and four structurally checked versioned bundles ship
 with the package:
 
 - `fastq-qc@1.0.0`: original non-executable FastQC draft;
-- `fastq-qc@1.1.0`: hardened FastQC execution candidate;
+- `fastq-qc@1.1.0`: hardened FastQC execution baseline;
+- `fastq-qc@1.2.0`: checksummed results plus declared plain-text FastQC
+  summaries;
 - `bam-qc@1.0.0`: `samtools flagstat` and `samtools stats` for one BAM file.
 
-All three bundles use WDL 1.0, pass `miniwdl v1.15.0 check`, and declare
-miniwdl plus Cromwell compatibility. Version `1.1.0` is marked `ready` and
-`verified` after a real miniwdl/Docker Swarm/FastQC completion; its sanitized
-[acceptance record](./docs/evidence/fastq-qc-1.1.0-miniwdl-acceptance.json)
-also records real LocalJobRegistry output and cancellation behavior and ships
-with the package. A separate
-[Agent-loop owner-disposal record](./docs/evidence/fastq-qc-1.1.0-agent-loop-owner-disposal.json)
+All four bundles use WDL 1.0, pass `miniwdl v1.15.0 check`, and declare
+miniwdl plus Cromwell compatibility. Versions `1.1.0` and `1.2.0` are marked
+`ready` and `verified`. The current source-hash-bound
+[result acceptance record](./docs/evidence/fastq-qc-1.2.0-result-acceptance.json)
+captures a real miniwdl/Docker Swarm/FastQC completion, exact artifact digests,
+parsed module summaries, and real LocalJobRegistry lifecycle states. A separate
+[Agent-loop owner-disposal record](./docs/evidence/fastq-qc-1.2.0-agent-loop-owner-disposal.json)
 uses DSH `0.1.1-rc.2`'s real Agent, approval, tool, job, session, and subprocess
 services to prove model-driven `search -> plan -> run` and complete cleanup of a
 long-running runner process tree when its Agent handle is disposed. Structural
@@ -166,7 +171,14 @@ imports, path traversal, symlinked bundle files, undeclared files, and digest
 mismatches fail closed. File, bundle, discovery, aggregate-byte, and diagnostic
 limits keep malformed local stores from producing unbounded reads or output.
 The descriptor contract is published as
-[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.6.0/schema/wdl-bundle.schema.json).
+[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.7.0/schema/wdl-bundle.schema.json).
+
+The normalized result contract is published separately as
+[`BioWorkflowResult v1`](https://unpkg.com/dsh-bio-workflows@0.7.0/schema/bio-workflow-result.schema.json).
+It is additive to `run.json`: historical `0.5.x` and `0.6.x` records without a
+`result` field remain readable. A complete
+[example result](./docs/examples/bio-workflow-result-v1.json) ships with the
+package.
 
 The built-in store is searchable without configuration. Local writes are off
 by default. To enable install and scaffold operations, configure an absolute,
@@ -226,8 +238,9 @@ entry replacement. Violations fail with `runs_root_unsafe`,
         dockerExecutable: /usr/bin/docker
 ```
 
-The first executable allowlist contains only `fastq-qc@1.1.0`. `bam-qc`, the
-historical `fastq-qc@1.0.0` draft, and
+The executable allowlist contains `fastq-qc@1.1.0` and `fastq-qc@1.2.0`; use
+`1.2.0` for normalized results and FastQC summaries. `bam-qc`, the historical
+`fastq-qc@1.0.0` draft, and
 custom/local bundles remain searchable and structurally validatable, but cannot
 cross this execution adapter yet. A normal run is:
 
@@ -260,9 +273,18 @@ limits, and snapshotting requires the approved bytes plus a 512 MiB free-space
 reserve. Failures before job registration remove the fresh
 private run directory. `run.json` records
 the approved plan, input snapshots, command policy, owner session, lifecycle,
-exit facts, miniwdl results, and bounded output inventory. Provenance has a
-separate 32 MiB read/write limit and remains readable after input mounts are
-removed.
+exit facts, miniwdl results, bounded output inventory, and an additive
+`BioWorkflowResult v1` on successful new runs. Result artifact groups follow
+manifest output order and preserve each miniwdl array order. Every file is
+limited to 16 GiB, each result is limited to 1024 artifacts and 64 GiB of
+aggregate hashing, and SHA-256 is
+calculated from a no-follow canonical target descriptor whose identity is
+checked before and after streaming. Stable miniwdl-managed output symlinks are
+accepted only while their path identity remains unchanged and their resolved
+target stays inside the engine directory. FastQC summary text is limited to
+1 MiB, 512 lines, and 4096 bytes per line; the host never extracts the ZIP
+report. Provenance has a separate 32 MiB read/write limit and remains readable
+after input mounts are removed.
 
 Current security limits are explicit in every plan: approval binds large
 biological inputs by canonical path and filesystem identity/metadata rather
@@ -295,7 +317,10 @@ Releases add independently reviewable layers:
 4. Opt-in miniwdl execution adapter and run lifecycle — MVP available in `0.5.0`
 5. Owner-scoped durable run history and restart reconciliation — available in
    `0.6.0`
-6. Extend the execution allowlist, add Cromwell/WES adapters, and normalize reports
+6. Checksummed `BioWorkflowResult v1` and FastQC summaries — available in
+   `0.7.0`
+7. Harden production policy, promote BAM, then add controlled custom-WDL
+   authoring, WorkflowGraph visualization, and Store providers
 
 Execution support remains explicit, auditable, and disabled by default.
 
@@ -310,6 +335,15 @@ npm run smoke:dsh
 npm run smoke:dsh-agent
 ```
 
+The real result acceptance additionally requires safe absolute miniwdl and
+Docker executable paths plus access to an already-active local Swarm manager:
+
+```bash
+DSH_BIO_MINIWDL_EXECUTABLE=/absolute/path/to/miniwdl \
+DSH_BIO_DOCKER_EXECUTABLE=/absolute/path/to/docker \
+npm run accept:fastq-qc-result
+```
+
 The two DSH smokes require the pinned global CLI
 `@deepseek-ai/dsh@0.1.1-rc.2`. The package ships plain ESM and has no build or
 install lifecycle scripts.
@@ -318,15 +352,17 @@ architecture boundary, completion assessment, and next milestones.
 
 ## 中文说明
 
-`0.6.0` 在默认关闭的 miniwdl 执行 MVP 上增加了 owner 隔离、资源有界的运行
-历史，以及重启后 fail-closed 的 `interrupted` 状态收敛。目前只有内置
-`fastq-qc@1.1.0` 进入执行白名单；`bam-qc`、旧版
+`0.7.0` 在已有 owner 隔离运行历史之上增加了 `BioWorkflowResult v1`、输出文件
+SHA-256 和 FastQC 模块级摘要。内置 `fastq-qc@1.1.0` 与 `1.2.0` 进入执行白名单，
+推荐使用 `1.2.0`；`bam-qc`、旧版
 `fastq-qc@1.0.0` 和自定义
 WDL 仍只能搜索、校验、安装或生成草稿。执行前会检查真实输入文件、探测
 miniwdl/Docker 与已启用的 Swarm manager、生成 `planDigest`，并把审批绑定到精确
 bundle 与 plan 摘要；审批后再次规划，将输入复制到运行目录并记录 SHA-256，
 清除环境中的 miniwdl/Docker 覆盖项，随后以 DSH 后台任务运行。日志/取消复用 `job_output`、
-`job_kill`，`run.json` 保存可审计 provenance。声明式
+`job_kill`，`run.json` 保存可审计 provenance；成功的新运行还会按 manifest 输出顺序
+返回带 SHA-256 的 artifact 分组，并对 1.2.0 的声明式 `summary.txt` 做有界解析，宿主机
+不会解压 FastQC ZIP。声明式
 `bio_workflows_preflight` 的语义不变，`executionReady` 仍固定为 `false`，避免把
 纯配置校验误报成真实可运行性。当前候选也已经通过完整 DSH Agent-loop 验收：
 模型实际调用 `search -> plan -> run`，审批事件进入 session 审计；销毁 owner 后，

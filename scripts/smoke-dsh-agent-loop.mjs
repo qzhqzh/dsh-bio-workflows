@@ -16,6 +16,8 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import * as plugin from '../index.js'
+import { PACKAGE_VERSION } from '../src/info.js'
+import { sha256Text } from '../src/wdl-bundle.js'
 
 const DSH_VERSION = '0.1.1-rc.2'
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -251,7 +253,7 @@ exit 2
       } else if (this.calls.length === 2) {
         const search = latestToolValue(options.messages)
         this.selectedWorkflow = search.workflows.find(
-          (workflow) => workflow.id === 'fastq-qc' && workflow.version === '1.1.0',
+          (workflow) => workflow.id === 'fastq-qc' && workflow.version === '1.2.0',
         )
         assert.ok(this.selectedWorkflow)
         chunks = toolCallChunks('call-plan', 'bio_workflows_plan', {
@@ -307,7 +309,7 @@ exit 2
   assert.deepEqual(agentErrors, [])
   assert.equal(adapter.calls.length, 4)
   assert.equal(approvalRequests.length, 1)
-  assert.match(approvalRequests[0].reason, /fastq-qc@1\.1\.0/)
+  assert.match(approvalRequests[0].reason, /fastq-qc@1\.2\.0/)
   assert.match(approvalRequests[0].reason, /sha256:[a-f0-9]{64}/)
 
   const started = adapter.startedRun
@@ -369,19 +371,57 @@ exit 2
   assert.equal(provenance.status, 'killed')
   assert.equal(provenance.finishedAt === null, false)
 
+  const sourceSha256 = {}
+  for (const path of [
+    'scripts/smoke-dsh-agent-loop.mjs',
+    'src/execution.js',
+    'src/execution-tools.js',
+    'index.js',
+    'workflows/fastq-qc/1.2.0/main.wdl',
+    'workflows/fastq-qc/1.2.0/workflow.json',
+  ]) {
+    sourceSha256[path] = sha256Text(await readFile(join(packageRoot, path), 'utf8'))
+  }
+
   process.stdout.write(`${JSON.stringify({
+    schemaVersion: '1',
     recordedAt: new Date().toISOString(),
-    dshVersion: DSH_VERSION,
+    purpose: 'Model-driven DSH Agent-loop and owner-disposal lifecycle acceptance',
+    candidate: {
+      package: `dsh-bio-workflows@${PACKAGE_VERSION}`,
+      dsh: DSH_VERSION,
+    },
+    runtime: {
+      realComponents: [
+        'AgentLoop',
+        'AgentRegistry',
+        'ApprovalService',
+        'LlmRuntime',
+        'LocalJobRegistry',
+        'LocalSubprocessRuntime',
+        'SessionStore',
+        'SystemPrompt',
+        'ToolRuntime',
+      ],
+      modelAdapter: 'deterministic scripted adapter using the DSH StreamChunk protocol',
+      runnerFixture: 'controlled long-running POSIX parent and child process; workflow computation is covered by the separate real result acceptance record',
+    },
     workflow: {
       key: `${adapter.selectedWorkflow.id}@${adapter.selectedWorkflow.version}`,
       bundleDigest: adapter.selectedWorkflow.digest,
       planDigest: started.planDigest,
     },
-    modelCalls: adapter.calls.length,
-    toolCalls: ['bio_workflows_search', 'bio_workflows_plan', 'bio_workflows_run'],
+    model: {
+      requests: adapter.calls.length,
+      toolCalls: ['bio_workflows_search', 'bio_workflows_plan', 'bio_workflows_run'],
+      terminalResponse: 'stop',
+    },
     approval: {
       requests: approvalRequests.length,
-      auditPairs: approvalAsked.length,
+      askedEvents: approvalAsked.length,
+      decidedEvents: approvalDecided.length,
+      outcome: approvalDecided[0].data.outcome,
+      auditIdsMatched: approvalDecided[0].data.id === approvalAsked[0].data.id,
     },
     owner: {
       sessionId,
@@ -404,7 +444,9 @@ exit 2
       exit: provenance.exit,
       runnerProcessStopped: !processExists(runnerPid),
       childProcessStopped: !processExists(childPid),
+      terminalProvenancePersisted: provenance.finishedAt !== null,
     },
+    sourceSha256,
   }, null, 2)}\n`)
 } finally {
   if (handle !== undefined) await handle.dispose().catch(() => {})

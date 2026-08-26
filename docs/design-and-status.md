@@ -2,11 +2,11 @@
 
 ## Executive assessment
 
-The `0.6.0` candidate adds bounded, owner-scoped durable run discovery and
-fail-closed restart reconciliation to the **opt-in execution MVP** introduced
-in `0.5.0`. One pinned path, built-in `fastq-qc@1.1.0` through miniwdl
-`1.15.0`, implements discovery, trusted planning, approval, background
-execution, status/log/cancellation integration, and durable provenance.
+The `0.7.0` candidate adds `BioWorkflowResult v1`, bounded output hashing, and
+FastQC summary parsing to the opt-in execution MVP. Built-in
+`fastq-qc@1.1.0` remains executable and backward compatible, while `1.2.0`
+adds declared plain-text summaries and normalized results through miniwdl
+`1.15.0`.
 
 This is intentionally narrower than general WDL execution. `bam-qc`, installed
 bundles, and user drafts remain non-executable. Execution is disabled by
@@ -14,11 +14,12 @@ default, uses optional DSH `subprocess` and `jobs` services, and never changes
 the semantics of declaration-only `bio_workflows_preflight`.
 
 The adapter contract and lifecycle are covered with deterministic integration
-fixtures, while CI runs real `miniwdl check` for all three versioned bundles.
-The final `fastq-qc@1.1.0` digest also completed a real miniwdl 1.15.0 / Docker
-29.3.1 Swarm / FastQC run with confined outputs and a separate real
-`LocalJobRegistry` cancellation path; the sanitized record is stored under
-`docs/evidence/` and is bound to the reviewed adapter source hashes.
+fixtures, while CI runs real `miniwdl check` for all four versioned bundles.
+The final `fastq-qc@1.2.0` digest also completed a real miniwdl 1.15.0 / Docker
+29.3.1 Swarm / FastQC run with confined outputs, independently checked output
+digests, parsed summaries, and real `LocalJobRegistry` lifecycle states; the
+sanitized record is stored under `docs/evidence/` and is bound to the reviewed
+adapter source hashes.
 The same candidate also passed a model-driven DSH Agent-loop acceptance: a
 deterministic model selected the exact bundle, planned it, crossed the real
 approval service, started an owner-scoped long-running subprocess job, and then
@@ -48,6 +49,9 @@ flowchart LR
   S --> N[DSH background job]
   N --> O[miniwdl argv without shell]
   O --> P[run.json and output inventory]
+  P --> U[BioWorkflowResult v1]
+  U --> V[SHA-256 artifact groups]
+  U --> W[Bounded FastQC summary]
   N --> Q[job_output and job_kill]
   A --> R[bio_workflows_run_get]
   R --> P
@@ -68,13 +72,13 @@ model-authored command fragments or environment names to a host shell.
 | DSH bundle installation | Implemented | Pack and isolated-profile smoke tests; both are CI gates | Validate the first remote CI run |
 | Manifest v1 and catalog | Implemented | Strict runtime validator, JSON Schema, deterministic list/get | Migration policy when v2 is needed |
 | WDL bundle and Store | Implemented foundation | Bounded reads, file SHA-256, local import closure, immutable opt-in installs | Git/TRS providers and visual Store UI |
-| Starter workflows | Two families, three versions | All WDL 1.0 bundles pass pinned `miniwdl 1.15.0 check`; `fastq-qc@1.1.0` has a retained real container acceptance record | Promote and verify BAM separately |
+| Starter workflows | Two families, four versions | All WDL 1.0 bundles pass pinned `miniwdl 1.15.0 check`; `fastq-qc@1.2.0` has a retained real result acceptance record | Promote and verify BAM separately |
 | Declaration-only preflight | Implemented and unchanged | Pure input/environment validation with `executionReady: false` | None inside this intentionally pure boundary |
-| Trusted execution plan | Implemented for `fastq-qc@1.1.0` | Canonical input checks, total snapshot bytes and 1 TiB cap, file facts, executable identities, active Swarm probe, deterministic `planDigest` | Optional pre-approval full content checksums for large inputs |
+| Trusted execution plan | Implemented for `fastq-qc@1.1.0` and `1.2.0` | Canonical input checks, total snapshot bytes and 1 TiB cap, file facts, executable identities, active Swarm probe, deterministic `planDigest` | Optional pre-approval full content checksums for large inputs |
 | Execution authorization | Implemented | `tools/pre-execute` asks with exact bundle and plan digests; tool body replans | Policy presets beyond one-shot user approval |
 | miniwdl adapter | Implemented MVP | Exact executable/version, real semantic check, fixed argv, no ambient environment inheritance, fixed Docker host and Engine ID, no host shell | Docker egress confinement and additional backends |
 | Run lifecycle | Implemented | Real LocalJobRegistry success/read/kill/wait acceptance plus model-driven AgentLoop search/plan/run, approval audit, owner disposal, process-tree termination, owner fencing, bounded owner-scoped history, and fail-closed restart interruption reconciliation | Deliberate retry/resume policy; no automatic retry |
-| Provenance and outputs | Implemented foundation | Atomic `run.json`, input snapshot hashes, plan/command/exit facts, bounded outputs and inventory | Checksummed outputs and normalized bioinformatics reports |
+| Provenance and outputs | Result v1 implemented | Atomic `run.json`, input snapshot hashes, checksummed artifact groups, FastQC summary adapter, bounded parser and hashing limits | Directory digests and additional workflow-specific adapters |
 
 ## Is the main functionality implemented?
 
@@ -93,8 +97,8 @@ not a general-purpose or production WDL runner.
 
 - Execution is off unless an operator configures disjoint absolute
   `inputRoots` and a private, operator-owned `runsRoot` directory.
-- Only `builtin:fastq-qc@1.1.0` is executable, with an exact bundle digest and
-  digest-pinned container image.
+- Only `builtin:fastq-qc@1.1.0` and `builtin:fastq-qc@1.2.0` are executable,
+  with exact bundle digests and a digest-pinned container image.
 - Input paths are canonicalized inside allowed roots and bound to size,
   nanosecond timestamps, device, and inode in `planDigest`; they are rechecked
   after approval through no-follow file handles, copied to safe run-owned names,
@@ -125,18 +129,27 @@ not a general-purpose or production WDL runner.
   only on the private runs root, not on retired input mounts.
 - Captured process output and result JSON are bounded. Output paths must resolve
   back inside the miniwdl run directory before entering the inventory.
+- New successful runs add `BioWorkflowResult v1` without changing historical
+  provenance fields. Results are limited to 1024 artifacts, 16 GiB each, and
+  64 GiB total, opened through stable confined canonical targets with no-follow
+  semantics, streamed through SHA-256, and rechecked for descriptor and path
+  identity. Stable miniwdl output symlinks are accepted only while both the link
+  and confined target remain unchanged.
+- `fastq-qc@1.2.0` declares extracted `summary.txt` files. Parsing is limited to
+  1 MiB, 512 lines, and 4096 bytes per line; malformed UTF-8 or module states
+  fail the run, and the host plugin never extracts ZIP archives.
 
 ## Next milestones
 
-1. Define `BioWorkflowResult v1`, add checksummed output artifacts, and normalize
-   the FastQC report.
-2. Add an explicit optional pre-approval input-checksum policy, deployable
+1. Add an explicit optional pre-approval input-checksum policy, deployable
    container egress/isolation, storage budgets, and retention controls.
-3. Promote `bam-qc` into the executable allowlist after the same real-run and
+2. Promote `bam-qc` into the executable allowlist after the same real-run and
    cancellation tests, including BAM index handling if required.
-4. Add a controlled custom-WDL review and promotion lifecycle.
-5. Only then generalize the adapter contract to Cromwell/WES and add Git/TRS or
-   visual Store surfaces.
+3. Add revision-bound custom-WDL drafts, deterministic validation, and
+   `WorkflowGraph v1` for DeepSeek Harness native visualization.
+4. Add controlled test, review, and immutable promotion before any custom draft
+   can use the production execution adapter.
+5. Only then generalize to Cromwell/WES and Git/TRS Store providers.
 
 ## Execution MVP definition of done
 
@@ -147,7 +160,8 @@ One supported workflow must complete this loop:
 3. render a reviewable, deterministic execution plan;
 4. receive approval bound to that plan;
 5. submit, observe, and cancel through an owner-scoped background job;
-6. return terminal provenance and a confined output inventory.
+6. return terminal provenance, a confined output inventory, and normalized
+   checksummed results.
 
 All six contracts are implemented in this candidate. The real Docker-backed
 success path and the model-driven Agent-loop owner-disposal path are both

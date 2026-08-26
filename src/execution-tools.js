@@ -88,7 +88,7 @@ export function createExecutionTools(defineTool, execution) {
   const getRun = defineTool({
     name: EXECUTION_RUN_GET_TOOL_NAME,
     description:
-      'Read owner-scoped workflow run status, provenance, and output inventory. Use shared job_output and job_kill for logs and cancellation.',
+      'Read owner-scoped workflow status, provenance, output inventory, and normalized checksummed result. Use shared job_output and job_kill for logs and cancellation.',
     parameters: {
       runId: {
         type: 'string',

@@ -15,12 +15,17 @@ test('the workflow store searches and structurally validates built-in starters',
   const all = await store.search()
   const qc = await store.search({ query: 'FASTQ', language: 'wdl', tag: 'qc' })
   const validation = await store.validate({ id: 'fastq-qc' })
-  const resolved = await store.resolve({ id: 'fastq-qc', version: '1.1.0' })
+  const resolved = await store.resolve({ id: 'fastq-qc', version: '1.2.0' })
 
-  assert.deepEqual(all.workflows.map((workflow) => workflow.id), ['bam-qc', 'fastq-qc', 'fastq-qc'])
-  assert.equal(all.count, 3)
+  assert.deepEqual(all.workflows.map((workflow) => workflow.id), [
+    'bam-qc',
+    'fastq-qc',
+    'fastq-qc',
+    'fastq-qc',
+  ])
+  assert.equal(all.count, 4)
   assert.deepEqual(all.diagnostics, [])
-  assert.equal(qc.count, 2)
+  assert.equal(qc.count, 3)
   assert.equal(qc.workflows[0].source, 'builtin')
   assert.equal(qc.workflows[0].trust, 'builtin')
   assert.equal(qc.workflows[0].installed, false)
@@ -133,10 +138,10 @@ test('opt-in stores install immutable bundles and scaffold local WDL drafts', as
     assert.equal(draftSearch.count, 1)
     assert.equal(draftSearch.workflows[0].id, 'custom-qc')
     assert.equal(draftSearch.workflows[0].trust, 'local')
-    assert.equal(combinedSearch.count, 4)
+    assert.equal(combinedSearch.count, 5)
     assert.equal(
       combinedSearch.workflows.filter((workflow) => workflow.id === 'fastq-qc').length,
-      2,
+      3,
     )
     assert.equal(
       combinedSearch.workflows.find((workflow) => workflow.id === 'fastq-qc').installed,

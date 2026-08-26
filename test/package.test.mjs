@@ -38,7 +38,34 @@ test('package metadata matches the runtime identity', () => {
     packageJson.exports['./schema/wdl-bundle.schema.json'],
     './schema/wdl-bundle.schema.json',
   )
+  assert.equal(
+    packageJson.exports['./schema/bio-workflow-result.schema.json'],
+    './schema/bio-workflow-result.schema.json',
+  )
   assert.ok(packageJson.files.includes('workflows/'))
+})
+
+test('BioWorkflowResult v1 schema exposes checksummed artifacts and FastQC summaries', async () => {
+  const schema = JSON.parse(await readFile(
+    new URL('../schema/bio-workflow-result.schema.json', import.meta.url),
+    'utf8',
+  ))
+  const example = JSON.parse(await readFile(
+    new URL('../docs/examples/bio-workflow-result-v1.json', import.meta.url),
+    'utf8',
+  ))
+
+  assert.equal(schema.properties.schemaVersion.const, '1')
+  assert.equal(schema.properties.status.const, 'completed')
+  assert.equal(schema.$defs.artifact.properties.sha256.$ref, '#/$defs/digest')
+  assert.equal(schema.$defs.artifact.properties.sizeBytes.$ref, '#/$defs/byteCount')
+  assert.deepEqual(schema.$defs.fastqcModule.properties.status.enum, ['pass', 'warn', 'fail'])
+  assert.equal(schema.$defs.fastqcSummary.properties.reports.maxItems, 1024)
+  assert.equal(example.schemaVersion, schema.properties.schemaVersion.const)
+  assert.match(example.workflow.bundleDigest, /^sha256:[a-f0-9]{64}$/)
+  assert.equal(example.artifacts[0].items[0].ordinal, 0)
+  assert.match(example.artifacts[0].items[0].sha256, /^sha256:[a-f0-9]{64}$/)
+  assert.deepEqual(example.summaries.fastqc.moduleCounts, { pass: 1, warn: 1, fail: 1 })
 })
 
 test('the foundation package has no install lifecycle scripts', () => {
@@ -107,6 +134,9 @@ test('the info tool is read-only and registers once', async () => {
   assert.equal(result.capabilities.backgroundJobLifecycle, false)
   assert.equal(result.capabilities.provenanceReporting, false)
   assert.equal(result.capabilities.durableRunHistory, false)
+  assert.equal(result.capabilities.normalizedWorkflowResults, false)
+  assert.equal(result.capabilities.outputChecksums, false)
+  assert.equal(result.capabilities.fastqcSummaries, false)
 })
 
 test('the info tool reports explicitly enabled local store mutations', async () => {
@@ -129,15 +159,18 @@ test('the info tool separates execution configuration from live service readines
     configured: true,
     subprocessAvailable: true,
     jobsAvailable: false,
-    supportedWorkflows: ['fastq-qc@1.1.0'],
+    supportedWorkflows: ['fastq-qc@1.1.0', 'fastq-qc@1.2.0'],
   })
 
   assert.equal(info.readOnly, false)
   assert.equal(info.execution.enabled, true)
   assert.equal(info.execution.jobsAvailable, false)
-  assert.deepEqual(info.execution.supportedWorkflows, ['fastq-qc@1.1.0'])
+  assert.deepEqual(info.execution.supportedWorkflows, ['fastq-qc@1.1.0', 'fastq-qc@1.2.0'])
   assert.equal(info.capabilities.liveExecutionPlanning, true)
   assert.equal(info.capabilities.workflowExecution, false)
   assert.equal(info.capabilities.provenanceReporting, true)
   assert.equal(info.capabilities.durableRunHistory, true)
+  assert.equal(info.capabilities.normalizedWorkflowResults, true)
+  assert.equal(info.capabilities.outputChecksums, true)
+  assert.equal(info.capabilities.fastqcSummaries, true)
 })

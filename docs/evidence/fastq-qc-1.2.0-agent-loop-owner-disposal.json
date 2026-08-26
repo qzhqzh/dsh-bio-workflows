@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "1",
+  "recordedAt": "2026-08-26T08:52:41.028Z",
+  "purpose": "Model-driven DSH Agent-loop and owner-disposal lifecycle acceptance",
+  "candidate": {
+    "package": "dsh-bio-workflows@0.7.0",
+    "dsh": "0.1.1-rc.2"
+  },
+  "runtime": {
+    "realComponents": [
+      "AgentLoop",
+      "AgentRegistry",
+      "ApprovalService",
+      "LlmRuntime",
+      "LocalJobRegistry",
+      "LocalSubprocessRuntime",
+      "SessionStore",
+      "SystemPrompt",
+      "ToolRuntime"
+    ],
+    "modelAdapter": "deterministic scripted adapter using the DSH StreamChunk protocol",
+    "runnerFixture": "controlled long-running POSIX parent and child process; workflow computation is covered by the separate real result acceptance record"
+  },
+  "workflow": {
+    "key": "fastq-qc@1.2.0",
+    "bundleDigest": "sha256:6dac1d1a37672462a1e4539fccf967f6a1204a9667c94799f36351d8d92e564e",
+    "planDigest": "sha256:b55c40a34af7ba6c61ba25404a9f1f5ae8a54b997c650a9daae1e660ac987312"
+  },
+  "model": {
+    "requests": 4,
+    "toolCalls": [
+      "bio_workflows_search",
+      "bio_workflows_plan",
+      "bio_workflows_run"
+    ],
+    "terminalResponse": "stop"
+  },
+  "approval": {
+    "requests": 1,
+    "askedEvents": 1,
+    "decidedEvents": 1,
+    "outcome": "allowed-once",
+    "auditIdsMatched": true
+  },
+  "owner": {
+    "sessionId": "bio-workflow-owner-disposal",
+    "disposed": true,
+    "agentRemoved": true,
+    "sessionRemoved": true
+  },
+  "job": {
+    "id": "bio-1",
+    "statusBeforeDispose": "running",
+    "removedAfterDispose": true
+  },
+  "runHistory": {
+    "countBeforeDispose": 1,
+    "reconciliationStatus": "active"
+  },
+  "run": {
+    "id": "run-393e91d1-048e-4be2-b85d-40dafed5dfdd",
+    "statusAfterDispose": "killed",
+    "exit": {
+      "exitCode": 143,
+      "signal": null
+    },
+    "runnerProcessStopped": true,
+    "childProcessStopped": true,
+    "terminalProvenancePersisted": true
+  },
+  "sourceSha256": {
+    "scripts/smoke-dsh-agent-loop.mjs": "398cf3dbd1cd403fccf59e0dd72b7661f852d48a4af55914cb17467038f28a51",
+    "src/execution.js": "d9bd207ce90f4c002285848590227be97b8912084186bd326a873b77940c1302",
+    "src/execution-tools.js": "0ec7fdfbfbf35dc921cdac62109e6674331d17f59270f76d4082366b96a13c5b",
+    "index.js": "52680f7abea5da4f8f9d1a92d3bc30e1c5e2b24e1e5366637b30fe3e5521b537",
+    "workflows/fastq-qc/1.2.0/main.wdl": "0ccef9731dc4a5ff9e40f79103b715b2863989c0c78dfe046d3e5abd25254a5e",
+    "workflows/fastq-qc/1.2.0/workflow.json": "9c8e49209e1d4bec57ca6ce99848246cb76eef6d0075fd9480fd04eb1b9b5d5b"
+  }
+}
