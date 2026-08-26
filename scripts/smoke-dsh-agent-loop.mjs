@@ -153,6 +153,7 @@ let handle
 try {
   const inputRoot = join(temporaryRoot, 'inputs')
   const runsRoot = join(temporaryRoot, 'runs')
+  const storeRoot = join(temporaryRoot, 'store')
   const binRoot = join(temporaryRoot, 'bin')
   await mkdir(inputRoot, { mode: 0o700 })
   await mkdir(runsRoot, { mode: 0o700 })
@@ -216,12 +217,26 @@ exit 2
 
   const approvalRequests = []
   ctx.on('approval/request', async (request, next) => {
-    if (request.toolName !== 'bio_workflows_run') return next()
+    if (![
+      'bio_workflows_draft_create',
+      'bio_workflows_draft_update',
+      'bio_workflows_run',
+    ].includes(request.toolName)) return next()
     approvalRequests.push(request)
     return 'allowed-once'
   })
 
   plugin.apply(ctx, {
+    store: {
+      root: storeRoot,
+      writeEnabled: true,
+    },
+    authoring: {
+      validator: {
+        executable: miniwdlExecutable,
+        expectedVersion: '1.15.0',
+      },
+    },
     execution: {
       enabled: true,
       runsRoot,
@@ -232,6 +247,10 @@ exit 2
 
   class ScriptedWorkflowAdapter extends runtime.LlmAdapter {
     calls = []
+    createdDraft = null
+    updatedDraft = null
+    draftValidation = null
+    draftGraph = null
     selectedWorkflow = null
     startedRun = null
 
@@ -240,17 +259,81 @@ exit 2
       assert.equal(options.provider, 'acceptance')
       assert.equal(options.model, 'workflow-agent')
       assert.ok(options.tools.some((tool) => tool.name === 'bio_workflows_search'))
+      assert.ok(options.tools.some((tool) => tool.name === 'bio_workflows_draft_create'))
+      assert.ok(options.tools.some((tool) => tool.name === 'bio_workflows_draft_get'))
+      assert.ok(options.tools.some((tool) => tool.name === 'bio_workflows_draft_update'))
+      assert.ok(options.tools.some((tool) => tool.name === 'bio_workflows_draft_validate'))
+      assert.ok(options.tools.some((tool) => tool.name === 'bio_workflows_draft_graph'))
       assert.ok(options.tools.some((tool) => tool.name === 'bio_workflows_plan'))
       assert.ok(options.tools.some((tool) => tool.name === 'bio_workflows_run'))
       assert.ok(options.tools.some((tool) => tool.name === 'bio_workflows_run_list'))
 
       let chunks
       if (this.calls.length === 1) {
+        chunks = toolCallChunks('call-draft-create', 'bio_workflows_draft_create', {
+          id: 'agent-authored-qc',
+          name: 'Agent-authored QC',
+          summary: 'Exercise the revisioned WDL authoring loop.',
+        })
+      } else if (this.calls.length === 2) {
+        this.createdDraft = latestToolValue(options.messages)
+        assert.equal(this.createdDraft.ok, true)
+        assert.equal(this.createdDraft.revision, 1)
+        chunks = toolCallChunks('call-draft-get', 'bio_workflows_draft_get', {
+          draftId: this.createdDraft.draftId,
+          revision: this.createdDraft.revision,
+        })
+      } else if (this.calls.length === 3) {
+        const draft = latestToolValue(options.messages)
+        assert.equal(draft.draftId, this.createdDraft.draftId)
+        assert.equal(draft.revision, this.createdDraft.revision)
+        assert.equal(draft.contentDigest, this.createdDraft.contentDigest)
+        chunks = toolCallChunks('call-draft-update', 'bio_workflows_draft_update', {
+          draftId: draft.draftId,
+          expectedRevision: draft.revision,
+          expectedContentDigest: draft.contentDigest,
+          replacements: [{
+            path: 'main.wdl',
+            role: 'workflow',
+            content: 'version 1.0\n\nworkflow agent_authored_qc {\n  input { String message }\n  output { String submitted_message = message }\n}\n',
+          }],
+        })
+      } else if (this.calls.length === 4) {
+        this.updatedDraft = latestToolValue(options.messages)
+        assert.equal(this.updatedDraft.ok, true)
+        assert.equal(this.updatedDraft.draftId, this.createdDraft.draftId)
+        assert.equal(this.updatedDraft.revision, 2)
+        assert.notEqual(this.updatedDraft.contentDigest, this.createdDraft.contentDigest)
+        chunks = toolCallChunks('call-draft-validate', 'bio_workflows_draft_validate', {
+          draftId: this.updatedDraft.draftId,
+          revision: this.updatedDraft.revision,
+        })
+      } else if (this.calls.length === 5) {
+        const validated = latestToolValue(options.messages)
+        assert.equal(validated.ok, true)
+        this.draftValidation = validated.validation
+        assert.equal(this.draftValidation.draftId, this.updatedDraft.draftId)
+        assert.equal(this.draftValidation.revision, this.updatedDraft.revision)
+        assert.equal(this.draftValidation.contentDigest, this.updatedDraft.contentDigest)
+        assert.equal(this.draftValidation.valid, true)
+        assert.equal(this.draftValidation.executionAuthorized, false)
+        chunks = toolCallChunks('call-draft-graph', 'bio_workflows_draft_graph', {
+          draftId: this.updatedDraft.draftId,
+          revision: this.updatedDraft.revision,
+        })
+      } else if (this.calls.length === 6) {
+        this.draftGraph = latestToolValue(options.messages)
+        assert.equal(this.draftGraph.draftId, this.updatedDraft.draftId)
+        assert.equal(this.draftGraph.revision, this.updatedDraft.revision)
+        assert.equal(this.draftGraph.contentDigest, this.updatedDraft.contentDigest)
+        assert.equal(this.draftGraph.workflow.name, 'agent_authored_qc')
+        assert.equal(this.draftGraph.complete, true)
+        assert.equal(this.draftGraph.executionAuthorized, false)
         chunks = toolCallChunks('call-search', 'bio_workflows_search', {
           query: 'fastq',
           source: 'builtin',
         })
-      } else if (this.calls.length === 2) {
+      } else if (this.calls.length === 7) {
         const search = latestToolValue(options.messages)
         this.selectedWorkflow = search.workflows.find(
           (workflow) => workflow.id === 'fastq-qc' && workflow.version === '1.2.0',
@@ -262,7 +345,7 @@ exit 2
           expectedDigest: this.selectedWorkflow.digest,
           inputs: { reads: [input], threads: 1 },
         })
-      } else if (this.calls.length === 3) {
+      } else if (this.calls.length === 8) {
         const plan = latestToolValue(options.messages)
         assert.equal(plan.ok, true)
         chunks = toolCallChunks('call-run', 'bio_workflows_run', {
@@ -272,7 +355,7 @@ exit 2
           inputs: { reads: [input], threads: 1 },
           expectedPlanDigest: plan.planDigest,
         })
-      } else if (this.calls.length === 4) {
+      } else if (this.calls.length === 9) {
         this.startedRun = latestToolValue(options.messages)
         assert.equal(this.startedRun.ok, true)
         chunks = textChunks(`Started ${this.startedRun.runId}`)
@@ -301,16 +384,30 @@ exit 2
   const agentErrors = []
   handle.agent.ctx.on('agent/error', ({ error }) => agentErrors.push(error))
   handle.agent.followup(runtime.createUserMessage({
-    content: [{ type: 'text', text: 'Find, plan, and start the built-in FASTQ QC workflow.' }],
+    content: [{
+      type: 'text',
+      text: 'Create, inspect, update, validate, and visualize a WDL draft, then find, plan, and start the built-in FASTQ QC workflow.',
+    }],
     source: { kind: 'user' },
   }))
   await handle.agent.whenIdle()
 
   assert.deepEqual(agentErrors, [])
-  assert.equal(adapter.calls.length, 4)
-  assert.equal(approvalRequests.length, 1)
-  assert.match(approvalRequests[0].reason, /fastq-qc@1\.2\.0/)
-  assert.match(approvalRequests[0].reason, /sha256:[a-f0-9]{64}/)
+  assert.equal(adapter.calls.length, 9)
+  assert.equal(approvalRequests.length, 3)
+  const createApproval = approvalRequests.find(
+    (request) => request.toolName === 'bio_workflows_draft_create',
+  )
+  const updateApproval = approvalRequests.find(
+    (request) => request.toolName === 'bio_workflows_draft_update',
+  )
+  const runApproval = approvalRequests.find((request) => request.toolName === 'bio_workflows_run')
+  assert.match(createApproval.reason, /revision 1/)
+  assert.match(createApproval.reason, /sha256:[a-f0-9]{64}/)
+  assert.match(updateApproval.reason, /from revision 1/)
+  assert.match(updateApproval.reason, /to revision 2/)
+  assert.match(runApproval.reason, /fastq-qc@1\.2\.0/)
+  assert.match(runApproval.reason, /sha256:[a-f0-9]{64}/)
 
   const started = adapter.startedRun
   assert.ok(started)
@@ -342,17 +439,20 @@ exit 2
   const sessionEvents = [...handle.agent.session.events]
   const approvalAsked = sessionEvents.filter((event) => event.type === 'approval/asked')
   const approvalDecided = sessionEvents.filter((event) => event.type === 'approval/decided')
-  assert.equal(approvalAsked.length, 1)
-  assert.equal(approvalDecided.length, 1)
-  assert.equal(approvalDecided[0].data.outcome, 'allowed-once')
-  assert.equal(approvalDecided[0].data.id, approvalAsked[0].data.id)
+  assert.equal(approvalAsked.length, 3)
+  assert.equal(approvalDecided.length, 3)
+  assert.equal(approvalDecided.every((event) => event.data.outcome === 'allowed-once'), true)
+  assert.deepEqual(
+    approvalDecided.map((event) => event.data.id),
+    approvalAsked.map((event) => event.data.id),
+  )
   assert.equal(
     sessionEvents.filter((event) => event.type === 'tool/call').length,
-    3,
+    8,
   )
   assert.equal(
     sessionEvents.filter((event) => event.type === 'tool/result').length,
-    3,
+    8,
   )
 
   await handle.dispose()
@@ -374,8 +474,13 @@ exit 2
   const sourceSha256 = {}
   for (const path of [
     'scripts/smoke-dsh-agent-loop.mjs',
+    'src/draft-store.js',
+    'src/draft-tools.js',
+    'src/draft-validation.js',
     'src/execution.js',
     'src/execution-tools.js',
+    'src/graph-tools.js',
+    'src/workflow-graph.js',
     'index.js',
     'workflows/fastq-qc/1.2.0/main.wdl',
     'workflows/fastq-qc/1.2.0/workflow.json',
@@ -386,7 +491,7 @@ exit 2
   process.stdout.write(`${JSON.stringify({
     schemaVersion: '1',
     recordedAt: new Date().toISOString(),
-    purpose: 'Model-driven DSH Agent-loop and owner-disposal lifecycle acceptance',
+    purpose: 'Model-driven DSH draft-authoring, execution, approval, and owner-disposal lifecycle acceptance',
     candidate: {
       package: `dsh-bio-workflows@${PACKAGE_VERSION}`,
       dsh: DSH_VERSION,
@@ -411,9 +516,28 @@ exit 2
       bundleDigest: adapter.selectedWorkflow.digest,
       planDigest: started.planDigest,
     },
+    authoring: {
+      draftId: adapter.updatedDraft.draftId,
+      revision: adapter.updatedDraft.revision,
+      contentDigest: adapter.updatedDraft.contentDigest,
+      validationDigest: adapter.draftValidation.validationDigest,
+      valid: adapter.draftValidation.valid,
+      executionAuthorized: adapter.draftValidation.executionAuthorized,
+      graphDigest: adapter.draftGraph.graphDigest,
+      graphNodes: adapter.draftGraph.nodes.length,
+    },
     model: {
       requests: adapter.calls.length,
-      toolCalls: ['bio_workflows_search', 'bio_workflows_plan', 'bio_workflows_run'],
+      toolCalls: [
+        'bio_workflows_draft_create',
+        'bio_workflows_draft_get',
+        'bio_workflows_draft_update',
+        'bio_workflows_draft_validate',
+        'bio_workflows_draft_graph',
+        'bio_workflows_search',
+        'bio_workflows_plan',
+        'bio_workflows_run',
+      ],
       terminalResponse: 'stop',
     },
     approval: {
@@ -421,7 +545,12 @@ exit 2
       askedEvents: approvalAsked.length,
       decidedEvents: approvalDecided.length,
       outcome: approvalDecided[0].data.outcome,
-      auditIdsMatched: approvalDecided[0].data.id === approvalAsked[0].data.id,
+      mutationRequests: approvalRequests.filter(
+        (request) => request.toolName.startsWith('bio_workflows_draft_'),
+      ).length,
+      auditIdsMatched: approvalDecided.every(
+        (event, index) => event.data.id === approvalAsked[index].data.id,
+      ),
     },
     owner: {
       sessionId,

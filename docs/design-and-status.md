@@ -2,11 +2,16 @@
 
 ## Executive assessment
 
-The `0.7.0` candidate adds `BioWorkflowResult v1`, bounded output hashing, and
-FastQC summary parsing to the opt-in execution MVP. Built-in
-`fastq-qc@1.1.0` remains executable and backward compatible, while `1.2.0`
-adds declared plain-text summaries and normalized results through miniwdl
-`1.15.0`.
+The `0.10.0` candidate completes the first usable AI-assisted WDL experience:
+session-scoped immutable drafts with dual compare-and-swap, exact-revision
+validation, deterministic `WorkflowGraph v1`, replay-safe tool cards, and a
+responsive Workflow Center. DeepSeek Harness retains model, conversation, and
+approval ownership; this plugin owns deterministic source, filesystem,
+validation, graph, and execution-policy boundaries.
+
+The `0.7.0` `BioWorkflowResult v1`, bounded output hashing, FastQC summary
+parsing, and opt-in execution MVP remain backward compatible. Built-in
+`fastq-qc@1.1.0` and `1.2.0` remain the only executable workflows.
 
 This is intentionally narrower than general WDL execution. `bam-qc`, installed
 bundles, and user drafts remain non-executable. Execution is disabled by
@@ -15,17 +20,21 @@ the semantics of declaration-only `bio_workflows_preflight`.
 
 The adapter contract and lifecycle are covered with deterministic integration
 fixtures, while CI runs real `miniwdl check` for all four versioned bundles.
-The final `fastq-qc@1.2.0` digest also completed a real miniwdl 1.15.0 / Docker
+The retained `0.7.0` `fastq-qc@1.2.0` digest also completed a real miniwdl 1.15.0 / Docker
 29.3.1 Swarm / FastQC run with confined outputs, independently checked output
 digests, parsed summaries, and real `LocalJobRegistry` lifecycle states; the
 sanitized record is stored under `docs/evidence/` and is bound to the reviewed
-adapter source hashes.
-The same candidate also passed a model-driven DSH Agent-loop acceptance: a
-deterministic model selected the exact bundle, planned it, crossed the real
-approval service, started an owner-scoped long-running subprocess job, and then
+execution-adapter source hashes. The additive `0.10.0` registration and Client
+entry are covered by DSH ToolRuntime, package, web API, and browser integration
+tests and do not relabel that historical record.
+The current Agent-loop smoke uses a deterministic model to create, read,
+CAS-update, validate, and graph an exact draft,
+crosses both mutation approvals, then selects the exact built-in bundle, plans
+it, crosses the run approval, starts an owner-scoped long-running subprocess job, and then
 proved that disposing the Agent handle removed the Agent, Session, and Job while
-terminating both runner and child processes. That separate sanitized record is
-also source-hash-bound under `docs/evidence/`.
+terminating both runner and child processes. The current sanitized
+[`0.10.0` record](./evidence/dsh-bio-workflows-0.10.0-agent-loop.json) is
+source-hash-bound under `docs/evidence/`.
 
 ## Architecture boundary
 
@@ -57,6 +66,15 @@ flowchart LR
   R --> P
   A --> T[bio_workflows_run_list]
   T --> P
+  A --> X[Draft create/get/update]
+  X --> Y[Session owner + immutable revisions + dual CAS]
+  Y --> Z[Exact revision structural validation]
+  Z --> AA[Identity-pinned miniwdl check]
+  AA -. no task run or execution authority .-> E
+  Y --> AB[Deterministic WorkflowGraph v1]
+  AB --> AC[Keyed read-only graph card]
+  AD[Workflow Center] --> A
+  AD -. read-only bootstrap .-> B
 ```
 
 Manifest v1 remains metadata-only. WDL source lives in digest-verified bundles,
@@ -72,6 +90,9 @@ model-authored command fragments or environment names to a host shell.
 | DSH bundle installation | Implemented | Pack and isolated-profile smoke tests; both are CI gates | Validate the first remote CI run |
 | Manifest v1 and catalog | Implemented | Strict runtime validator, JSON Schema, deterministic list/get | Migration policy when v2 is needed |
 | WDL bundle and Store | Implemented foundation | Bounded reads, file SHA-256, local import closure, immutable opt-in installs | Git/TRS providers and visual Store UI |
+| AI-assisted draft authoring | Implemented 0.10 core | Session-derived ownership, opaque ids, immutable full snapshots, dual CAS, model-driven DSH Agent-loop and approval smoke, structural and validator tests | Agent Skill, collaboration, test and promotion |
+| Deterministic workflow graph | Implemented | Exact owner/revision/digest binding, schema validation, stable nodes/edges/source ranges, partial-graph diagnostics, parser and tool tests | Additional WDL syntax coverage and source editor navigation |
+| Native Workflow Center | Implemented | Same-package Client build, official sidebar/overlay/tool slots, built-in-only bootstrap, exact execution-allowlist affordances, deep-validated graph replay, fail-closed current-Session Agent bridge, desktop/mobile and modal keyboard Playwright tests | Agent-mediated draft browsing, direct source editor, richer Store providers |
 | Starter workflows | Two families, four versions | All WDL 1.0 bundles pass pinned `miniwdl 1.15.0 check`; `fastq-qc@1.2.0` has a retained real result acceptance record | Promote and verify BAM separately |
 | Declaration-only preflight | Implemented and unchanged | Pure input/environment validation with `executionReady: false` | None inside this intentionally pure boundary |
 | Trusted execution plan | Implemented for `fastq-qc@1.1.0` and `1.2.0` | Canonical input checks, total snapshot bytes and 1 TiB cap, file facts, executable identities, active Swarm probe, deterministic `planDigest` | Optional pre-approval full content checksums for large inputs |
@@ -82,21 +103,33 @@ model-authored command fragments or environment names to a host shell.
 
 ## Is the main functionality implemented?
 
-At the code-contract and real container-execution levels, yes for one
-deliberately narrow workflow: the six steps of the execution MVP are present,
-tested, and a successful FastQC completion is retained as evidence. This is
-still not a general production runner: plans disclose that approval does not
-precompute full input-content hashes and container egress isolation is not
-enforced. Both the real Docker-backed workflow path and the model-driven DSH
-Agent-loop/owner-disposal path now have retained acceptance evidence.
+Yes for the intentionally bounded `0.10.0` experience: an Agent can create
+a private draft, inspect one exact revision/file, submit an approval-bound CAS
+patch, obtain deterministic non-executing validation evidence, and derive a
+revision-bound read-only graph. A user can discover workflows, initiate these
+actions, inspect runs, and diagnose setup from Workflow Center while every
+material action still passes through the current Agent and ordinary approval
+flow. Invalid WDL remains repairable, cross-session reads are silent, and no
+draft can enter the existing execution allowlist.
 
-The correct release description is therefore **miniwdl execution MVP / preview**,
-not a general-purpose or production WDL runner.
+At the code-contract and real container-execution levels, the earlier execution
+MVP also remains complete for one deliberately narrow workflow. This is still
+not a general production runner or full WDL IDE: canvas/source editing, draft
+tests, review/promotion, collaboration, container egress isolation, and broad
+workflow execution are not implemented.
+
+The correct release description is therefore **AI-assisted revisioned WDL
+authoring, deterministic visualization, and miniwdl execution MVP / preview**,
+not a general-purpose production WDL runner or full WDL IDE.
 
 ## Security and reproducibility invariants
 
 - Execution is off unless an operator configures disjoint absolute
   `inputRoots` and a private, operator-owned `runsRoot` directory.
+- Draft mutations are off unless an operator configures a dedicated store root
+  owned by the DSH process user, not writable by group/other users, with a
+  replacement-protected ancestor chain. Owner and revision directory identities
+  are rechecked before atomic commits and stale cleanup.
 - Only `builtin:fastq-qc@1.1.0` and `builtin:fastq-qc@1.2.0` are executable,
   with exact bundle digests and a digest-pinned container image.
 - Input paths are canonicalized inside allowed roots and bound to size,
@@ -143,16 +176,16 @@ not a general-purpose or production WDL runner.
 
 ## Next milestones
 
-1. Add an explicit optional pre-approval input-checksum policy, deployable
+1. Package the on-demand `bio-wdl-authoring` Agent Skill after diagnostic repair
+   behavior is stable.
+2. Add controlled fixture testing, independent review evidence, and immutable
+   promotion as separate approval boundaries before any custom execution.
+3. Add an explicit optional pre-approval input-checksum policy, deployable
    container egress/isolation, storage budgets, and retention controls.
-2. Promote `bam-qc` into the executable allowlist after the same real-run and
+4. Promote `bam-qc` into the executable allowlist after the same real-run and
    cancellation tests, including BAM index handling if required.
-3. Add revision-bound custom-WDL drafts, deterministic validation, and
-   `WorkflowGraph v1` for DeepSeek Harness native visualization, following the
-   [AI-assisted WDL authoring RFC](./ai-assisted-wdl-and-visualization.md).
-4. Add controlled test, review, and immutable promotion before any custom draft
-   can use the production execution adapter.
-5. Only then generalize to Cromwell/WES and Git/TRS Store providers.
+5. Add revision-pinned Git/TRS Store providers and richer draft browsing.
+6. Only then generalize to Cromwell/WES and editable visual round trips.
 
 ## Execution MVP definition of done
 

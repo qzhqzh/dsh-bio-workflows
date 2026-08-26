@@ -7,28 +7,31 @@ Bioinformatics workflow catalog, WDL asset store, and preflight foundation for
 surface for multiple workflow definitions, while execution adapters are added
 one engine and one verified workflow at a time.
 
-> `0.7.0` adds `BioWorkflowResult v1`, bounded output SHA-256 calculation, and
-> parsed FastQC summaries through the new built-in `fastq-qc@1.2.0` bundle.
-> Execution remains disabled by default and requires real input checks, live
-> miniwdl/Docker probes, an exact plan digest, DSH user approval,
-> background-job controls, and durable provenance.
+> `0.10.0` adds deterministic `WorkflowGraph v1`, native tool cards, and a
+> responsive Workflow Center to the session-scoped authoring and execution
+> foundation. The UI submits intent to the current Harness Agent; it never
+> bypasses tool approval, owner isolation, revision/digest compare-and-swap, or
+> the default-off execution policy.
 
 ## Install
 
 Requirements:
 
 - Node.js `^22.19.0` or `>=24.0.0`
-- A DeepSeek Harness build compatible with `@deepseek-ai/dsh-tools@^0.1.1-rc.2`
+- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0`; `dsh-v0.1.1-rc.2` is the currently verified
+  integration target
 
-To enable execution, the DSH composition must also provide `ctx.subprocess`,
-`ctx.jobs`, and the shared `job_output` / `job_kill` tools. The host needs
+To validate authoring drafts or enable execution, the DSH composition must
+also provide `ctx.subprocess`. Execution additionally requires `ctx.jobs` and
+the shared `job_output` / `job_kill` tools. The host needs
 miniwdl `1.15.0` and an already-active Docker Swarm manager; the plugin never
 initializes Swarm. The `0.7.x` execution preview targets Linux Docker on the
 default local `unix:///var/run/docker.sock`; rootless, remote, and Docker
 Desktop endpoints are not yet configurable. Linux procfs must expose
 `/proc/self/fd` so the adapter can verify the path behind each opened file
-descriptor. Catalog, Store, validation, and declaration-only preflight
-continue to work without those optional services.
+descriptor. Catalog, Store, structural draft diagnostics, and declaration-only
+preflight continue to work without those optional services; missing miniwdl
+produces `validator_unavailable`, never a false validation success.
 
 Add the bundle to a DSH profile:
 
@@ -36,7 +39,8 @@ Add the bundle to a DSH profile:
 dsh plugin --profile web add dsh-bio-workflows
 ```
 
-The bundle registers twelve tools:
+The bundle registers seventeen tools. Every tool also provides replay-safe,
+human-readable pending and completed card presentations:
 
 - `bio_workflows_info`: reports the installed package version and current
   capability flags without reading files, accessing the network, or starting
@@ -52,6 +56,19 @@ The bundle registers twelve tools:
 - `bio_workflows_install`: installs an exact bundle `version + digest` into an
   explicitly configured local store after DSH approval.
 - `bio_workflows_scaffold`: creates a minimal local WDL draft after DSH approval.
+- `bio_workflows_draft_create`: creates revision 1 of a session-scoped,
+  non-executable authoring draft after approval.
+- `bio_workflows_draft_get`: reads the exact head/revision file index or one
+  selected bounded file body without approval.
+- `bio_workflows_draft_update`: replaces/deletes explicit files under both
+  `expectedRevision` and `expectedContentDigest`, then commits one immutable
+  full revision after approval.
+- `bio_workflows_draft_validate`: performs bounded structural checks and an
+  identity-checked, fixed-argv `miniwdl check` on one exact revision; it never
+  runs WDL tasks.
+- `bio_workflows_draft_graph`: parses one exact owner-scoped revision into
+  deterministic `WorkflowGraph v1` nodes, proven edges, source ranges, and
+  explicit partial-graph diagnostics without running or mutating WDL.
 - `bio_workflows_plan`: checks canonical input files under configured roots,
   probes miniwdl and Docker, reruns `miniwdl check`, and returns a reviewable
   non-executing plan plus `planDigest`.
@@ -65,6 +82,35 @@ The bundle registers twelve tools:
   summaries with exact status filtering and fixed cursor pagination. After a
   runtime restart it records definitively orphaned non-terminal runs as
   `interrupted`; it never retries them or signals a stale PID.
+
+## Workflow Center
+
+On a compatible DSH Web profile, installation of the same npm package also
+loads the browser Client face. Open **Bio Workflows** from the sidebar footer.
+The panel has four areas:
+
+- **Workflows** searches the public built-in catalog, shows verification,
+  digest, and exact execution-allowlist facts, and asks the Agent to validate.
+  Planning is enabled only for allowlisted built-in releases; configured local
+  bundles remain discoverable through the owner-bound Agent tools.
+- **AI Drafts** creates owner-scoped drafts and asks for an exact revision graph
+  or validation. Mutations always require the current revision and content
+  digest; conflicts stop instead of silently overwriting.
+- **Runs** asks the Agent for owner-scoped history, run provenance, or a safe
+  plan. The UI never starts a task directly.
+- **Setup** reports read-only host readiness and can ask the Agent to diagnose
+  miniwdl, Docker, jobs, roots, and policy.
+
+If no Harness task is current, Workflow Center shows **Open a Harness task**
+and disables every Agent action. The bootstrap endpoint returns only bounded
+public built-in catalog facts and normalized diagnostic codes/messages; it never
+returns local workflow summaries, Store paths, validator details, drafts, or
+runs. Requests without same-origin browser context fail closed. The panel traps
+keyboard focus while open, closes with Escape, and restores focus to its launcher.
+
+The `bio_workflows_draft_graph` result receives a native read-only graph card
+inside the conversation. WDL source and its revision/content digest remain the
+authority; layout, selection, and explanations are presentation only.
 
 ## Configure the catalog
 
@@ -106,11 +152,13 @@ Workflow ids are unique within one catalog. Invalid manifests and duplicate ids
 fail at plugin startup instead of producing a partially valid catalog.
 
 The versioned contract is published as
-[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.7.0/schema/workflow-manifest.schema.json).
+[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.10.0/schema/workflow-manifest.schema.json).
 The zero-dependency runtime API is also available through package subpaths:
 
 ```js
 import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
+import { createDraftStore } from 'dsh-bio-workflows/draft-store'
+import { createDraftValidator } from 'dsh-bio-workflows/draft-validation'
 import {
   BIO_WORKFLOW_RESULT_LIMITS,
   BIO_WORKFLOW_RESULT_SCHEMA_VERSION,
@@ -149,14 +197,21 @@ with the package:
 
 All four bundles use WDL 1.0, pass `miniwdl v1.15.0 check`, and declare
 miniwdl plus Cromwell compatibility. Versions `1.1.0` and `1.2.0` are marked
-`ready` and `verified`. The current source-hash-bound
+`ready` and `verified`. The retained `0.7.0` source-hash-bound
 [result acceptance record](./docs/evidence/fastq-qc-1.2.0-result-acceptance.json)
 captures a real miniwdl/Docker Swarm/FastQC completion, exact artifact digests,
 parsed module summaries, and real LocalJobRegistry lifecycle states. A separate
 [Agent-loop owner-disposal record](./docs/evidence/fastq-qc-1.2.0-agent-loop-owner-disposal.json)
 uses DSH `0.1.1-rc.2`'s real Agent, approval, tool, job, session, and subprocess
 services to prove model-driven `search -> plan -> run` and complete cleanup of a
-long-running runner process tree when its Agent handle is disposed. Structural
+long-running runner process tree when its Agent handle is disposed. The
+execution adapter remains unchanged by the `0.8.0`–`0.10.0` authoring, graph,
+and UI releases; root tool registration is covered by the new DSH integration
+tests and the expanded Agent-loop smoke rather than relabeling historical
+evidence. A separate
+[`0.10.0` Agent-loop record](./docs/evidence/dsh-bio-workflows-0.10.0-agent-loop.json)
+binds draft create/read/CAS update/validation, graph extraction, search/plan/run,
+three approvals, and owner-disposal cleanup to the current source hashes. Structural
 Store validation still reports
 `executionReady: false` for every bundle because publisher metadata never grants
 runtime authority; only the exact internal execution allowlist does so. All
@@ -172,10 +227,10 @@ imports, path traversal, symlinked bundle files, undeclared files, and digest
 mismatches fail closed. File, bundle, discovery, aggregate-byte, and diagnostic
 limits keep malformed local stores from producing unbounded reads or output.
 The descriptor contract is published as
-[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.7.0/schema/wdl-bundle.schema.json).
+[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.10.0/schema/wdl-bundle.schema.json).
 
 The normalized result contract is published separately as
-[`BioWorkflowResult v1`](https://unpkg.com/dsh-bio-workflows@0.7.0/schema/bio-workflow-result.schema.json).
+[`BioWorkflowResult v1`](https://unpkg.com/dsh-bio-workflows@0.10.0/schema/bio-workflow-result.schema.json).
 It is additive to `run.json`: historical `0.5.x` and `0.6.x` records without a
 `result` field remain readable. A complete
 [example result](./docs/examples/bio-workflow-result-v1.json) ships with the
@@ -184,8 +239,8 @@ package. Apply the JSON Schema first, then
 FastQC count/reference consistency that JSON Schema cannot express directly.
 
 The built-in store is searchable without configuration. Local writes are off
-by default. To enable install and scaffold operations, configure an absolute,
-dedicated root:
+by default. To enable install, legacy scaffold, and revisioned draft mutations,
+configure an absolute, dedicated root:
 
 ```yaml
 - id: bio-workflows
@@ -195,11 +250,19 @@ dedicated root:
       writeEnabled: true
 ```
 
+Revisioned authoring refuses to use the configured root unless it is owned by
+the DSH process user and is not writable by group or other users (normally mode
+`0700`). Its ancestor chain may use a shared writable directory only when
+sticky-bit replacement protection is enabled, as on a correctly configured
+`/tmp`. Legacy install/scaffold keep their existing 0.7 storage contract.
+
 The write tools cannot choose an arbitrary destination: installed bundles go
-under `installed/<id>/<version>` and drafts under `drafts/<id>/<version>`.
-Existing versions are never overwritten. Even with writes enabled, DSH receives
-an `ask` decision bound to the target version and bundle digest before either
-mutation. `bio_workflows_install` therefore requires the exact `version` and
+under `installed/<id>/<version>`, legacy scaffolds under
+`drafts/<id>/<version>`, and revisioned authoring state under a hashed
+`authoring/<owner>/<draftId>` namespace.
+Existing versions and revisions are never overwritten. Even with writes
+enabled, DSH receives an `ask` decision bound to the target version/revision
+and content digest before each mutation. `bio_workflows_install` therefore requires the exact `version` and
 `expectedDigest` returned by search; if the source changes before the write, the
 operation is rejected. Installing an asset never authorizes its execution.
 
@@ -214,6 +277,70 @@ await store.install({
   expectedDigest: workflow.digest,
 })
 ```
+
+## AI-assisted WDL authoring
+
+DeepSeek Harness owns the model, conversation, tool loop, and user approval;
+the plugin does not embed a second LLM client. Model-authored source is always
+untrusted. The authoring loop is:
+
+1. Call `bio_workflows_draft_create` with the workflow intent.
+2. Call `bio_workflows_draft_get` without `path` to inspect the bounded file
+   index, then request one exact file body.
+3. Call `bio_workflows_draft_update` with complete per-file replacements or
+   deletions and the exact current revision plus digest.
+4. Call `bio_workflows_draft_validate` for that exact immutable revision.
+5. Repair diagnostics by repeating steps 2–4.
+
+Ownership comes only from `exec.agent.session.id`; no tool argument can claim
+another owner. Revisions begin at 1, are complete immutable snapshots, and are
+limited to 128 files, 1 MiB per file, 4 MiB total, and 256 revisions. Concurrent
+updates compete for the same next revision directory, so exactly one matching
+CAS can commit. Atomic capacity reservations limit each owner to 256 drafts.
+Cross-session reads return `draft_not_found`.
+
+Validation first rejects unsafe paths, remote or escaping imports, invalid
+example JSON, non-WDL-1.0 sources, and floating container literals. It then
+copies the exact revision into a fresh private directory and invokes only:
+
+```text
+miniwdl check --no-outside-imports main.wdl
+```
+
+The executable is resolved to a canonical path, checked for safe ownership and
+permissions, version-pinned, and rechecked before each fixed-argv invocation.
+The child receives no ambient environment. A syntax or type error returns
+revision-bound evidence with `valid: false`; a missing, changed, timed-out, or
+wrong-version validator returns `validator_unavailable`. Neither result grants
+test, promotion, installation, or execution authority.
+
+Configure the validator independently of the default-off write switch:
+
+```yaml
+- id: bio-workflows
+  config:
+    store:
+      root: /absolute/path/to/dsh-workflow-store
+      writeEnabled: true
+    authoring:
+      validator:
+        executable: /usr/local/bin/miniwdl
+        expectedVersion: 1.15.0
+```
+
+The serialized contracts are published as
+[`WDL Draft Revision v1`](https://unpkg.com/dsh-bio-workflows@0.10.0/schema/wdl-draft-revision.schema.json)
+and
+[`Draft Validation Evidence v1`](https://unpkg.com/dsh-bio-workflows@0.10.0/schema/draft-validation-evidence.schema.json) and
+[`WorkflowGraph v1`](https://unpkg.com/dsh-bio-workflows@0.10.0/schema/workflow-graph.schema.json).
+Workflow graph extraction, the keyed native graph card, and the read-only
+Workflow Center are available in `0.10.0`. Canvas mutation, draft tests,
+promotion, and remote Store providers remain later, separately authorized
+stages.
+
+Graph extraction currently reads only `main.wdl`. Any local or remote WDL
+`import` is reported explicitly and returns `complete: false`; imported task or
+workflow definitions are not expanded into the graph.
 
 ## Opt-in miniwdl execution
 
@@ -324,16 +451,25 @@ Releases add independently reviewable layers:
    `0.6.0`
 6. Checksummed `BioWorkflowResult v1` and FastQC summaries — available in
    `0.7.0`
-7. Harden production policy, promote BAM, then add controlled custom-WDL
-   authoring, WorkflowGraph visualization, and Store providers
+7. Session-scoped, revisioned custom-WDL authoring and non-executing validation
+   — available in `0.8.0`
+8. Replay-safe native tool presentations — available in `0.8.1`
+9. Deterministic `WorkflowGraph v1` extraction — available in `0.9.0`
+10. Responsive Workflow Center and keyed read-only graph card in the same npm
+    package — available in `0.10.0`
+11. Next: draft fixture tests, independent review/promotion, Git/TRS Store
+    providers, and additional execution adapters
 
 Execution support remains explicit, auditable, and disabled by default.
 
 ## Development
 
 ```bash
+npm run typecheck
+npm run build
 npm test
 npm run test:coverage
+npm run test:ui
 npm run pack:check
 npm run smoke:pack
 npm run smoke:dsh
@@ -350,18 +486,21 @@ npm run accept:fastq-qc-result
 ```
 
 The two DSH smokes require the pinned global CLI
-`@deepseek-ai/dsh@0.1.1-rc.2`. The package ships plain ESM and has no build or
-install lifecycle scripts.
+`@deepseek-ai/dsh@0.1.1-rc.2`. The Host ships as plain ESM; the browser Client
+is compiled during `prepack`. There are no install-time lifecycle hooks.
 See [Design and implementation status](./docs/design-and-status.md) for the
 architecture boundary, completion assessment, and next milestones.
 
 ## 中文说明
 
-`0.7.0` 在已有 owner 隔离运行历史之上增加了 `BioWorkflowResult v1`、输出文件
-SHA-256 和 FastQC 模块级摘要。内置 `fastq-qc@1.1.0` 与 `1.2.0` 进入执行白名单，
-推荐使用 `1.2.0`；`bam-qc`、旧版
-`fastq-qc@1.0.0` 和自定义
-WDL 仍只能搜索、校验、安装或生成草稿。执行前会检查真实输入文件、探测
+`0.10.0` 已形成可用的生信工作流入口：同一个 npm 包同时提供 Host 工具与响应式
+Workflow Center。Agent 可以创建 session 隔离的 WDL 草稿、按 revision/digest
+并发控制更新、逐文件读取、生成精确 revision 的非执行式 miniwdl 校验证据，并把
+确定性 `WorkflowGraph v1` 渲染为只读流程图；创建与更新各自需要 DSH 审批。界面
+只向当前 Agent 提交意图，不直接修改草稿或启动任务。自定义 WDL 仍不会自动进入
+搜索结果、安装区或执行白名单；画布编辑、草稿试跑与 promotion 尚未开放。
+内置 `fastq-qc@1.1.0` 与 `1.2.0` 继续处于执行白名单，推荐使用 `1.2.0`；
+`bam-qc` 和旧版 `fastq-qc@1.0.0` 仍不可执行。执行前会检查真实输入文件、探测
 miniwdl/Docker 与已启用的 Swarm manager、生成 `planDigest`，并把审批绑定到精确
 bundle 与 plan 摘要；审批后再次规划，将输入复制到运行目录并记录 SHA-256，
 清除环境中的 miniwdl/Docker 覆盖项，随后以 DSH 后台任务运行。日志/取消复用 `job_output`、
@@ -370,7 +509,8 @@ bundle 与 plan 摘要；审批后再次规划，将输入复制到运行目录�
 不会解压 FastQC ZIP。声明式
 `bio_workflows_preflight` 的语义不变，`executionReady` 仍固定为 `false`，避免把
 纯配置校验误报成真实可运行性。当前候选也已经通过完整 DSH Agent-loop 验收：
-模型实际调用 `search -> plan -> run`，审批事件进入 session 审计；销毁 owner 后，
+模型实际调用 `draft_create -> draft_get -> draft_update -> draft_validate -> draft_graph`，再调用
+`search -> plan -> run`；两次草稿 mutation 与一次运行审批都进入 session 审计。销毁 owner 后，
 Agent、Session、Job 以及 runner 父子进程树都会被清理。
 
 ## License

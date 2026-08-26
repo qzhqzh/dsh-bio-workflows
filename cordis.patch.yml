@@ -7,5 +7,9 @@
           engines: {}
         store:
           writeEnabled: false
+        authoring:
+          validator:
+            executable: miniwdl
+            expectedVersion: 1.15.0
         execution:
           enabled: false

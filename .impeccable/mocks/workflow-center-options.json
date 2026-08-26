@@ -1,0 +1,8 @@
+{
+  "asset": "workflow-center-options.png",
+  "kind": "imagegen-concept-board",
+  "approved": true,
+  "selectedComposition": "A",
+  "selectionReason": "The left navigation, workflow-first main surface, graph canvas, and contextual inspector fit the accepted read-only Workflow Center scope and the native Harness shell.",
+  "prompt": "Create three high-fidelity desktop composition options for a native DeepSeek Harness Bio Workflows operations surface. Include Workflows, AI Drafts, Runs, Setup, a searchable workflow list, a read-only WDL graph, readiness state, and Ask Agent actions. Use a restrained dark scientific instrument visual language with no gradients or excessive cards."
+}

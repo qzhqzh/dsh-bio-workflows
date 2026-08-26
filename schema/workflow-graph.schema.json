@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.10.0/schema/workflow-graph.schema.json",
+  "title": "WorkflowGraph v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "draftId",
+    "revision",
+    "contentDigest",
+    "sourcePath",
+    "languageVersion",
+    "workflow",
+    "complete",
+    "graphDigest",
+    "nodes",
+    "edges",
+    "diagnostics",
+    "executionAuthorized"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "draftId": { "$ref": "#/$defs/draftId" },
+    "revision": { "type": "integer", "minimum": 1, "maximum": 256 },
+    "contentDigest": { "$ref": "#/$defs/digest" },
+    "sourcePath": { "const": "main.wdl" },
+    "languageVersion": { "type": "string", "minLength": 1, "maxLength": 32 },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "range"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "range": { "$ref": "#/$defs/range" }
+      }
+    },
+    "complete": { "type": "boolean" },
+    "graphDigest": { "$ref": "#/$defs/digest" },
+    "nodes": {
+      "type": "array",
+      "maxItems": 512,
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "edges": {
+      "type": "array",
+      "maxItems": 2048,
+      "items": { "$ref": "#/$defs/edge" }
+    },
+    "diagnostics": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/diagnostic" }
+    },
+    "executionAuthorized": { "const": false }
+  },
+  "$defs": {
+    "draftId": {
+      "type": "string",
+      "pattern": "^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line", "column", "offset"],
+      "properties": {
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 },
+        "offset": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "start", "end"],
+      "properties": {
+        "path": { "const": "main.wdl" },
+        "start": { "$ref": "#/$defs/position" },
+        "end": { "$ref": "#/$defs/position" }
+      }
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "type": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "label", "range", "inputs", "outputs"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "kind": {
+          "enum": ["workflow-input", "workflow-output", "declaration", "call", "scatter", "conditional"]
+        },
+        "label": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "target": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "range": { "$ref": "#/$defs/range" },
+        "parentGroup": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "inputs": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/port" }
+        },
+        "outputs": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/port" }
+        }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "port"],
+      "properties": {
+        "node": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "port": { "type": "string", "minLength": 1, "maxLength": 160 }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "from", "to"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 96 },
+        "kind": { "enum": ["data", "control", "containment"] },
+        "from": { "$ref": "#/$defs/endpoint" },
+        "to": { "$ref": "#/$defs/endpoint" }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 96 },
+        "severity": { "enum": ["warning", "error"] },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "range": { "$ref": "#/$defs/range" }
+      }
+    }
+  }
+}

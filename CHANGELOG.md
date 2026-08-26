@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.10.0 - 2026-08-26
+
+- Ship the Host and Web Client faces in the same `dsh-bio-workflows` npm
+  package. Add a native `sidebar.footer.action` entry and `shell.overlay`
+  Workflow Center with Workflows, AI Drafts, Runs, and Setup areas.
+- Keep the UI behind the Harness control plane: catalog/readiness bootstrap is
+  read-only, exposes only built-in summaries, requires same-origin browser
+  context, sanitizes Store diagnostics, and excludes local workflows,
+  owner-scoped drafts, and runs; every create, validate, graph, plan, and run-history/inspection action
+  is queued into the current Agent. Without a current task, Agent actions are
+  visibly unavailable and fail closed. A later run request still crosses the
+  normal planning, approval, owner, and execution policies in conversation.
+- Add a keyed `tool.call.toolview` renderer for
+  `bio_workflows_draft_graph`, including digest/revision binding checks,
+  bounded deep validation of replayed nodes/ports/edges, accessible SVG
+  topology, node inspection, partial-graph diagnostics, and responsive
+  desktop/mobile layouts.
+- Enforce the graph contract at the public API boundary: exact draft identity,
+  a 1 MiB source ceiling, schema-safe field lengths, 512 nodes, 2048 edges,
+  128 diagnostics, 128 ports per node, and explicit partial-graph diagnostics
+  instead of oversized or invalid payloads.
+- Add TypeScript, production client bundling, browser interaction and modal
+  keyboard-focus tests, visual review fixtures, source-map freshness checks,
+  CI gates for typecheck and Chromium UI tests, and package/profile smoke
+  assertions for the shipped `lib/client.js` artifact. Workflow Center now
+  disables Plan/Run affordances for every bundle outside the exact built-in
+  execution allowlist.
+
+## 0.9.0 - 2026-08-26
+
+- Publish `WorkflowGraph v1` and the read-only
+  `bio_workflows_draft_graph` tool. Graphs are deterministically parsed from
+  one exact owner-scoped WDL revision and bind `draftId`, `revision`, and
+  `contentDigest` into a stable `graphDigest`.
+- Extract workflow inputs/outputs, declarations, calls, scatters,
+  conditionals, typed ports, data/control/containment edges, and source ranges.
+  Unsupported WDL returns a bounded `complete: false` graph with explicit
+  diagnostics and never guesses topology.
+- Extend unit, ToolRuntime, package, profile, and model-driven Agent-loop
+  coverage through graph generation without adding draft execution authority.
+
+## 0.8.1 - 2026-08-26
+
+- Add replay-safe `presentCall` and `presentResult` projections for every
+  bio-workflow tool. Harness clients now show human-readable titles, operation
+  categories, salient inputs, and concise outcome summaries while the model
+  continues to receive the complete unmodified tool result.
+
+## 0.8.0 - 2026-08-26
+
+- Add session-scoped `bio_workflows_draft_create`, `draft_get`, `draft_update`,
+  and `draft_validate` tools for AI-assisted WDL authoring without embedding a
+  second model client or expanding the production execution allowlist.
+- Persist complete immutable draft revisions under opaque plugin-minted IDs.
+  Bind every update and its DSH approval to both the expected revision and a
+  versioned, length-delimited source digest; concurrent writers compete for one
+  atomic next-revision commit instead of using last-write-wins.
+- Enforce safe relative paths, well-formed Unicode, 128-file / 1 MiB-per-file /
+  4 MiB-total / 256-revision ceilings, one-file model reads, silent owner
+  isolation, no-follow bounded file access, private-root ownership/permission
+  checks, atomic per-owner capacity slots, bounded directory discovery, and
+  recovery cleanup for uncommitted staging directories.
+- Add non-executing WDL 1.0 validation with local-import checks, example JSON
+  parsing, digest-pinned container policy, private source snapshots, and an
+  exact-version, identity-rechecked `miniwdl check --no-outside-imports` argv.
+  Syntax failures return revision-bound `valid: false` evidence; operational
+  validator failures return `validator_unavailable`.
+- Publish `WDL Draft Revision v1` and `Draft Validation Evidence v1` schemas,
+  retain the legacy immutable `bio_workflows_scaffold`, and defer graph UI,
+  draft tests, promotion, and any custom-draft execution authority.
+- Extend the real DSH Agent-loop smoke through draft create/get/update/validate,
+  two mutation approvals, exact revision/digest evidence, and the existing
+  search/plan/run plus owner-disposal lifecycle.
+
 ## 0.7.0 - 2026-08-26
 
 - Add additive `BioWorkflowResult v1` objects to new successful runs while

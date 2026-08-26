@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.10.0/schema/draft-validation-evidence.schema.json",
+  "title": "Draft Validation Evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "draftId",
+    "revision",
+    "contentDigest",
+    "pluginVersion",
+    "policyVersion",
+    "languageVersion",
+    "validator",
+    "checks",
+    "diagnostics",
+    "valid",
+    "truncated",
+    "executionAuthorized",
+    "validationDigest"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "draftId": { "$ref": "#/$defs/draftId" },
+    "revision": { "type": "integer", "minimum": 1, "maximum": 256 },
+    "contentDigest": { "$ref": "#/$defs/digest" },
+    "pluginVersion": { "type": "string" },
+    "policyVersion": { "const": "1" },
+    "languageVersion": { "const": "1.0" },
+    "validator": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/validator" }
+      ]
+    },
+    "checks": {
+      "type": "array",
+      "maxItems": 16,
+      "items": { "$ref": "#/$defs/check" }
+    },
+    "diagnostics": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/diagnostic" }
+    },
+    "valid": { "type": "boolean" },
+    "truncated": { "type": "boolean" },
+    "executionAuthorized": { "const": false },
+    "validationDigest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "draftId": {
+      "type": "string",
+      "pattern": "^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "status": { "enum": ["passed", "failed", "skipped", "not_applicable"] }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "code", "message", "severity", "source"],
+      "properties": {
+        "path": { "type": "string", "maxLength": 1000 },
+        "code": { "type": "string", "maxLength": 128 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "severity": { "enum": ["error", "warning"] },
+        "source": { "enum": ["structural", "miniwdl"] }
+      }
+    },
+    "validator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "executable"],
+      "properties": {
+        "name": { "const": "miniwdl" },
+        "version": { "type": "string" },
+        "executable": { "$ref": "#/$defs/executable" }
+      }
+    },
+    "executable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "size", "mtimeNs", "ctimeNs", "device", "inode", "uid", "mode"],
+      "properties": {
+        "path": { "type": "string" },
+        "size": { "type": "string", "pattern": "^[0-9]+$" },
+        "mtimeNs": { "type": "string", "pattern": "^[0-9]+$" },
+        "ctimeNs": { "type": "string", "pattern": "^[0-9]+$" },
+        "device": { "type": "string", "pattern": "^[0-9]+$" },
+        "inode": { "type": "string", "pattern": "^[0-9]+$" },
+        "uid": { "type": "string", "pattern": "^[0-9]+$" },
+        "mode": { "type": "string", "pattern": "^[0-7]{3}$" }
+      }
+    }
+  }
+}

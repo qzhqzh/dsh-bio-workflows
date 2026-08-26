@@ -3,6 +3,9 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import { validateBioWorkflowResultSemantics } from '../src/execution.js'
+import { DRAFT_LIMITS, DRAFT_SCHEMA_VERSION } from '../src/draft-store.js'
+import { DRAFT_VALIDATION_SCHEMA_VERSION } from '../src/draft-validation.js'
+import { WORKFLOW_GRAPH_LIMITS, WORKFLOW_GRAPH_SCHEMA_VERSION } from '../src/workflow-graph.js'
 import {
   PACKAGE_NAME,
   PACKAGE_VERSION,
@@ -19,13 +22,18 @@ const packageJson = JSON.parse(
 test('package metadata matches the runtime identity', () => {
   assert.equal(packageJson.name, PACKAGE_NAME)
   assert.equal(packageJson.version, PACKAGE_VERSION)
+  assert.equal(packageJson.dsh.engines.dsh, '>=0.1.1-rc.2 <0.2.0')
   assert.equal(packageJson.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(packageJson.dependencies, undefined)
   assert.equal(packageJson.devDependencies['@deepseek-ai/cordis'], '4.0.1')
   assert.equal(packageJson.devDependencies['@deepseek-ai/dsh-tools'], '0.1.1-rc.2')
-  assert.equal(packageJson.peerDependencies, undefined)
+  assert.equal(packageJson.peerDependencies.react, '^18.2.0')
   assert.equal(packageJson.publishConfig.registry, 'https://registry.npmjs.org/')
   assert.equal(packageJson.exports['./catalog'], './src/catalog.js')
+  assert.equal(packageJson.exports['./draft-store'], './src/draft-store.js')
+  assert.equal(packageJson.exports['./draft-validation'], './src/draft-validation.js')
+  assert.equal(packageJson.exports['./workflow-graph'], './src/workflow-graph.js')
+  assert.equal(packageJson.exports['./client'], './lib/client.js')
   assert.equal(packageJson.exports['./execution'], './src/execution.js')
   assert.equal(packageJson.exports['./manifest'], './src/manifest.js')
   assert.equal(packageJson.exports['./preflight'], './src/preflight.js')
@@ -43,7 +51,22 @@ test('package metadata matches the runtime identity', () => {
     packageJson.exports['./schema/bio-workflow-result.schema.json'],
     './schema/bio-workflow-result.schema.json',
   )
+  assert.equal(
+    packageJson.exports['./schema/wdl-draft-revision.schema.json'],
+    './schema/wdl-draft-revision.schema.json',
+  )
+  assert.equal(
+    packageJson.exports['./schema/draft-validation-evidence.schema.json'],
+    './schema/draft-validation-evidence.schema.json',
+  )
+  assert.equal(
+    packageJson.exports['./schema/workflow-graph.schema.json'],
+    './schema/workflow-graph.schema.json',
+  )
   assert.ok(packageJson.files.includes('workflows/'))
+  assert.ok(packageJson.files.includes('lib/'))
+  assert.equal(packageJson.dsh.client.platform, 'web')
+  assert.equal(packageJson.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-tool'), true)
 })
 
 test('BioWorkflowResult v1 schema exposes checksummed artifacts and FastQC summaries', async () => {
@@ -75,11 +98,68 @@ test('BioWorkflowResult v1 schema exposes checksummed artifacts and FastQC summa
   assert.deepEqual(validateBioWorkflowResultSemantics(example), { valid: true, errors: [] })
 })
 
+test('draft revision and validation evidence schemas match runtime contract versions and limits', async () => {
+  const revisionSchema = JSON.parse(await readFile(
+    new URL('../schema/wdl-draft-revision.schema.json', import.meta.url),
+    'utf8',
+  ))
+  const validationSchema = JSON.parse(await readFile(
+    new URL('../schema/draft-validation-evidence.schema.json', import.meta.url),
+    'utf8',
+  ))
+
+  assert.equal(revisionSchema.properties.schemaVersion.const, DRAFT_SCHEMA_VERSION)
+  assert.equal(revisionSchema.properties.files.maxItems, DRAFT_LIMITS.maxFiles)
+  assert.equal(revisionSchema.properties.files['x-maxAggregateUtf8Bytes'], DRAFT_LIMITS.maxTotalBytes)
+  assert.equal(revisionSchema.properties.revision.maximum, DRAFT_LIMITS.maxRevisions)
+  assert.equal(revisionSchema.$defs.file.properties.content['x-maxUtf8Bytes'], DRAFT_LIMITS.maxFileBytes)
+  const safePath = new RegExp(revisionSchema.$defs.file.properties.path.pattern)
+  assert.equal(safePath.test('tasks/qc.wdl'), true)
+  for (const hostile of ['/absolute.wdl', '../escape.wdl', 'tasks/../escape.wdl', 'tasks\\qc.wdl', 'nul\0.wdl']) {
+    assert.equal(safePath.test(hostile), false, hostile)
+  }
+  assert.match(revisionSchema.$comment, /UTF-8 byte budgets/)
+  assert.equal(validationSchema.properties.schemaVersion.const, DRAFT_VALIDATION_SCHEMA_VERSION)
+  assert.equal(validationSchema.properties.diagnostics.maxItems, 128)
+  assert.equal(validationSchema.properties.executionAuthorized.const, false)
+})
+
+test('WorkflowGraph v1 schema matches runtime limits and keeps layout non-authoritative', async () => {
+  const schema = JSON.parse(await readFile(
+    new URL('../schema/workflow-graph.schema.json', import.meta.url),
+    'utf8',
+  ))
+
+  assert.equal(schema.properties.schemaVersion.const, WORKFLOW_GRAPH_SCHEMA_VERSION)
+  assert.equal(schema.properties.nodes.maxItems, WORKFLOW_GRAPH_LIMITS.maxNodes)
+  assert.equal(schema.properties.edges.maxItems, WORKFLOW_GRAPH_LIMITS.maxEdges)
+  assert.equal(schema.properties.diagnostics.maxItems, WORKFLOW_GRAPH_LIMITS.maxDiagnostics)
+  assert.equal(schema.properties.executionAuthorized.const, false)
+  assert.equal(schema.properties.layout, undefined)
+})
+
 test('the foundation package has no install lifecycle scripts', () => {
   assert.equal(packageJson.scripts.preinstall, undefined)
   assert.equal(packageJson.scripts.install, undefined)
   assert.equal(packageJson.scripts.postinstall, undefined)
   assert.equal(packageJson.scripts.prepare, undefined)
+  assert.equal(packageJson.scripts.prepack, 'npm run build')
+})
+
+test('the checked-in Client bundle source map matches every current Client source', async () => {
+  const mapUrl = new URL('../lib/client.js.map', import.meta.url)
+  const sourceMap = JSON.parse(await readFile(mapUrl, 'utf8'))
+
+  assert.equal(sourceMap.sources.length, 7)
+  assert.equal(sourceMap.sources.length, sourceMap.sourcesContent.length)
+  for (const [index, source] of sourceMap.sources.entries()) {
+    assert.match(source, /^\.\.\/src\/client\//)
+    assert.equal(
+      sourceMap.sourcesContent[index],
+      await readFile(new URL(source, mapUrl), 'utf8'),
+      source,
+    )
+  }
 })
 
 test('the bundle patch installs the expected package', async () => {
@@ -90,6 +170,8 @@ test('the bundle patch installs the expected package', async () => {
   assert.match(patch, /manifests: \[\]/)
   assert.match(patch, /engines: \{\}/)
   assert.match(patch, /writeEnabled: false/)
+  assert.match(patch, /authoring:/)
+  assert.match(patch, /expectedVersion: 1\.15\.0/)
   assert.match(patch, /execution:/)
   assert.match(patch, /enabled: false/)
 })
@@ -115,6 +197,8 @@ test('the info tool is read-only and registers once', async () => {
   assert.equal(tool.isConcurrencySafe({}), true)
   assert.deepEqual(result, getPackageInfo(3, 2))
   assert.equal(result.readOnly, true)
+  assert.equal(result.status, 'preview')
+  assert.equal(result.phase, 'workflow-center')
   assert.equal(result.workflowCount, 3)
   assert.equal(result.declaredEngineCount, 2)
   assert.deepEqual(result.store, {
@@ -129,6 +213,17 @@ test('the info tool is read-only and registers once', async () => {
     jobsAvailable: false,
     supportedWorkflows: [],
   })
+  assert.deepEqual(result.authoring, {
+    configured: false,
+    writesEnabled: false,
+    ownerScope: 'session',
+    validator: {
+      configured: false,
+      subprocessAvailable: false,
+      expectedVersion: null,
+      policyVersion: null,
+    },
+  })
   assert.equal(result.capabilities.workflowCatalog, true)
   assert.equal(result.capabilities.manifestValidation, true)
   assert.equal(result.capabilities.preflightValidation, true)
@@ -136,6 +231,11 @@ test('the info tool is read-only and registers once', async () => {
   assert.equal(result.capabilities.wdlBundleValidation, true)
   assert.equal(result.capabilities.workflowInstallation, false)
   assert.equal(result.capabilities.workflowScaffolding, false)
+  assert.equal(result.capabilities.revisionedDraftAuthoring, true)
+  assert.equal(result.capabilities.draftCompareAndSwap, true)
+  assert.equal(result.capabilities.deterministicDraftValidation, false)
+  assert.equal(result.capabilities.deterministicWorkflowGraph, true)
+  assert.equal(result.capabilities.nativeWorkflowCenter, true)
   assert.equal(result.capabilities.workflowExecution, false)
   assert.equal(result.capabilities.liveExecutionPlanning, false)
   assert.equal(result.capabilities.backgroundJobLifecycle, false)

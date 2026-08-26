@@ -1,24 +1,32 @@
 {
   "name": "dsh-bio-workflows",
-  "version": "0.7.0",
-  "description": "Bioinformatics WDL catalog, workflow store, trusted planning, and opt-in miniwdl execution for DeepSeek Harness.",
+  "version": "0.10.0",
+  "description": "Bioinformatics WDL catalog, revisioned AI authoring, trusted planning, and opt-in miniwdl execution for DeepSeek Harness.",
   "type": "module",
   "main": "./index.js",
   "exports": {
     ".": "./index.js",
+    "./client": "./lib/client.js",
     "./catalog": "./src/catalog.js",
+    "./draft-store": "./src/draft-store.js",
+    "./draft-validation": "./src/draft-validation.js",
+    "./workflow-graph": "./src/workflow-graph.js",
     "./execution": "./src/execution.js",
     "./manifest": "./src/manifest.js",
     "./preflight": "./src/preflight.js",
     "./store": "./src/workflow-store.js",
     "./wdl-bundle": "./src/wdl-bundle.js",
     "./schema/bio-workflow-result.schema.json": "./schema/bio-workflow-result.schema.json",
+    "./schema/draft-validation-evidence.schema.json": "./schema/draft-validation-evidence.schema.json",
     "./schema/workflow-manifest.schema.json": "./schema/workflow-manifest.schema.json",
     "./schema/wdl-bundle.schema.json": "./schema/wdl-bundle.schema.json",
+    "./schema/wdl-draft-revision.schema.json": "./schema/wdl-draft-revision.schema.json",
+    "./schema/workflow-graph.schema.json": "./schema/workflow-graph.schema.json",
     "./package.json": "./package.json"
   },
   "files": [
     "index.js",
+    "lib/",
     "src/",
     "schema/",
     "workflows/",
@@ -29,13 +37,18 @@
     "LICENSE"
   ],
   "scripts": {
+    "build": "tsdown --config tsdown.config.ts",
+    "typecheck": "tsc --noEmit",
+    "preview:build": "tsdown --config .impeccable/preview/tsdown.config.ts",
+    "test:ui": "npm run preview:build && playwright test -c .impeccable/preview/playwright.config.ts",
     "test": "node --test test/*.test.mjs",
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=75 --test-coverage-functions=90 test/*.test.mjs",
     "pack:check": "npm pack --dry-run",
     "smoke:pack": "node scripts/smoke-pack.mjs",
     "smoke:dsh": "node scripts/smoke-dsh-profile.mjs",
     "smoke:dsh-agent": "node scripts/smoke-dsh-agent-loop.mjs",
-    "accept:fastq-qc-result": "node scripts/accept-fastq-qc-result.mjs"
+    "accept:fastq-qc-result": "node scripts/accept-fastq-qc-result.mjs",
+    "prepack": "npm run build"
   },
   "keywords": [
     "deepseek-harness",
@@ -61,15 +74,37 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-tools": "0.1.1-rc.2"
+    "@deepseek-ai/dsh-tools": "0.1.1-rc.2",
+    "@playwright/test": "^1.62.1",
+    "@types/react": "^18.3.24",
+    "@types/react-dom": "^18.3.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsdown": "^0.22.2",
+    "typescript": "^5.7.3"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
   },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
   "dsh": {
+    "engines": {
+      "dsh": ">=0.1.1-rc.2 <0.2.0"
+    },
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-tool"
+      ],
+      "platform": "web"
     }
   }
 }

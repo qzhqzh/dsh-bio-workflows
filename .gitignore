@@ -1,3 +1,5 @@
 node_modules/
 *.tgz
 npm-debug.log*
+.impeccable/preview/dist/
+test-results/

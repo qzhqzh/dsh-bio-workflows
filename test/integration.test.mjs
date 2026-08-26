@@ -8,6 +8,8 @@ import { Context } from '@deepseek-ai/cordis'
 import { ToolRuntime } from '@deepseek-ai/dsh-tools'
 import * as plugin from 'dsh-bio-workflows'
 import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
+import { createDraftStore } from 'dsh-bio-workflows/draft-store'
+import { createDraftValidator } from 'dsh-bio-workflows/draft-validation'
 import { MANIFEST_SCHEMA_VERSION } from 'dsh-bio-workflows/manifest'
 import metadata from 'dsh-bio-workflows/package.json' with { type: 'json' }
 import { preflightWorkflow } from 'dsh-bio-workflows/preflight'
@@ -15,19 +17,28 @@ import { createWorkflowStore } from 'dsh-bio-workflows/store'
 import { WDL_BUNDLE_SCHEMA_VERSION } from 'dsh-bio-workflows/wdl-bundle'
 import schema from 'dsh-bio-workflows/schema/workflow-manifest.schema.json' with { type: 'json' }
 import bundleSchema from 'dsh-bio-workflows/schema/wdl-bundle.schema.json' with { type: 'json' }
+import draftValidationSchema from 'dsh-bio-workflows/schema/draft-validation-evidence.schema.json' with { type: 'json' }
+import draftRevisionSchema from 'dsh-bio-workflows/schema/wdl-draft-revision.schema.json' with { type: 'json' }
+import workflowGraphSchema from 'dsh-bio-workflows/schema/workflow-graph.schema.json' with { type: 'json' }
+import { WORKFLOW_GRAPH_SCHEMA_VERSION } from 'dsh-bio-workflows/workflow-graph'
 
 import { makeManifest } from './fixtures.mjs'
 
 test('public self-references and the dependency-free root DSH apply entry work', async () => {
   assert.equal(plugin.name, 'dsh-bio-workflows')
   assert.equal(metadata.name, plugin.name)
-  assert.equal(metadata.version, '0.7.0')
+  assert.equal(metadata.version, '0.10.0')
   assert.deepEqual(plugin.inject, ['tools'])
   assert.equal(typeof createWorkflowCatalog, 'function')
+  assert.equal(typeof createDraftStore, 'function')
+  assert.equal(typeof createDraftValidator, 'function')
   assert.equal(typeof preflightWorkflow, 'function')
   assert.equal(typeof createWorkflowStore, 'function')
   assert.equal(schema.properties.schemaVersion.const, MANIFEST_SCHEMA_VERSION)
   assert.equal(bundleSchema.properties.bundleVersion.const, WDL_BUNDLE_SCHEMA_VERSION)
+  assert.equal(draftRevisionSchema.properties.schemaVersion.const, '1')
+  assert.equal(draftValidationSchema.properties.schemaVersion.const, '1')
+  assert.equal(workflowGraphSchema.properties.schemaVersion.const, WORKFLOW_GRAPH_SCHEMA_VERSION)
 
   const registered = []
   const listeners = new Map()
@@ -194,6 +205,178 @@ test('public self-references and the dependency-free root DSH apply entry work',
         output: { type: 'string' },
       },
       {
+        name: 'bio_workflows_draft_create',
+        parameters: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              maxLength: 64,
+              pattern: '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$',
+              description: 'Lowercase workflow identifier.',
+            },
+            version: {
+              type: 'string',
+              maxLength: 128,
+              pattern: '^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$',
+              description: 'Semantic version; defaults to 0.1.0.',
+            },
+            name: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 160,
+              description: 'Human-readable workflow name.',
+            },
+            summary: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 1000,
+              description: 'Short workflow purpose.',
+            },
+          },
+          required: ['id', 'name', 'summary'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_draft_get',
+        parameters: {
+          type: 'object',
+          properties: {
+            draftId: {
+              type: 'string',
+              pattern: '^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+              description: 'Opaque draft UUID returned by draft_create.',
+            },
+            revision: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 256,
+              description: 'Optional exact positive revision; the current head is selected when omitted.',
+            },
+            path: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 240,
+              pattern: '^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)(?!.*\\u0000)[^/]+(?:/[^/]+)*$',
+              description: 'Optional exact safe relative file path.',
+            },
+          },
+          required: ['draftId'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_draft_update',
+        parameters: {
+          type: 'object',
+          properties: {
+            draftId: {
+              type: 'string',
+              pattern: '^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+              description: 'Opaque draft UUID returned by draft_create.',
+            },
+            expectedRevision: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 256,
+              description: 'Exact current positive revision returned by draft_get.',
+            },
+            expectedContentDigest: {
+              type: 'string',
+              pattern: '^sha256:[a-f0-9]{64}$',
+              description: 'Exact current sha256 content digest returned by draft_get.',
+            },
+            replacements: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 128,
+              description: 'Complete replacement bodies for selected files.',
+              items: {
+                type: 'object',
+                properties: {
+                  path: {
+                    type: 'string',
+                    minLength: 1,
+                    maxLength: 240,
+                    pattern: '^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)(?!.*\\u0000)[^/]+(?:/[^/]+)*$',
+                    description: 'Safe relative POSIX path.',
+                  },
+                  role: {
+                    type: 'string',
+                    enum: ['workflow', 'task', 'example', 'documentation', 'license'],
+                    description: 'Declared file role.',
+                  },
+                  content: {
+                    type: 'string',
+                    maxLength: 1048576,
+                    description: 'Complete well-formed UTF-8 file body; runtime also enforces a 1 MiB UTF-8 byte limit.',
+                  },
+                },
+                required: ['path', 'role', 'content'],
+                additionalProperties: false,
+              },
+            },
+            deletions: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 128,
+              description: 'Exact safe relative paths to remove; main.wdl cannot be deleted.',
+              items: {
+                type: 'string',
+                minLength: 1,
+                maxLength: 240,
+                pattern: '^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)(?!.*\\u0000)[^/]+(?:/[^/]+)*$',
+              },
+            },
+          },
+          required: ['draftId', 'expectedRevision', 'expectedContentDigest'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_draft_validate',
+        parameters: {
+          type: 'object',
+          properties: {
+            draftId: {
+              type: 'string',
+              pattern: '^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+              description: 'Opaque draft UUID returned by draft_create.',
+            },
+            revision: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 256,
+              description: 'Exact immutable revision to validate.',
+            },
+          },
+          required: ['draftId', 'revision'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_draft_graph',
+        parameters: {
+          type: 'object',
+          properties: {
+            draftId: {
+              type: 'string',
+              pattern: '^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+              description: 'Opaque draft UUID returned by draft_create.',
+            },
+            revision: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 256,
+              description: 'Exact immutable revision to visualize.',
+            },
+          },
+          required: ['draftId', 'revision'],
+        },
+        output: { type: 'string' },
+      },
+      {
         name: 'bio_workflows_plan',
         parameters: {
           type: 'object',
@@ -294,6 +477,10 @@ test('public self-references and the dependency-free root DSH apply entry work',
       },
     ],
   )
+  assert.equal(registered.every((registeredTool) => (
+    typeof registeredTool.presentCall === 'function'
+    && typeof registeredTool.presentResult === 'function'
+  )), true)
 
   const tool = registered.find((item) => item.name === 'bio_workflows_preflight')
   assert.equal(tool.parameters.type, 'object')
@@ -508,6 +695,84 @@ test('the real DSH ToolRuntime binds approved store writes to exact bundle diges
     assert.equal(unavailable.isError, true)
     assert.match(unavailable.error.message, /no approval channel/)
     await assert.rejects(access(join(root, 'drafts', 'unavailable-runtime-qc')), /ENOENT/)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('the real DSH ToolRuntime keeps revisioned drafts session-scoped and approval-bound', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-runtime-authoring-'))
+  try {
+    const ctx = new Context()
+    const approvalRequests = []
+    ctx.provide('systemPrompt', { tools: () => () => {} })
+    ctx.provide('approval', {
+      request: async (request) => {
+        approvalRequests.push(request)
+        return 'allowed-once'
+      },
+    })
+    const runtime = new ToolRuntime(ctx, { mode: 'native' })
+    plugin.apply(ctx, { store: { root, writeEnabled: true } })
+    const signal = new AbortController().signal
+    const agent = { id: 'authoring-session', session: { id: 'authoring-session' } }
+
+    const createdResult = await runtime.execute({
+      callId: 'draft-create',
+      name: 'bio_workflows_draft_create',
+      arguments: {
+        id: 'rna-qc',
+        name: 'RNA QC',
+        summary: 'Session-scoped authoring integration.',
+      },
+      agent,
+      signal,
+    })
+    assert.equal(createdResult.isError, false)
+    const created = JSON.parse(createdResult.value)
+    assert.equal(created.revision, 1)
+    assert.match(approvalRequests[0].reason, new RegExp(created.contentDigest))
+
+    const updatedResult = await runtime.execute({
+      callId: 'draft-update',
+      name: 'bio_workflows_draft_update',
+      arguments: {
+        draftId: created.draftId,
+        expectedRevision: created.revision,
+        expectedContentDigest: created.contentDigest,
+        replacements: [{ path: 'README.md', role: 'documentation', content: 'updated\n' }],
+      },
+      agent,
+      signal,
+    })
+    assert.equal(updatedResult.isError, false)
+    const updated = JSON.parse(updatedResult.value)
+    assert.equal(updated.revision, 2)
+    assert.match(approvalRequests[1].reason, new RegExp(updated.contentDigest))
+
+    const foreign = await runtime.execute({
+      callId: 'draft-foreign-get',
+      name: 'bio_workflows_draft_get',
+      arguments: { draftId: created.draftId },
+      agent: { id: 'other-session', session: { id: 'other-session' } },
+      signal,
+    })
+    assert.equal(foreign.isError, false)
+    assert.equal(JSON.parse(foreign.value).error.code, 'draft_not_found')
+
+    const graphResult = await runtime.execute({
+      callId: 'draft-graph',
+      name: 'bio_workflows_draft_graph',
+      arguments: { draftId: created.draftId, revision: 2 },
+      agent,
+      signal,
+    })
+    assert.equal(graphResult.isError, false)
+    const graph = JSON.parse(graphResult.value)
+    assert.equal(graph.revision, 2)
+    assert.equal(graph.contentDigest, updated.contentDigest)
+    assert.equal(graph.workflow.name, 'rna_qc')
+    assert.equal(graph.executionAuthorized, false)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

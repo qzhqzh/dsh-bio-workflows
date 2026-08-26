@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { access, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -13,9 +13,13 @@ const dshCommand = process.platform === 'win32' ? 'dsh.cmd' : 'dsh'
 try {
   const cache = join(temporaryRoot, 'npm-cache')
   const dshHome = join(temporaryRoot, 'dsh-home')
+  execFileSync(npmCommand, ['run', 'build'], {
+    cwd: packageRoot,
+    stdio: 'inherit',
+  })
   const packResult = JSON.parse(execFileSync(
     npmCommand,
-    ['pack', '--json', '--pack-destination', temporaryRoot, '--cache', cache],
+    ['pack', '--json', '--ignore-scripts', '--pack-destination', temporaryRoot, '--cache', cache],
     { cwd: packageRoot, encoding: 'utf8' },
   ))
   const tarball = join(temporaryRoot, packResult[0].filename)
@@ -39,6 +43,15 @@ try {
     'dsh-bio-workflows',
     'index.js',
   )).href)
+  await access(join(
+    dshHome,
+    'profiles',
+    'headless',
+    'node_modules',
+    'dsh-bio-workflows',
+    'lib',
+    'client.js',
+  ))
   assert.equal(installedPlugin.name, 'dsh-bio-workflows')
   assert.equal(typeof installedPlugin.apply, 'function')
   const registered = []
@@ -195,6 +208,178 @@ try {
             },
           },
           required: ['id', 'name', 'summary'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_draft_create',
+        parameters: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              maxLength: 64,
+              pattern: '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$',
+              description: 'Lowercase workflow identifier.',
+            },
+            version: {
+              type: 'string',
+              maxLength: 128,
+              pattern: '^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$',
+              description: 'Semantic version; defaults to 0.1.0.',
+            },
+            name: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 160,
+              description: 'Human-readable workflow name.',
+            },
+            summary: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 1000,
+              description: 'Short workflow purpose.',
+            },
+          },
+          required: ['id', 'name', 'summary'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_draft_get',
+        parameters: {
+          type: 'object',
+          properties: {
+            draftId: {
+              type: 'string',
+              pattern: '^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+              description: 'Opaque draft UUID returned by draft_create.',
+            },
+            revision: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 256,
+              description: 'Optional exact positive revision; the current head is selected when omitted.',
+            },
+            path: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 240,
+              pattern: '^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)(?!.*\\u0000)[^/]+(?:/[^/]+)*$',
+              description: 'Optional exact safe relative file path.',
+            },
+          },
+          required: ['draftId'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_draft_update',
+        parameters: {
+          type: 'object',
+          properties: {
+            draftId: {
+              type: 'string',
+              pattern: '^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+              description: 'Opaque draft UUID returned by draft_create.',
+            },
+            expectedRevision: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 256,
+              description: 'Exact current positive revision returned by draft_get.',
+            },
+            expectedContentDigest: {
+              type: 'string',
+              pattern: '^sha256:[a-f0-9]{64}$',
+              description: 'Exact current sha256 content digest returned by draft_get.',
+            },
+            replacements: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 128,
+              description: 'Complete replacement bodies for selected files.',
+              items: {
+                type: 'object',
+                properties: {
+                  path: {
+                    type: 'string',
+                    minLength: 1,
+                    maxLength: 240,
+                    pattern: '^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)(?!.*\\u0000)[^/]+(?:/[^/]+)*$',
+                    description: 'Safe relative POSIX path.',
+                  },
+                  role: {
+                    type: 'string',
+                    enum: ['workflow', 'task', 'example', 'documentation', 'license'],
+                    description: 'Declared file role.',
+                  },
+                  content: {
+                    type: 'string',
+                    maxLength: 1048576,
+                    description: 'Complete well-formed UTF-8 file body; runtime also enforces a 1 MiB UTF-8 byte limit.',
+                  },
+                },
+                required: ['path', 'role', 'content'],
+                additionalProperties: false,
+              },
+            },
+            deletions: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 128,
+              description: 'Exact safe relative paths to remove; main.wdl cannot be deleted.',
+              items: {
+                type: 'string',
+                minLength: 1,
+                maxLength: 240,
+                pattern: '^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)(?!.*\\u0000)[^/]+(?:/[^/]+)*$',
+              },
+            },
+          },
+          required: ['draftId', 'expectedRevision', 'expectedContentDigest'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_draft_validate',
+        parameters: {
+          type: 'object',
+          properties: {
+            draftId: {
+              type: 'string',
+              pattern: '^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+              description: 'Opaque draft UUID returned by draft_create.',
+            },
+            revision: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 256,
+              description: 'Exact immutable revision to validate.',
+            },
+          },
+          required: ['draftId', 'revision'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_draft_graph',
+        parameters: {
+          type: 'object',
+          properties: {
+            draftId: {
+              type: 'string',
+              pattern: '^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+              description: 'Opaque draft UUID returned by draft_create.',
+            },
+            revision: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 256,
+              description: 'Exact immutable revision to visualize.',
+            },
+          },
+          required: ['draftId', 'revision'],
         },
         output: { type: 'string' },
       },

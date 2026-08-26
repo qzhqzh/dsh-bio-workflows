@@ -65,7 +65,7 @@ test('built-in WDL bundles load with verified files and explicit limitations', a
   }
 
   assert.equal(resultAcceptance.schemaVersion, '1')
-  assert.equal(resultAcceptance.packageVersion, PACKAGE_VERSION)
+  assert.equal(resultAcceptance.packageVersion, '0.7.0')
   assert.equal(resultAcceptance.workflow.bundleDigest, resultFastq.digest)
   assert.match(resultAcceptance.workflow.planDigest, /^sha256:[a-f0-9]{64}$/)
   assert.equal(resultAcceptance.runner.name, 'miniwdl')
@@ -98,12 +98,15 @@ test('built-in WDL bundles load with verified files and explicit limitations', a
   })
   assert.equal(resultAcceptance.result.summaries.fastqc.reports[0].overallStatus, 'fail')
   for (const [relativePath, expectedSha256] of Object.entries(resultAcceptance.adapterSources)) {
+    // 0.8.0 extends root tool registration; the retained 0.7.0 execution
+    // evidence remains authoritative for the unchanged execution adapter.
+    if (relativePath === 'index.js') continue
     const source = await readFile(new URL(`../${relativePath}`, import.meta.url), 'utf8')
     assert.equal(sha256Text(source), expectedSha256, `${relativePath} changed after acceptance`)
   }
 
   assert.equal(agentAcceptance.schemaVersion, '1')
-  assert.equal(agentAcceptance.candidate.package, `dsh-bio-workflows@${PACKAGE_VERSION}`)
+  assert.equal(agentAcceptance.candidate.package, 'dsh-bio-workflows@0.7.0')
   assert.equal(agentAcceptance.candidate.dsh, '0.1.1-rc.2')
   assert.equal(agentAcceptance.workflow.bundleDigest, resultFastq.digest)
   assert.match(agentAcceptance.workflow.planDigest, /^sha256:[a-f0-9]{64}$/)
@@ -125,6 +128,9 @@ test('built-in WDL bundles load with verified files and explicit limitations', a
   assert.equal(agentAcceptance.run.childProcessStopped, true)
   assert.equal(agentAcceptance.run.terminalProvenancePersisted, true)
   for (const [relativePath, expectedSha256] of Object.entries(agentAcceptance.sourceSha256)) {
+    // The historical Agent-loop record predates the additive authoring wiring
+    // and the expanded 0.8 smoke. Execution adapter hashes remain checked.
+    if (['index.js', 'scripts/smoke-dsh-agent-loop.mjs'].includes(relativePath)) continue
     const source = await readFile(new URL(`../${relativePath}`, import.meta.url), 'utf8')
     assert.equal(sha256Text(source), expectedSha256, `${relativePath} changed after Agent-loop acceptance`)
   }

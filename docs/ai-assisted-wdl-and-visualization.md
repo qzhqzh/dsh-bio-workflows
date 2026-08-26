@@ -1,6 +1,8 @@
 # AI-assisted WDL authoring and visualization
 
-Status: RFC candidate for [issue #13](https://github.com/qzhqzh/dsh-bio-workflows/issues/13).
+Status: accepted for [issue #13](https://github.com/qzhqzh/dsh-bio-workflows/issues/13);
+the authoring core (`0.8.0`), deterministic graph (`0.9.0`), and native
+Workflow Center (`0.10.0`) are implemented.
 The integration notes are verified against the immutable DeepSeek Harness
 [`dsh-v0.1.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2)
 release (`b150a551b8`). This document defines no new execution authority.
@@ -11,14 +13,14 @@ release (`b150a551b8`). This document defines no new execution authority.
 | --- | --- |
 | Model ownership | DeepSeek Harness owns the model, Agent loop, conversation, and human interaction. |
 | Domain ownership | `dsh-bio-workflows` owns draft revisions, deterministic validation, graphs, tests, promotion, and execution policy. |
-| Model integration | Use one DSH Agent, an on-demand Skill, and narrow plugin tools. Do not embed another LLM client. |
+| Model integration | Use the current DSH Agent and narrow plugin tools. Do not embed another LLM client; an optional on-demand Skill remains a later enhancement. |
 | Draft trust | Every generated or edited source is an untrusted, owner-scoped draft. |
 | Concurrency | Every mutation uses compare-and-swap over both `expectedRevision` and `expectedContentDigest`. |
 | Validation | Evidence is derived by the plugin from an exact revision, validator policy, and toolchain; model claims are never evidence. |
 | Visualization | `WorkflowGraph v1` is parsed from exact WDL source. The model may explain it but cannot create authoritative graph edges. |
-| First native UI | Add an optional keyed `tool.call.toolview` renderer for the durable graph tool result. A correlated Conversation Node is deferred. |
+| First native UI | Ship a browser Client face in the same npm package: a keyed `tool.call.toolview` renderer plus a responsive Workflow Center. A correlated Conversation Node is deferred. |
 | Execution | Draft validation and graph generation cannot run WDL tasks. Test, promotion, and production execution remain separate approvals. |
-| First release slice | Target `0.8.0` with create/get/update/validate only; no graph editor, draft test, promotion, or new execution allowlist. |
+| Implemented slices | `0.8.0` create/get/update/validate; `0.8.1` replay-safe presentations; `0.9.0` graph; `0.10.0` Workflow Center. No graph editor, draft test, promotion, or new execution allowlist. |
 
 ## Product boundary
 
@@ -89,8 +91,8 @@ supported Harness release needs an integration smoke test.
 ## Proposed authoring loop
 
 ```text
-natural-language requirement
-  -> Agent loads bio-wdl-authoring
+natural-language requirement or Workflow Center action
+  -> current Harness Agent clarifies the request
   -> clarify inputs, outputs, references, resources, and target engine
   -> create an owner-scoped untrusted draft
   -> read exact revision and content digest
@@ -150,7 +152,7 @@ decision.
 | `bio_workflows_draft_get` | Read owner-scoped head or one exact revision; return the file index or one selected file body. | None |
 | `bio_workflows_draft_update` | Apply explicit file replacements/deletions under revision-and-digest CAS, then atomically commit one immutable revision. | Store writes enabled + `tools/pre-execute` ask |
 | `bio_workflows_draft_validate` | Validate one exact revision without running WDL tasks and return bound evidence. | None |
-| `bio_workflows_draft_graph` | Produce `WorkflowGraph v1` for one exact revision. | None; planned for `0.9.0` |
+| `bio_workflows_draft_graph` | Produce `WorkflowGraph v1` for one exact revision. | None; implemented in `0.9.0` |
 | `bio_workflows_draft_test` | Run only declared fixtures in a dedicated draft sandbox under strict budgets. | Separate ask; deferred |
 | `bio_workflows_draft_promote` | Recheck current evidence and materialize one immutable promoted bundle digest. | Separate ask; deferred |
 
@@ -209,6 +211,15 @@ The UI-neutral graph envelope contains:
 - data, control, and containment edges with stable ids and explicit endpoints;
 - bounded parser, compatibility, and unsupported-syntax diagnostics.
 
+The public parser accepts at most 1 MiB of UTF-8 source and validates the exact
+draft id, revision, and content digest. Output is capped at 512 nodes, 2048
+edges, 128 diagnostics, and 128 ports per node. Schema-field shortening or
+port omission is always accompanied by `complete: false` diagnostics.
+
+The `0.10.0` extractor reads only `main.wdl`. It does not expand either local or
+remote imports; every `import` produces an explicit diagnostic and
+`complete: false` so a multi-file graph is never presented as complete.
+
 Stable ids derive from canonical AST addresses and source locations, not from
 model labels or rendered layout. Layout coordinates, colors, collapsed state,
 and AI explanations are presentation data and never enter `graphDigest`.
@@ -225,21 +236,24 @@ patch, show the WDL diff, rerun validation, and cross the same write approval.
 
 ## Native DSH visualization
 
-The first UI package should remain optional and separate from the zero-runtime-
-dependency Host package:
+The optional browser Client is delivered from the same npm package while the
+Host entry remains independent of browser runtime dependencies:
 
 1. `bio_workflows_draft_graph` returns bounded graph JSON in its durable tool
    result.
-2. The optional Client package registers a keyed `tool.call.toolview` entry for
-   that exact tool name.
+2. The Client face registers a keyed `tool.call.toolview` entry for that exact
+   tool name and a Workflow Center in the official sidebar/overlay slots.
 3. The renderer reads only the call arguments and settled result supplied by
    the slot, verifies the revision/digest binding, and renders a read-only graph,
-   diagnostics, and source navigation.
+   diagnostics, and exact source coordinates.
 4. The renderer never mutates the draft and is never an authority for workflow
    state.
+5. Workflow Center actions enqueue natural-language intent on the current DSH
+   Session; only the Agent can select tools and cross ordinary approvals.
 
-Once test, promotion, and run transitions exist, a richer event family and
-`ConversationNodeDefinition` may fold those facts into one lifecycle card.
+Once draft-test and promotion transitions exist, a richer event family and
+`ConversationNodeDefinition` may fold those facts together with existing run
+events into one lifecycle card.
 That later design must use stable business ids and replayable Session events;
 it must not assign an update to the latest visually open card.
 
@@ -265,31 +279,35 @@ it must not assign an update to the latest visually open card.
 
 ## Delivery order
 
-1. **RFC / issue #13:** agree the contracts in this document and keep the RFC
-   PR unmerged until the three discussion choices below are accepted.
-2. **`0.8.0` authoring core:** implement owner-scoped create/get/update plus
-   deterministic validate, CAS and recovery tests, package/profile/Agent-loop
-   smokes, and no new executable bundle.
-3. **`0.9.0` graph:** publish a JSON Schema for `WorkflowGraph v1`, implement
-   deterministic extraction and unsupported-syntax fixtures, then add the
-   optional native keyed tool card.
-4. Add the packaged `bio-wdl-authoring` Skill after tool names and diagnostic
+1. **RFC / issue #13:** contracts and the three discussion choices were
+   accepted; the RFC PR was merged before implementation.
+2. **`0.8.0` authoring core — complete:** owner-scoped create/get/update plus
+   deterministic validation, CAS and recovery tests, and no new executable
+   bundle.
+3. **`0.8.1` presentations — complete:** replay-safe pending/result summaries
+   for all registered tools.
+4. **`0.9.0` graph — complete:** JSON Schema, deterministic extraction,
+   unsupported-syntax fixtures, and exact revision/digest binding.
+5. **`0.10.0` native UI — complete:** same-package browser Client, Workflow
+   Center, Agent intent bridge, readiness endpoint, and keyed read-only graph
+   card.
+6. Add the packaged `bio-wdl-authoring` Skill after tool names and diagnostic
    repair behavior are stable.
-5. Add a dedicated bounded draft-test sandbox with an independent approval.
-6. Add review evidence and immutable promotion with another independent
+7. Add a dedicated bounded draft-test sandbox with an independent approval.
+8. Add review evidence and immutable promotion with another independent
    approval.
-7. Add Git/TRS discovery and richer Store UI only after trust tiers are
+9. Add Git/TRS discovery and richer Store UI only after trust tiers are
    enforced.
 
 The `0.7.0` result and execution MVP is already complete. The sequence above
 keeps AI-generated assets outside its production allowlist while making the
 Agent useful early.
 
-## Discussion choices before implementation
+## Accepted implementation choices
 
-The RFC recommends these bounded defaults:
+The following bounded defaults were accepted before implementation:
 
-1. Owner scope is the creating DSH Session for `0.8.0`; cross-session sharing
+1. Owner scope is the creating DSH Session; cross-session sharing
    and ownership transfer are deferred.
 2. Updates are explicit per-file replacements/deletions under dual CAS, while
    each stored revision remains a complete immutable snapshot.
@@ -297,4 +315,4 @@ The RFC recommends these bounded defaults:
    Conversation Node comes only after multi-event lifecycle data exists.
 
 Changing any of these choices materially changes persistence, authorization,
-or Client scope and should be decided in issue #13 before implementation.
+or Client scope and requires a new issue/RFC decision.

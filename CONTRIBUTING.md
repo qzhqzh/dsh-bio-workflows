@@ -8,6 +8,9 @@
   network, subprocess, and workflow execution side effects.
 - Keep Workflow Store writes confined to the configured root, non-overwriting,
   disabled by default, and behind a DSH approval decision.
+- Keep revisioned authoring roots process-owned, private, and protected against
+  ancestor replacement; do not imply this new 0.8 invariant retroactively for
+  the legacy install/scaffold storage contract.
 - Keep workflow execution disabled by default, built-in-allowlisted, bound to
   exact bundle and plan digests, owner-scoped, and routed through the DSH
   subprocess/jobs seams without shell interpolation.
@@ -18,8 +21,11 @@
 Run before committing a release candidate:
 
 ```bash
+npm run typecheck
+npm run build
 npm test
 npm run test:coverage
+npm run test:ui
 npm run pack:check
 npm run smoke:pack
 npm run smoke:dsh
@@ -39,8 +45,12 @@ npm run smoke:dsh
 ```
 
 This installs the tarball in an isolated profile, imports and applies the
-installed plugin, checks all twelve tool contracts, loads all four versioned
+installed plugin, checks all seventeen tool contracts, loads all four versioned
 built-in WDL bundles, and boots the real DSH headless help path.
+The Agent-loop smoke additionally drives draft create/get/update/validate/graph
+with two mutation approvals before the existing search/plan/run and
+owner-disposal lifecycle. The Playwright check covers desktop catalog actions,
+narrow viewport overflow, and keyboard-selectable graph nodes.
 
 The CI WDL job also installs exact `miniwdl==1.15.0` and checks all built-in
 entrypoints. Expanding the executable allowlist additionally requires a real
