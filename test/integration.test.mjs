@@ -21,7 +21,7 @@ import { makeManifest } from './fixtures.mjs'
 test('public self-references and the dependency-free root DSH apply entry work', async () => {
   assert.equal(plugin.name, 'dsh-bio-workflows')
   assert.equal(metadata.name, plugin.name)
-  assert.equal(metadata.version, '0.4.0')
+  assert.equal(metadata.version, '0.5.0')
   assert.deepEqual(plugin.inject, ['tools'])
   assert.equal(typeof createWorkflowCatalog, 'function')
   assert.equal(typeof preflightWorkflow, 'function')
@@ -31,12 +31,21 @@ test('public self-references and the dependency-free root DSH apply entry work',
 
   const registered = []
   const listeners = new Map()
+  const waterfall = async (event, exec, terminal) => {
+    const handlers = listeners.get(event) ?? []
+    const dispatch = (index) => (
+      index === handlers.length
+        ? terminal()
+        : handlers[index](exec, () => dispatch(index + 1))
+    )
+    return dispatch(0)
+  }
   const ctx = {
     tools: {
       register: (tool) => registered.push(tool),
       get: (name) => registered.find((tool) => tool.name === name),
     },
-    on: (event, listener) => listeners.set(event, listener),
+    on: (event, listener) => listeners.set(event, [...(listeners.get(event) ?? []), listener]),
   }
   plugin.apply(ctx, {
     manifests: [makeManifest()],
@@ -184,6 +193,86 @@ test('public self-references and the dependency-free root DSH apply entry work',
         },
         output: { type: 'string' },
       },
+      {
+        name: 'bio_workflows_plan',
+        parameters: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              pattern: '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$',
+              description: 'Exact built-in workflow bundle id.',
+            },
+            version: {
+              type: 'string',
+              pattern: '^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$',
+              description: 'Exact built-in workflow bundle version.',
+            },
+            expectedDigest: {
+              type: 'string',
+              pattern: '^sha256:[a-f0-9]{64}$',
+              description: 'Exact bundle digest returned by bio_workflows_search.',
+            },
+            inputs: {
+              type: 'object',
+              additionalProperties: true,
+              description: 'Workflow inputs; filesystem paths must be absolute and inside configured input roots.',
+            },
+          },
+          required: ['id', 'version', 'expectedDigest', 'inputs'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_run',
+        parameters: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              pattern: '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$',
+              description: 'Exact built-in workflow bundle id.',
+            },
+            version: {
+              type: 'string',
+              pattern: '^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$',
+              description: 'Exact built-in workflow bundle version.',
+            },
+            expectedDigest: {
+              type: 'string',
+              pattern: '^sha256:[a-f0-9]{64}$',
+              description: 'Exact bundle digest returned by bio_workflows_search.',
+            },
+            inputs: {
+              type: 'object',
+              additionalProperties: true,
+              description: 'Workflow inputs; filesystem paths must be absolute and inside configured input roots.',
+            },
+            expectedPlanDigest: {
+              type: 'string',
+              pattern: '^sha256:[a-f0-9]{64}$',
+              description: 'Exact plan digest returned by bio_workflows_plan.',
+            },
+          },
+          required: ['id', 'version', 'expectedDigest', 'inputs', 'expectedPlanDigest'],
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_run_get',
+        parameters: {
+          type: 'object',
+          properties: {
+            runId: {
+              type: 'string',
+              pattern: '^run-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+              description: 'Run id returned by bio_workflows_run.',
+            },
+          },
+          required: ['runId'],
+        },
+        output: { type: 'string' },
+      },
     ],
   )
 
@@ -208,7 +297,8 @@ test('public self-references and the dependency-free root DSH apply entry work',
   )
   assert.equal(registered[2].isConcurrencySafe({}), false)
   assert.equal(tool.isConcurrencySafe({ id: 'fastq-qc', inputs: [] }), false)
-  const guarded = await listeners.get('tools/execute')(
+  const guarded = await waterfall(
+    'tools/execute',
     { name: 'bio_workflows_get', arguments: {} },
     async () => assert.fail('invalid arguments reached the tool body'),
   )
@@ -219,7 +309,8 @@ test('public self-references and the dependency-free root DSH apply entry work',
   const search = registered.find((item) => item.name === 'bio_workflows_search')
   const searchResult = JSON.parse(await search.execute({ query: 'qc' }))
   const fastqStoreEntry = searchResult.workflows.find((workflow) => workflow.id === 'fastq-qc')
-  const approval = await listeners.get('tools/pre-execute')(
+  const approval = await waterfall(
+    'tools/pre-execute',
     {
       name: 'bio_workflows_install',
       arguments: {
@@ -232,7 +323,7 @@ test('public self-references and the dependency-free root DSH apply entry work',
   )
   assert.equal(approval.kind, 'deny')
 
-  assert.equal(searchResult.count, 2)
+  assert.equal(searchResult.count, 3)
 })
 
 test('the real DSH ToolRuntime preserves structured invalid-argument identity', async () => {
@@ -262,7 +353,7 @@ test('the real DSH ToolRuntime preserves structured invalid-argument identity', 
   })
   assert.equal(search.isError, false)
   const searchValue = JSON.parse(search.value)
-  assert.equal(searchValue.count, 2)
+  assert.equal(searchValue.count, 3)
   const fastq = searchValue.workflows.find((workflow) => workflow.id === 'fastq-qc')
 
   const deniedInstall = await runtime.execute({

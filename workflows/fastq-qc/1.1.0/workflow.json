@@ -1,0 +1,109 @@
+{
+  "bundleVersion": "1",
+  "manifest": {
+    "schemaVersion": "1",
+    "id": "fastq-qc",
+    "version": "1.1.0",
+    "name": "FASTQ quality control",
+    "summary": "Run FastQC for one or more FASTQ files and collect HTML and ZIP reports.",
+    "status": "ready",
+    "engine": {
+      "name": "miniwdl"
+    },
+    "inputs": [
+      {
+        "id": "reads",
+        "type": "file",
+        "required": true,
+        "cardinality": "many",
+        "description": "FASTQ files to inspect. The execution adapter snapshots each file before launch."
+      },
+      {
+        "id": "threads",
+        "type": "integer",
+        "required": false,
+        "description": "Threads allocated to each FastQC task."
+      }
+    ],
+    "outputs": [
+      {
+        "id": "html_reports",
+        "type": "file",
+        "cardinality": "many",
+        "description": "FastQC HTML reports."
+      },
+      {
+        "id": "zip_reports",
+        "type": "file",
+        "cardinality": "many",
+        "description": "FastQC ZIP archives."
+      }
+    ],
+    "tags": [
+      "fastq",
+      "qc",
+      "starter",
+      "wdl"
+    ]
+  },
+  "wdl": {
+    "version": "1.0",
+    "entrypoint": "main.wdl",
+    "engines": [
+      {
+        "name": "miniwdl",
+        "version": "1.15.0"
+      },
+      {
+        "name": "cromwell"
+      }
+    ]
+  },
+  "source": {
+    "kind": "builtin",
+    "repository": "https://github.com/qzhqzh/dsh-bio-workflows",
+    "revision": "0.5.0"
+  },
+  "authors": [
+    "dsh-bio-workflows maintainers"
+  ],
+  "license": "MIT",
+  "verification": {
+    "status": "verified",
+    "checks": [
+      "bundle-file-digests",
+      "local-import-closure",
+      "wdl-source-shape",
+      "miniwdl-check@1.15.0",
+      "miniwdl-run@1.15.0",
+      "container-digest-pinned",
+      "docker-swarm-run@29.3.1",
+      "shell-placeholder-policy-reviewed",
+      "input-snapshot-sha256",
+      "fastqc-output-inventory",
+      "example-json"
+    ]
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "role": "license",
+      "sha256": "8e02f8ac03fd6bc80b43d27ae6ccba78a2af6fc5fb2698c99793bec3e9b29549"
+    },
+    {
+      "path": "README.md",
+      "role": "documentation",
+      "sha256": "ee660077122a08656551370b168b10e5cb58e8b880063d092550a49ca8c5ab22"
+    },
+    {
+      "path": "examples/inputs.json",
+      "role": "example",
+      "sha256": "a2c3d444a8d273b723865690098e8146cd143fcb8f1171d022d47d53f3b32e0b"
+    },
+    {
+      "path": "main.wdl",
+      "role": "workflow",
+      "sha256": "633f355763427038b9a6cb823f64ab9198a54c3a77ac94135127fbd43825fcd2"
+    }
+  ]
+}

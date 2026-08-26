@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "1",
+  "recordedAt": "2026-08-26T03:30:29Z",
+  "purpose": "Model-driven DSH Agent-loop and owner-disposal lifecycle acceptance",
+  "candidate": {
+    "package": "dsh-bio-workflows@0.5.0",
+    "branch": "feat/miniwdl-execution-mvp",
+    "dsh": "0.1.1-rc.2"
+  },
+  "runtime": {
+    "realComponents": [
+      "AgentLoop",
+      "AgentRegistry",
+      "ApprovalService",
+      "LlmRuntime",
+      "LocalJobRegistry",
+      "LocalSubprocessRuntime",
+      "SessionStore",
+      "SystemPrompt",
+      "ToolRuntime"
+    ],
+    "modelAdapter": "deterministic scripted adapter using the DSH StreamChunk protocol",
+    "runnerFixture": "controlled long-running POSIX parent and child process; workflow computation is covered by the separate miniwdl/FastQC acceptance record"
+  },
+  "workflow": {
+    "key": "fastq-qc@1.1.0",
+    "bundleDigest": "sha256:fb20354f19760a69fd3827c835b27ee2e2871e94ebd578b94d0352347a6e5e8c",
+    "planDigest": "sha256:e8da954515dc256433be7510f4750e12c1ca4394ebd10763754abded19db18eb"
+  },
+  "model": {
+    "requests": 4,
+    "toolCalls": [
+      "bio_workflows_search",
+      "bio_workflows_plan",
+      "bio_workflows_run"
+    ],
+    "terminalResponse": "stop"
+  },
+  "approval": {
+    "requests": 1,
+    "askedEvents": 1,
+    "decidedEvents": 1,
+    "outcome": "allowed-once",
+    "auditIdsMatched": true
+  },
+  "owner": {
+    "sessionId": "bio-workflow-owner-disposal",
+    "disposed": true,
+    "agentRemoved": true,
+    "sessionRemoved": true
+  },
+  "job": {
+    "id": "bio-1",
+    "statusBeforeDispose": "running",
+    "removedAfterDispose": true
+  },
+  "run": {
+    "id": "run-5a96ebc9-b85f-4156-aa6f-be3724c058a6",
+    "statusAfterDispose": "killed",
+    "exit": {
+      "exitCode": 143,
+      "signal": null
+    },
+    "runnerProcessStopped": true,
+    "childProcessStopped": true,
+    "terminalProvenancePersisted": true
+  },
+  "sourceSha256": {
+    "scripts/smoke-dsh-agent-loop.mjs": "6d4992a06588e7c9c1b4da684d0e43ac0ff9b226b92b43d2ebd6cdca46d365fb",
+    "src/execution.js": "e086a1034b4ae53850a2ec6dfb009d5cfc5e50a1f65e85ada02d78f68566c2da",
+    "src/execution-tools.js": "56215141689f541e73267d55dc57ecd7c4c5e04b3b1a3acb6072e3592fcb2309",
+    "index.js": "52680f7abea5da4f8f9d1a92d3bc30e1c5e2b24e1e5366637b30fe3e5521b537",
+    "workflows/fastq-qc/1.1.0/main.wdl": "633f355763427038b9a6cb823f64ab9198a54c3a77ac94135127fbd43825fcd2",
+    "workflows/fastq-qc/1.1.0/workflow.json": "9bed856dd749d1ab00968b3ab39d79de3b4276898dbf8ad16103d25c7a6856e6"
+  }
+}

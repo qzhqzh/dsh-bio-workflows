@@ -35,6 +35,7 @@ try {
     import assert from 'node:assert/strict'
     import * as plugin from 'dsh-bio-workflows'
     import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
+    import { createExecutionManager } from 'dsh-bio-workflows/execution'
     import { MANIFEST_SCHEMA_VERSION } from 'dsh-bio-workflows/manifest'
     import metadata from 'dsh-bio-workflows/package.json' with { type: 'json' }
     import { preflightWorkflow } from 'dsh-bio-workflows/preflight'
@@ -44,21 +45,31 @@ try {
     import bundleSchema from 'dsh-bio-workflows/schema/wdl-bundle.schema.json' with { type: 'json' }
 
     assert.equal(typeof createWorkflowCatalog, 'function')
+    assert.equal(typeof createExecutionManager, 'function')
     assert.equal(typeof preflightWorkflow, 'function')
     assert.equal(typeof createWorkflowStore, 'function')
     assert.equal(metadata.name, plugin.name)
-    assert.equal(metadata.version, '0.4.0')
+    assert.equal(metadata.version, '0.5.0')
     assert.equal(schema.properties.schemaVersion.const, MANIFEST_SCHEMA_VERSION)
     assert.equal(bundleSchema.properties.bundleVersion.const, WDL_BUNDLE_SCHEMA_VERSION)
 
     const registered = []
     const listeners = new Map()
+    const waterfall = async (event, exec, terminal) => {
+      const handlers = listeners.get(event) ?? []
+      const dispatch = (index) => (
+        index === handlers.length
+          ? terminal()
+          : handlers[index](exec, () => dispatch(index + 1))
+      )
+      return dispatch(0)
+    }
     plugin.apply({
       tools: {
         register: (tool) => registered.push(tool),
         get: (name) => registered.find((tool) => tool.name === name),
       },
-      on: (event, listener) => listeners.set(event, listener),
+      on: (event, listener) => listeners.set(event, [...(listeners.get(event) ?? []), listener]),
     }, {
       manifests: [{
         schemaVersion: '1',
@@ -211,6 +222,86 @@ try {
           },
           output: { type: 'string' },
         },
+        {
+          name: 'bio_workflows_plan',
+          parameters: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                pattern: '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$',
+                description: 'Exact built-in workflow bundle id.',
+              },
+              version: {
+                type: 'string',
+                pattern: '^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$',
+                description: 'Exact built-in workflow bundle version.',
+              },
+              expectedDigest: {
+                type: 'string',
+                pattern: '^sha256:[a-f0-9]{64}$',
+                description: 'Exact bundle digest returned by bio_workflows_search.',
+              },
+              inputs: {
+                type: 'object',
+                additionalProperties: true,
+                description: 'Workflow inputs; filesystem paths must be absolute and inside configured input roots.',
+              },
+            },
+            required: ['id', 'version', 'expectedDigest', 'inputs'],
+          },
+          output: { type: 'string' },
+        },
+        {
+          name: 'bio_workflows_run',
+          parameters: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                pattern: '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$',
+                description: 'Exact built-in workflow bundle id.',
+              },
+              version: {
+                type: 'string',
+                pattern: '^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$',
+                description: 'Exact built-in workflow bundle version.',
+              },
+              expectedDigest: {
+                type: 'string',
+                pattern: '^sha256:[a-f0-9]{64}$',
+                description: 'Exact bundle digest returned by bio_workflows_search.',
+              },
+              inputs: {
+                type: 'object',
+                additionalProperties: true,
+                description: 'Workflow inputs; filesystem paths must be absolute and inside configured input roots.',
+              },
+              expectedPlanDigest: {
+                type: 'string',
+                pattern: '^sha256:[a-f0-9]{64}$',
+                description: 'Exact plan digest returned by bio_workflows_plan.',
+              },
+            },
+            required: ['id', 'version', 'expectedDigest', 'inputs', 'expectedPlanDigest'],
+          },
+          output: { type: 'string' },
+        },
+        {
+          name: 'bio_workflows_run_get',
+          parameters: {
+            type: 'object',
+            properties: {
+              runId: {
+                type: 'string',
+                pattern: '^run-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+                description: 'Run id returned by bio_workflows_run.',
+              },
+            },
+            required: ['runId'],
+          },
+          output: { type: 'string' },
+        },
       ],
     )
     const preflight = registered.find((tool) => tool.name === 'bio_workflows_preflight')
@@ -220,7 +311,8 @@ try {
     ))
     assert.equal(result.preflight.status, 'pass')
     assert.equal(result.preflight.executionReady, false)
-    const guarded = await listeners.get('tools/execute')(
+    const guarded = await waterfall(
+      'tools/execute',
       { name: 'bio_workflows_get', arguments: {} },
       async () => assert.fail('invalid arguments reached the tool body'),
     )
@@ -231,7 +323,8 @@ try {
     const search = registered.find((tool) => tool.name === 'bio_workflows_search')
     const searchResult = JSON.parse(await search.execute({ query: 'qc' }))
     const fastq = searchResult.workflows.find((workflow) => workflow.id === 'fastq-qc')
-    const approval = await listeners.get('tools/pre-execute')(
+    const approval = await waterfall(
+      'tools/pre-execute',
       {
         name: 'bio_workflows_install',
         arguments: { id: fastq.id, version: fastq.version, expectedDigest: fastq.digest },
@@ -239,7 +332,7 @@ try {
       async () => assert.fail('mutating store tool bypassed approval'),
     )
     assert.equal(approval.kind, 'deny')
-    assert.equal(searchResult.count, 2)
+    assert.equal(searchResult.count, 3)
   `
   execFileSync(
     process.execPath,

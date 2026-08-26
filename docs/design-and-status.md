@@ -2,149 +2,159 @@
 
 ## Executive assessment
 
-`dsh-bio-workflows` has implemented the control-plane and local WDL asset-store
-foundation, but it has **not implemented the main end-to-end product capability: executing and
-managing a bioinformatics workflow**.
+The `0.5.0` candidate moves `dsh-bio-workflows` from a control-plane foundation
+to an **opt-in execution MVP**. One pinned path, built-in
+`fastq-qc@1.1.0` through miniwdl `1.15.0`, now implements discovery, trusted
+planning, approval, background execution, status/log/cancellation integration,
+and durable provenance.
 
-The current package can answer four questions safely:
+This is intentionally narrower than general WDL execution. `bam-qc`, installed
+bundles, and user drafts remain non-executable. Execution is disabled by
+default, uses optional DSH `subprocess` and `jobs` services, and never changes
+the semantics of declaration-only `bio_workflows_preflight`.
 
-1. Which workflow manifests are configured?
-2. Is one manifest structurally valid?
-3. Do supplied input values and a configured engine declaration agree with that
-   manifest?
-4. Which built-in or local WDL bundles are available, and are their files
-   structurally intact?
-
-It cannot yet prove that analysis input files exist, perform full WDL semantic
-validation, discover an installed engine, submit a run, stream logs, cancel a
-run, or collect provenance and artifacts.
+The adapter contract and lifecycle are covered with deterministic integration
+fixtures, while CI runs real `miniwdl check` for all three versioned bundles.
+The final `fastq-qc@1.1.0` digest also completed a real miniwdl 1.15.0 / Docker
+29.3.1 Swarm / FastQC run with confined outputs and a separate real
+`LocalJobRegistry` cancellation path; the sanitized record is stored under
+`docs/evidence/` and is bound to the reviewed adapter source hashes.
+The same candidate also passed a model-driven DSH Agent-loop acceptance: a
+deterministic model selected the exact bundle, planned it, crossed the real
+approval service, started an owner-scoped long-running subprocess job, and then
+proved that disposing the Agent handle removed the Agent, Session, and Job while
+terminating both runner and child processes. That separate sanitized record is
+also source-hash-bound under `docs/evidence/`.
 
 ## Architecture boundary
 
 ```mermaid
 flowchart LR
-  A[DSH agent] --> B[Control-plane tools]
-  B --> C[Workflow catalog]
-  C --> D[Manifest v1 validator]
-  B --> K[Workflow Store tools]
-  K --> L[Built-in WDL bundles]
-  K --> M[Opt-in local install and drafts]
-  L --> N[Structural validation and SHA-256]
-  M --> N
-  B --> E[Declarative preflight]
-  E --> F[Input shape checks]
-  E --> G[Configured engine snapshot]
-  E -. executionReady is false .-> H[Future approval gate]
-  H -. not implemented .-> I[Future engine adapters]
-  I -. not implemented .-> J[Future run and provenance store]
+  A[DSH agent] --> B[Catalog and Store tools]
+  B --> C[Manifest and WDL bundle validation]
+  A --> D[Declaration-only preflight]
+  D -. executionReady remains false .-> E[No host side effects]
+  A --> F[bio_workflows_plan]
+  F --> G[Built-in allowlist and bundle digest]
+  F --> H[Canonical input roots and file facts]
+  F --> I[Anchored executables and active Swarm probe]
+  G --> J[planDigest]
+  H --> J
+  I --> J
+  A --> K[bio_workflows_run]
+  K --> L[Replan and exact digest match]
+  L --> M[DSH approval]
+  M --> S[No-follow input snapshots and SHA-256]
+  S --> N[DSH background job]
+  N --> O[miniwdl argv without shell]
+  O --> P[run.json and output inventory]
+  N --> Q[job_output and job_kill]
+  A --> R[bio_workflows_run_get]
+  R --> P
 ```
 
-Manifest v1 remains intentionally metadata-only. WDL source is carried by a
-separate bundle descriptor whose install operation is confined to a configured
-store root. Preflight does not read the host or start a process. Bundle
-validation inventories the whole directory, rejects links and undeclared
-entries, and reads local asset files through bounded file handles, but never
-invokes a WDL engine. Install approval is bound to an exact source, version, and
-bundle digest and is rechecked before writing. This keeps catalog, store, and
-preflight operations below the execution boundary.
+Manifest v1 remains metadata-only. WDL source lives in digest-verified bundles,
+and Store writes have a separate approval that never grants execution. The
+execution adapter accepts only an internal allowlist, snapshots approved inputs
+and the already-loaded WDL into a fresh mode-`0700` run directory, and passes no
+model-authored command fragments or environment names to a host shell.
 
 ## Capability matrix
 
 | Capability | Status | Evidence | Remaining gap |
 | --- | --- | --- | --- |
-| DSH bundle installation | Implemented | `npm run smoke:dsh` installs the tarball into an isolated headless profile and dumps its config | Run the smoke in CI |
-| Manifest v1 schema | Implemented | JSON Schema plus zero-dependency runtime validator | Schema migration policy when v2 is needed |
-| Workflow catalog | Implemented | Strict startup validation, unique ids, deterministic list/get | Dynamic provider registration if needed |
-| WDL bundle descriptor | Implemented | Runtime validator, JSON Schema, local-only imports, file SHA-256 | Schema migration policy and engine-produced validation evidence |
-| Workflow Store | Implemented foundation | Built-in search, opt-in immutable installs, local draft scaffold | Git/TRS providers and a visual store UI |
-| Starter workflows | Implemented as drafts | `fastq-qc` and `bam-qc` WDL 1.0 bundles pass `miniwdl v1.15.0 check`; containers are digest-pinned | Real miniwdl/Cromwell execution tests |
-| Input declaration preflight | Implemented | Required, unknown, scalar type, and cardinality checks | File existence, readability, size, and checksum checks |
-| Environment declaration preflight | Implemented | Availability and exact-version comparison | Trusted live engine probing |
-| Execution authorization | Not implemented | `executionReady` is always `false` | Explicit approval/policy contract |
-| Engine execution adapters | Not implemented | No command or adapter surface exists | miniwdl, Cromwell/WES, Nextflow, and Snakemake adapters |
-| Run lifecycle | Not implemented | No run id or persisted state | Submit, status, logs, cancellation, retries |
-| Provenance and reports | Not implemented | No run artifacts are produced | Inputs, versions, checksums, outputs, normalized reports |
+| DSH bundle installation | Implemented | Pack and isolated-profile smoke tests; both are CI gates | Validate the first remote CI run |
+| Manifest v1 and catalog | Implemented | Strict runtime validator, JSON Schema, deterministic list/get | Migration policy when v2 is needed |
+| WDL bundle and Store | Implemented foundation | Bounded reads, file SHA-256, local import closure, immutable opt-in installs | Git/TRS providers and visual Store UI |
+| Starter workflows | Two families, three versions | All WDL 1.0 bundles pass pinned `miniwdl 1.15.0 check`; `fastq-qc@1.1.0` has a retained real container acceptance record | Promote and verify BAM separately |
+| Declaration-only preflight | Implemented and unchanged | Pure input/environment validation with `executionReady: false` | None inside this intentionally pure boundary |
+| Trusted execution plan | Implemented for `fastq-qc@1.1.0` | Canonical input checks, total snapshot bytes and 1 TiB cap, file facts, executable identities, active Swarm probe, deterministic `planDigest` | Optional pre-approval full content checksums for large inputs |
+| Execution authorization | Implemented | `tools/pre-execute` asks with exact bundle and plan digests; tool body replans | Policy presets beyond one-shot user approval |
+| miniwdl adapter | Implemented MVP | Exact executable/version, real semantic check, fixed argv, no ambient environment inheritance, fixed Docker host and Engine ID, no host shell | Docker egress confinement and additional backends |
+| Run lifecycle | Implemented | Real LocalJobRegistry success/read/kill/wait acceptance plus model-driven AgentLoop search/plan/run, approval audit, owner disposal, process-tree termination, owner fencing, and terminal status | Retry and resume |
+| Provenance and outputs | Implemented foundation | Atomic `run.json`, input snapshot hashes, plan/command/exit facts, bounded outputs and inventory | Checksummed outputs and normalized bioinformatics reports |
 
 ## Is the main functionality implemented?
 
-The answer depends on which product boundary is being evaluated:
+At the code-contract and real container-execution levels, yes for one
+deliberately narrow workflow: the six steps of the execution MVP are present,
+tested, and a successful FastQC completion is retained as evidence. This is
+still not a general production runner: plans disclose that approval does not
+precompute full input-content hashes and container egress isolation is not
+enforced. Both the real Docker-backed workflow path and the model-driven DSH
+Agent-loop/owner-disposal path now have retained acceptance evidence.
 
-- **Foundation package:** yes. Installation metadata, manifest validation,
-  catalog discovery, WDL asset management, structural bundle validation, and
-  declaration-only preflight are implemented and tested.
-- **Usable workflow runner:** no. The package cannot execute or manage a real
-  bioinformatics workflow, so the primary end-user loop is incomplete.
+The correct release description is therefore **miniwdl execution MVP / preview**,
+not a general-purpose or production WDL runner.
 
-The project is therefore at a safe control-plane milestone, not at an execution
-MVP.
+## Security and reproducibility invariants
+
+- Execution is off unless an operator configures disjoint absolute
+  `inputRoots` and a private, operator-owned `runsRoot` directory.
+- Only `builtin:fastq-qc@1.1.0` is executable, with an exact bundle digest and
+  digest-pinned container image.
+- Input paths are canonicalized inside allowed roots and bound to size,
+  nanosecond timestamps, device, and inode in `planDigest`; they are rechecked
+  after approval through no-follow file handles, copied to safe run-owned names,
+  and hashed for provenance. Copying stops at the approved length, probes for
+  concurrent growth, and enforces a 1 TiB total snapshot limit per run.
+- miniwdl and Docker use canonical absolute executables whose owner, mode, and
+  filesystem identity enter the plan and are rechecked. Their ancestors and
+  the runs-root ancestors must be protected from entry replacement. Every
+  invocation is a fixed argv array, never a host-shell command.
+- Runner children inherit no ambient variables. The adapter supplies a fixed
+  minimal environment, pins the local Docker socket, binds the Docker Engine ID
+  into the plan, rejects unsafe placeholder values, disables automatic Swarm
+  initialization, and requires the same active Swarm manager before approval
+  and launch.
+- The preview supports the Linux default Docker socket only. WDL memory
+  declarations are enforced as hard container limits, and snapshot launch
+  requires a 512 MiB free-space reserve beyond approved input bytes. Linux
+  procfs descriptor paths bind opened inputs and executables back to approved
+  canonical paths, including across intermediate-directory symlink races.
+- Background work starts only inside `ctx.jobs.start()`, so missing job controls
+  fail before a process is launched. Owner session checks protect job and run
+  reads.
+- WDL source, inputs, runner config, and provenance are written only beneath a
+  fresh run directory; existing run directories are never overwritten.
+- A failure or cancellation before background-job registration removes the
+  fresh private run directory and its in-memory state.
+- `run.json` uses an aligned 32 MiB read/write bound and historical reads depend
+  only on the private runs root, not on retired input mounts.
+- Captured process output and result JSON are bounded. Output paths must resolve
+  back inside the miniwdl run directory before entering the inventory.
 
 ## Next milestones
 
-### 1. Trusted preflight providers
-
-Introduce an injected provider contract instead of embedding shell calls in the
-model-facing tool. Providers can implement file metadata checks and engine
-version discovery under an explicit host policy. The pure validator remains the
-fallback and continues to work without a provider.
-
-Acceptance criteria:
-
-- every live check reports its source and timestamp;
-- unavailable providers produce `incomplete`, never a false `pass`;
-- probes are cancellable, bounded, and cannot execute workflow payloads;
-- declaration-only mode remains the default.
-
-### 2. Execution plan and approval gate
-
-Add an adapter-neutral execution plan that resolves a manifest into a reviewable
-command, environment, mounts, and expected outputs. Planning must not submit a
-run. A separate operation crosses the execution boundary only after DSH policy or
-user approval.
-
-Store installation and draft creation already use a separate DSH approval gate,
-but that grant applies only to bounded asset writes and never authorizes a run.
-
-### 3. Engine adapters and run lifecycle
-
-Implement one adapter first, preferably miniwdl for the WDL starter path, behind
-the common contract.
-Return an immutable run id and expose status, bounded log reads, cancellation,
-and terminal outcome. Add Cromwell/WES, Nextflow, and Snakemake only after the
-lifecycle contract is stable.
-
-### 4. Store federation and visual authoring
-
-Add Git and GA4GH TRS read providers after the local provider contract is
-stable. A later UI may present the same search/install/update flow as a theme
-store, while displaying workflow-specific trust, license, digest, container,
-engine, and verification metadata. Source edits must use explicit version and
-digest baselines; conflicts stop autosave and require user-controlled merging.
-
-### 5. Provenance and normalized reports
-
-Persist the manifest version, resolved inputs, engine/container versions,
-checksums, timestamps, exit status, output inventory, and report links. This is
-the point where a completed run becomes reproducible and auditable.
+1. Add an explicit optional pre-approval input-checksum policy and a deployable container
+   egress/isolation profile.
+2. Promote `bam-qc` into the executable allowlist after the same real-run and
+   cancellation tests, including BAM index handling if required.
+3. Normalize FastQC/samtools reports and add checksummed output artifacts.
+4. Only then generalize the adapter contract to Cromwell/WES and add Git/TRS or
+   visual Store surfaces.
 
 ## Execution MVP definition of done
 
-The main product functionality can be called implemented only when one supported
-workflow can complete this loop:
+One supported workflow must complete this loop:
 
-1. discover a versioned manifest;
-2. validate real inputs and the live environment;
-3. render a reviewable execution plan;
-4. receive explicit execution authorization;
-5. submit, observe, and cancel by run id;
-6. return a terminal result with provenance and output inventory.
+1. discover an exact version and bundle digest;
+2. validate real inputs and the live runner environment;
+3. render a reviewable, deterministic execution plan;
+4. receive approval bound to that plan;
+5. submit, observe, and cancel through an owner-scoped background job;
+6. return terminal provenance and a confined output inventory.
 
-Until all six are demonstrated in an integration test, releases should describe
-themselves as control-plane or preview milestones rather than a workflow runner.
+All six contracts are implemented in this candidate. The real Docker-backed
+success path and the model-driven Agent-loop owner-disposal path are both
+recorded. Publishing remains gated on repository checks, high-risk review, and
+explicit release authorization.
 
 ## Repository and release policy
 
 The repository uses a mainline model with short-lived feature branches and
 Conventional Commits. Every release candidate must pass `npm test`, coverage,
-package export checks, `npm pack --dry-run`, and a review of public contracts.
-Publishing to npm, creating a remote repository, pushing, and tagging remain
+package installation, DSH profile and Agent-loop smokes, real `miniwdl check`,
+and a high-risk review of subprocess, filesystem, authorization, and provenance
+contracts. Publishing, pushing, tagging, and creating or merging a PR remain
 separate explicitly authorized actions.

@@ -1,12 +1,13 @@
 {
   "name": "dsh-bio-workflows",
-  "version": "0.4.0",
-  "description": "Bioinformatics workflow catalog, WDL bundle store, and declarative preflight for DeepSeek Harness.",
+  "version": "0.5.0",
+  "description": "Bioinformatics WDL catalog, workflow store, trusted planning, and opt-in miniwdl execution for DeepSeek Harness.",
   "type": "module",
   "main": "./index.js",
   "exports": {
     ".": "./index.js",
     "./catalog": "./src/catalog.js",
+    "./execution": "./src/execution.js",
     "./manifest": "./src/manifest.js",
     "./preflight": "./src/preflight.js",
     "./store": "./src/workflow-store.js",
@@ -28,10 +29,11 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "test:coverage": "node --test --experimental-test-coverage test/*.test.mjs",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=75 --test-coverage-functions=90 test/*.test.mjs",
     "pack:check": "npm pack --dry-run",
     "smoke:pack": "node scripts/smoke-pack.mjs",
-    "smoke:dsh": "node scripts/smoke-dsh-profile.mjs"
+    "smoke:dsh": "node scripts/smoke-dsh-profile.mjs",
+    "smoke:dsh-agent": "node scripts/smoke-dsh-agent-loop.mjs"
   },
   "keywords": [
     "deepseek-harness",

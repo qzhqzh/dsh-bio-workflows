@@ -1,0 +1,110 @@
+{
+  "schemaVersion": "1",
+  "recordedAt": "2026-08-25T19:53:33Z",
+  "scope": "local-container-and-job-control-acceptance",
+  "packageVersion": "0.5.0",
+  "adapterSources": {
+    "index.js": "52680f7abea5da4f8f9d1a92d3bc30e1c5e2b24e1e5366637b30fe3e5521b537",
+    "src/execution.js": "e086a1034b4ae53850a2ec6dfb009d5cfc5e50a1f65e85ada02d78f68566c2da",
+    "src/execution-tools.js": "56215141689f541e73267d55dc57ecd7c4c5e04b3b1a3acb6072e3592fcb2309",
+    "src/workflow-store.js": "cf5c3e3a17ba630bde839649eb0b34dc5de4747f1bce1bf23b6d59b80c7741b9"
+  },
+  "workflow": {
+    "id": "fastq-qc",
+    "version": "1.1.0",
+    "bundleDigest": "sha256:fb20354f19760a69fd3827c835b27ee2e2871e94ebd578b94d0352347a6e5e8c",
+    "planDigest": "sha256:4a524f796550b28bb6fd308c656b4b91ce5472faa7cb6d0ae913841fbf927e02"
+  },
+  "host": {
+    "os": "Linux 6.8.0-138-generic x86_64",
+    "node": "24.14.1"
+  },
+  "runner": {
+    "name": "miniwdl",
+    "version": "1.15.0",
+    "subprocessProvider": "@deepseek-ai/dsh-subprocess-local@0.1.1-rc.2"
+  },
+  "jobRuntime": {
+    "provider": "@deepseek-ai/dsh-jobs-local@0.1.1-rc.2",
+    "jobId": "bio-1",
+    "ownerSession": "acceptance-owner",
+    "outputReadBeforeWait": "running",
+    "outputReadAfterWait": "completed"
+  },
+  "containerRuntime": {
+    "name": "docker",
+    "host": "unix:///var/run/docker.sock",
+    "engineId": "a655bc50-1abf-401e-be3b-7acb4df01893",
+    "serverVersion": "29.3.1",
+    "swarm": {
+      "localNodeState": "active",
+      "controlAvailable": true,
+      "autoInit": false
+    },
+    "image": "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0@sha256:e194048df39c3145d9b4e0a14f4da20b59d59250465b6f2a9cb698445fd45900"
+  },
+  "input": {
+    "description": "One synthetic, non-sensitive 12-base FASTQ read compressed with gzip.",
+    "snapshotBytes": 43,
+    "snapshotSha256": "9bb412d8028e72ae21b4e50c8045a5a17487717b56283dafdc856b2c525251d8"
+  },
+  "executionPolicy": {
+    "inheritAmbientEnvironment": false,
+    "copyExactApprovedInputBytes": true,
+    "maxTotalSnapshotBytes": "1099511627776",
+    "minimumFreeSpaceReserveBytes": "536870912",
+    "memoryLimitMultiplier": 1.0,
+    "maxProvenanceBytes": 33554432,
+    "descriptorPathVerification": "linux-procfs",
+    "protectedRunnerAndRunsRootAncestors": true
+  },
+  "result": {
+    "status": "completed",
+    "exitCode": 0,
+    "signal": null,
+    "outputs": [
+      {
+        "id": "html_reports",
+        "type": "file",
+        "count": 1,
+        "bytes": 377991
+      },
+      {
+        "id": "zip_reports",
+        "type": "file",
+        "count": 1,
+        "bytes": 288628
+      }
+    ]
+  },
+  "cancellation": {
+    "planDigest": "sha256:bf207916ed0250192905d51897c17a5449763a3063624aa1fdfb1e54a0a6db52",
+    "status": "killed",
+    "exitCode": null,
+    "signal": "SIGTERM",
+    "jobId": "bio-1",
+    "ownerSession": "acceptance-owner",
+    "killOutcome": "requested",
+    "outputReadBeforeKill": "running",
+    "outputReadAfterKill": "killed"
+  },
+  "assertions": [
+    "adapter source SHA-256 values bind this record to the reviewed package candidate",
+    "exact bundle and plan digests matched",
+    "miniwdl semantic check passed before approval and before launch",
+    "the child environment inherited no ambient variables, fixed the local Docker socket, and bound the Docker Engine ID into the approved plan",
+    "Docker Swarm was already active and automatic initialization remained disabled",
+    "approved input was copied at its exact approved length to a safe run-owned path and hashed after a free-space check",
+    "opened input and executable descriptors resolved back to their approved Linux procfs paths and protected ancestor chains",
+    "miniwdl enforced the WDL memory declaration as a hard container limit",
+    "FastQC completed with exit code 0",
+    "both output paths resolved inside the miniwdl run directory",
+    "the real LocalJobRegistry enforced the owner and exposed running then completed output states",
+    "LocalJobRegistry kill terminated a separate live miniwdl run through the DSH local subprocess provider and settled it as killed with SIGTERM"
+  ],
+  "limitations": [
+    "This record covers real miniwdl, DSH local subprocess, LocalJobRegistry read/kill/wait, Docker Swarm, FastQC, provenance, output inventory, and cancellation.",
+    "The LocalJobRegistry owner was a registered lightweight acceptance fixture rather than a model-driven DSH Agent loop; isolated-profile smoke tests cover plugin loading and public tool contracts.",
+    "Container egress isolation was not asserted."
+  ]
+}
