@@ -24,6 +24,20 @@
       ]
     },
     {
+      "outputId": "zip_reports",
+      "type": "file",
+      "cardinality": "many",
+      "items": [
+        {
+          "ordinal": 0,
+          "path": "/srv/dsh-bio/runs/run-example/engine/out/zip_reports/0/sample_fastqc.zip",
+          "relativePath": "out/zip_reports/0/sample_fastqc.zip",
+          "sizeBytes": "288628",
+          "sha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ]
+    },
+    {
       "outputId": "summary_reports",
       "type": "file",
       "cardinality": "many",
@@ -33,7 +47,7 @@
           "path": "/srv/dsh-bio/runs/run-example/engine/out/summary_reports/0/summary.txt",
           "relativePath": "out/summary_reports/0/summary.txt",
           "sizeBytes": "489",
-          "sha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          "sha256": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
         }
       ]
     }

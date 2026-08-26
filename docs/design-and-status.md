@@ -133,11 +133,13 @@ not a general-purpose or production WDL runner.
   provenance fields. Results are limited to 1024 artifacts, 16 GiB each, and
   64 GiB total, opened through stable confined canonical targets with no-follow
   semantics, streamed through SHA-256, and rechecked for descriptor and path
-  identity. Stable miniwdl output symlinks are accepted only while both the link
-  and confined target remain unchanged.
+  identity. Hashing checks owner cancellation between chunks and rejects
+  repeated file entities. Stable miniwdl output symlinks are accepted only while
+  both the link and confined target remain unchanged.
 - `fastq-qc@1.2.0` declares extracted `summary.txt` files. Parsing is limited to
-  1 MiB, 512 lines, and 4096 bytes per line; malformed UTF-8 or module states
-  fail the run, and the host plugin never extracts ZIP archives.
+  1 MiB and 512 lines per report, 4096 bytes per line, and 8 MiB / 16384 module
+  lines per result; malformed UTF-8 or module states fail the run, and the host
+  plugin never extracts ZIP archives.
 
 ## Next milestones
 

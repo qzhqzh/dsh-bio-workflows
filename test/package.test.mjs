@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
+import { validateBioWorkflowResultSemantics } from '../src/execution.js'
 import {
   PACKAGE_NAME,
   PACKAGE_VERSION,
@@ -63,9 +64,15 @@ test('BioWorkflowResult v1 schema exposes checksummed artifacts and FastQC summa
   assert.equal(schema.$defs.fastqcSummary.properties.reports.maxItems, 1024)
   assert.equal(example.schemaVersion, schema.properties.schemaVersion.const)
   assert.match(example.workflow.bundleDigest, /^sha256:[a-f0-9]{64}$/)
+  assert.deepEqual(example.artifacts.map((group) => group.outputId), [
+    'html_reports',
+    'zip_reports',
+    'summary_reports',
+  ])
   assert.equal(example.artifacts[0].items[0].ordinal, 0)
   assert.match(example.artifacts[0].items[0].sha256, /^sha256:[a-f0-9]{64}$/)
   assert.deepEqual(example.summaries.fastqc.moduleCounts, { pass: 1, warn: 1, fail: 1 })
+  assert.deepEqual(validateBioWorkflowResultSemantics(example), { valid: true, errors: [] })
 })
 
 test('the foundation package has no install lifecycle scripts', () => {

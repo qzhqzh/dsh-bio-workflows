@@ -1,11 +1,11 @@
 {
   "schemaVersion": "1",
-  "recordedAt": "2026-08-26T08:51:33.915Z",
+  "recordedAt": "2026-08-26T09:26:29.265Z",
   "scope": "real-bioworkflow-result-acceptance",
   "packageVersion": "0.7.0",
   "adapterSources": {
     "index.js": "52680f7abea5da4f8f9d1a92d3bc30e1c5e2b24e1e5366637b30fe3e5521b537",
-    "src/execution.js": "d9bd207ce90f4c002285848590227be97b8912084186bd326a873b77940c1302",
+    "src/execution.js": "5f66b40cfeabe04021d01af7b693f23779fdd31cad87075779a71cc3d310d42a",
     "src/execution-tools.js": "0ec7fdfbfbf35dc921cdac62109e6674331d17f59270f76d4082366b96a13c5b",
     "src/workflow-store.js": "cf5c3e3a17ba630bde839649eb0b34dc5de4747f1bce1bf23b6d59b80c7741b9"
   },
@@ -13,7 +13,7 @@
     "id": "fastq-qc",
     "version": "1.2.0",
     "bundleDigest": "sha256:6dac1d1a37672462a1e4539fccf967f6a1204a9667c94799f36351d8d92e564e",
-    "planDigest": "sha256:77c2adbfe2e5c91da490f748a081baa7caee8e66996ac60ea229a1db63f2429b"
+    "planDigest": "sha256:e61776b4672e6676bb2a58874cf6b032c5f596763ec7a079fbb3c2365384de3c"
   },
   "runner": {
     "name": "miniwdl",
@@ -52,7 +52,9 @@
     "maxArtifactBytes": "17179869184",
     "maxTotalArtifactBytes": "68719476736",
     "maxFastqcSummaryBytes": 1048576,
+    "maxTotalFastqcSummaryBytes": 8388608,
     "maxFastqcSummaryLines": 512,
+    "maxTotalFastqcSummaryLines": 16384,
     "maxFastqcSummaryLineBytes": 4096,
     "canonicalTargetNoFollowOpen": true,
     "descriptorIdentityRechecked": true,
@@ -73,8 +75,8 @@
         "outputId": "zip_reports",
         "ordinal": 0,
         "sizeBytes": "288628",
-        "sha256": "sha256:616d59a4f994cf13ecb3f8f6175f10f42f0540c56ae8e24a03eeccb8728f5ad6",
-        "directSha256": "sha256:616d59a4f994cf13ecb3f8f6175f10f42f0540c56ae8e24a03eeccb8728f5ad6"
+        "sha256": "sha256:7a185c7d7841af2dbb426fe1f16676192ca3a0024b35227098df502ce766c76f",
+        "directSha256": "sha256:7a185c7d7841af2dbb426fe1f16676192ca3a0024b35227098df502ce766c76f"
       },
       {
         "outputId": "summary_reports",

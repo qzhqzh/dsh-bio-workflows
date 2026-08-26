@@ -38,6 +38,7 @@ try {
     import {
       BIO_WORKFLOW_RESULT_SCHEMA_VERSION,
       createExecutionManager,
+      validateBioWorkflowResultSemantics,
     } from 'dsh-bio-workflows/execution'
     import { MANIFEST_SCHEMA_VERSION } from 'dsh-bio-workflows/manifest'
     import metadata from 'dsh-bio-workflows/package.json' with { type: 'json' }
@@ -50,6 +51,7 @@ try {
 
     assert.equal(typeof createWorkflowCatalog, 'function')
     assert.equal(typeof createExecutionManager, 'function')
+    assert.equal(typeof validateBioWorkflowResultSemantics, 'function')
     assert.equal(typeof preflightWorkflow, 'function')
     assert.equal(typeof createWorkflowStore, 'function')
     assert.equal(metadata.name, plugin.name)

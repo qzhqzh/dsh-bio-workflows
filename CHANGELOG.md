@@ -7,14 +7,17 @@
   records without `result` readable.
 - Group artifacts deterministically by manifest output and array ordinal, then
   calculate SHA-256 through confined canonical file descriptors. Enforce 1024
-  artifacts, 16 GiB per-file and 64 GiB aggregate limits, no-follow target opens, stable
-  miniwdl-output symlink identity, and before/after metadata checks.
+  artifacts, 16 GiB per-file and 64 GiB aggregate limits, no-follow target
+  opens, stable miniwdl-output symlink identity, cancellable chunked hashing,
+  repeated-file rejection, and before/after metadata checks.
 - Add the immutable, executable `fastq-qc@1.2.0` bundle with declared extracted
   FastQC summary files. Parse bounded UTF-8 module states into namespaced PASS,
   WARN, and FAIL reports without extracting ZIP archives on the host.
 - Publish the result JSON Schema and explicit limits, add fail-closed tests for
   escaped, oversized, aggregate-over-budget, malformed, and invalid
-  UTF-8 outputs, and retain source-hash-bound real miniwdl/Docker/DSH evidence.
+  UTF-8 outputs, enforce 8 MiB / 16384-line aggregate FastQC parser limits, add
+  cross-field semantic validation, and retain source-hash-bound real
+  miniwdl/Docker/DSH evidence.
 
 ## 0.6.0 - 2026-08-26
 

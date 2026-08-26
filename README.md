@@ -116,6 +116,7 @@ import {
   BIO_WORKFLOW_RESULT_SCHEMA_VERSION,
   createExecutionManager,
   parseExecutionConfig,
+  validateBioWorkflowResultSemantics,
 } from 'dsh-bio-workflows/execution'
 import {
   parseWorkflowManifest,
@@ -178,7 +179,9 @@ The normalized result contract is published separately as
 It is additive to `run.json`: historical `0.5.x` and `0.6.x` records without a
 `result` field remain readable. A complete
 [example result](./docs/examples/bio-workflow-result-v1.json) ships with the
-package.
+package. Apply the JSON Schema first, then
+`validateBioWorkflowResultSemantics` for the cross-group 1024-artifact limit and
+FastQC count/reference consistency that JSON Schema cannot express directly.
 
 The built-in store is searchable without configuration. Local writes are off
 by default. To enable install and scaffold operations, configure an absolute,
@@ -277,14 +280,16 @@ exit facts, miniwdl results, bounded output inventory, and an additive
 `BioWorkflowResult v1` on successful new runs. Result artifact groups follow
 manifest output order and preserve each miniwdl array order. Every file is
 limited to 16 GiB, each result is limited to 1024 artifacts and 64 GiB of
-aggregate hashing, and SHA-256 is
+aggregate hashing, repeated file entities are rejected, and hashing checks job
+cancellation between chunks. SHA-256 is
 calculated from a no-follow canonical target descriptor whose identity is
 checked before and after streaming. Stable miniwdl-managed output symlinks are
 accepted only while their path identity remains unchanged and their resolved
-target stays inside the engine directory. FastQC summary text is limited to
-1 MiB, 512 lines, and 4096 bytes per line; the host never extracts the ZIP
-report. Provenance has a separate 32 MiB read/write limit and remains readable
-after input mounts are removed.
+target stays inside the engine directory. Each FastQC summary is limited to
+1 MiB, 512 lines, and 4096 bytes per line; all summaries in one result are
+limited to 8 MiB and 16384 module lines. The host never extracts the ZIP report.
+Provenance has a separate 32 MiB read/write limit and remains readable after
+input mounts are removed.
 
 Current security limits are explicit in every plan: approval binds large
 biological inputs by canonical path and filesystem identity/metadata rather

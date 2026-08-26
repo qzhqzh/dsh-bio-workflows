@@ -7,6 +7,7 @@ import {
   link,
   mkdir,
   mkdtemp,
+  open,
   readFile,
   readdir,
   realpath,
@@ -29,6 +30,7 @@ import {
   ExecutionConfigValidationError,
   createExecutionManager,
   parseExecutionConfig,
+  validateBioWorkflowResultSemantics,
 } from '../src/execution.js'
 import { createWorkflowStore } from '../src/workflow-store.js'
 
@@ -352,7 +354,9 @@ test('execution config is strict, disabled by default, and requires disjoint ded
     maxArtifactBytes: '17179869184',
     maxTotalArtifactBytes: '68719476736',
     maxFastqcSummaryBytes: 1024 * 1024,
+    maxTotalFastqcSummaryBytes: 8 * 1024 * 1024,
     maxFastqcSummaryLines: 512,
+    maxTotalFastqcSummaryLines: 16 * 1024,
     maxFastqcSummaryLineBytes: 4096,
   })
   assert.deepEqual(parseExecutionConfig(), {
@@ -871,6 +875,39 @@ test('fastq-qc 1.2.0 emits checksummed artifacts and a bounded FastQC summary', 
         ],
       }],
     })
+    assert.deepEqual(validateBioWorkflowResultSemantics(observed.run.result), {
+      valid: true,
+      errors: [],
+    })
+    const inconsistent = structuredClone(observed.run.result)
+    inconsistent.summaries.fastqc.reportCount = 2
+    inconsistent.summaries.fastqc.reports[0].overallStatus = 'pass'
+    assert.deepEqual(
+      validateBioWorkflowResultSemantics(inconsistent).errors.map((error) => error.code),
+      ['count_mismatch', 'status_mismatch'],
+    )
+    const invalidReference = structuredClone(observed.run.result)
+    invalidReference.summaries.fastqc.reports[0].artifact.outputId = 'html_reports'
+    assert.equal(
+      validateBioWorkflowResultSemantics(invalidReference).errors.some(
+        (error) => error.code === 'missing_reference',
+      ),
+      true,
+    )
+    const aggregateOverflow = structuredClone(observed.run.result)
+    aggregateOverflow.summaries = {}
+    aggregateOverflow.artifacts = ['first', 'second'].map((outputId) => ({
+      outputId,
+      type: 'file',
+      cardinality: 'many',
+      items: Array.from({ length: 600 }, (_, ordinal) => ({ ordinal })),
+    }))
+    assert.equal(
+      validateBioWorkflowResultSemantics(aggregateOverflow).errors.some(
+        (error) => error.code === 'aggregate_limit',
+      ),
+      true,
+    )
     const persisted = JSON.parse(await readFile(join(started.runDirectory, 'run.json'), 'utf8'))
     assert.deepEqual(persisted.result, observed.run.result)
   } finally {
@@ -941,6 +978,50 @@ test('result collection hashes a stable confined miniwdl-style output symlink', 
   }
 })
 
+test('result collection rejects an artifact changed while hashing', async () => {
+  let keepMutating = true
+  let mutation = Promise.resolve()
+  const fixture = await makeFixture({
+    async onOutputs({ html }) {
+      await truncate(html, 256 * 1024 * 1024)
+      mutation = (async () => {
+        const handle = await open(html, 'r+')
+        const byte = Buffer.alloc(1)
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 25))
+          while (keepMutating) {
+            await new Promise((resolve) => setImmediate(resolve))
+            byte[0] = (byte[0] + 1) % 256
+            await handle.write(byte, 0, byte.length, 0)
+          }
+        } finally {
+          await handle.close()
+        }
+      })()
+    },
+  })
+  const agent = { id: 'owner-session' }
+  try {
+    const planned = await fixture.manager.plan(fixture.request, { agent })
+    const started = await fixture.manager.run({
+      ...fixture.request,
+      expectedPlanDigest: planned.planDigest,
+    }, { agent })
+    await fixture.jobs.records.get(started.jobId).settled
+    keepMutating = false
+    await mutation
+    const observed = await fixture.manager.getRun(started.runId, { agent })
+    assert.equal(observed.run.status, 'failed')
+    assert.equal(observed.run.error.code, 'result_collection_failed')
+    assert.match(observed.run.error.message, /changed while hashing/)
+    assert.equal(observed.run.result, null)
+  } finally {
+    keepMutating = false
+    await mutation.catch(() => {})
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
 test('result collection rejects escaped and oversized declared artifacts', async () => {
   const outsideRoot = await mkdtemp(join(tmpdir(), 'dsh-bio-result-outside-'))
   try {
@@ -967,10 +1048,7 @@ test('result collection rejects escaped and oversized declared artifacts', async
         await fixture.jobs.records.get(started.jobId).settled
         const observed = await fixture.manager.getRun(started.runId, { agent })
         assert.equal(observed.run.status, 'failed', unsafe)
-        assert.equal(
-          observed.run.error.code,
-          unsafe === 'escaped' ? 'output_collection_failed' : 'result_collection_failed',
-        )
+        assert.equal(observed.run.error.code, 'result_collection_failed')
         assert.equal(observed.run.result, null, unsafe)
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
@@ -1013,7 +1091,7 @@ test('result collection rejects a declared FIFO without blocking', {
     }
     const observed = await fixture.manager.getRun(started.runId, { agent })
     assert.equal(observed.run.status, 'failed')
-    assert.equal(observed.run.error.code, 'output_collection_failed')
+    assert.equal(observed.run.error.code, 'result_collection_failed')
     assert.equal(observed.run.result, null)
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
@@ -1046,6 +1124,38 @@ test('result collection rejects aggregate artifact bytes before hashing', async 
     assert.equal(observed.run.error.code, 'result_collection_failed')
     assert.match(observed.run.error.message, /aggregate hashing limit/)
     assert.match(fixture.jobs.get(started.jobId, agent).detail, /^result_collection_failed:/)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('FastQC parsing rejects aggregate summary bytes before capture', async () => {
+  const fixture = await makeFixture({
+    workflowVersion: '1.2.0',
+    async onOutputs({ outputDirectory, defaultOutputs }) {
+      const summaries = []
+      for (let index = 0; index < 9; index += 1) {
+        const path = join(outputDirectory, `summary-${index}.txt`)
+        await writeFile(path, '')
+        await truncate(path, 1024 * 1024)
+        summaries.push(path)
+      }
+      return { ...defaultOutputs, 'fastq_qc.summary_reports': summaries }
+    },
+  })
+  const agent = { id: 'owner-session' }
+  try {
+    const planned = await fixture.manager.plan(fixture.request, { agent })
+    const started = await fixture.manager.run({
+      ...fixture.request,
+      expectedPlanDigest: planned.planDigest,
+    }, { agent })
+    await fixture.jobs.records.get(started.jobId).settled
+    const observed = await fixture.manager.getRun(started.runId, { agent })
+    assert.equal(observed.run.status, 'failed')
+    assert.equal(observed.run.error.code, 'result_collection_failed')
+    assert.match(observed.run.error.message, /aggregate parser limit/)
+    assert.equal(observed.run.result, null)
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
   }

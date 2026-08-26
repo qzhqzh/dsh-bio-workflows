@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://unpkg.com/dsh-bio-workflows@0.7.0/schema/bio-workflow-result.schema.json",
   "title": "BioWorkflowResult v1",
+  "$comment": "Use validateBioWorkflowResultSemantics from dsh-bio-workflows/execution for cross-group aggregate limits and FastQC count/reference consistency.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -23,6 +24,8 @@
     "artifacts": {
       "type": "array",
       "maxItems": 1024,
+      "description": "Artifact groups; all nested items are additionally limited to 1024 in total by the semantic validator.",
+      "x-maxTotalItems": 1024,
       "items": { "$ref": "#/$defs/artifactGroup" }
     },
     "summaries": {
