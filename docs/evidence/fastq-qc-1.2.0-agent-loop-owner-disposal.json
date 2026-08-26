@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1",
-  "recordedAt": "2026-08-26T09:26:52.788Z",
+  "recordedAt": "2026-08-26T09:33:14.662Z",
   "purpose": "Model-driven DSH Agent-loop and owner-disposal lifecycle acceptance",
   "candidate": {
     "package": "dsh-bio-workflows@0.7.0",
@@ -24,7 +24,7 @@
   "workflow": {
     "key": "fastq-qc@1.2.0",
     "bundleDigest": "sha256:6dac1d1a37672462a1e4539fccf967f6a1204a9667c94799f36351d8d92e564e",
-    "planDigest": "sha256:1d1a5d21047f445288f2157c8089ec2659709952f2c72ff02b7d8dea31d5e33c"
+    "planDigest": "sha256:324ec21fed5cb6feb73638252b029ccd8834bbfb050b2d206fac5fb49ca96f3d"
   },
   "model": {
     "requests": 4,
@@ -58,7 +58,7 @@
     "reconciliationStatus": "active"
   },
   "run": {
-    "id": "run-7d639ee3-e227-43f0-9cfe-9e724f519a10",
+    "id": "run-f080cb6d-e86f-44da-9fae-c019f52368ef",
     "statusAfterDispose": "killed",
     "exit": {
       "exitCode": 143,
@@ -70,7 +70,7 @@
   },
   "sourceSha256": {
     "scripts/smoke-dsh-agent-loop.mjs": "398cf3dbd1cd403fccf59e0dd72b7661f852d48a4af55914cb17467038f28a51",
-    "src/execution.js": "5f66b40cfeabe04021d01af7b693f23779fdd31cad87075779a71cc3d310d42a",
+    "src/execution.js": "7329362bb07966ee2290b4fb559dbc88a46f33dd57b41d51e03939c96049fa0b",
     "src/execution-tools.js": "0ec7fdfbfbf35dc921cdac62109e6674331d17f59270f76d4082366b96a13c5b",
     "index.js": "52680f7abea5da4f8f9d1a92d3bc30e1c5e2b24e1e5366637b30fe3e5521b537",
     "workflows/fastq-qc/1.2.0/main.wdl": "0ccef9731dc4a5ff9e40f79103b715b2863989c0c78dfe046d3e5abd25254a5e",

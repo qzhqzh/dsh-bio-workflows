@@ -894,6 +894,14 @@ test('fastq-qc 1.2.0 emits checksummed artifacts and a bounded FastQC summary', 
       ),
       true,
     )
+    const duplicateOutput = structuredClone(observed.run.result)
+    duplicateOutput.artifacts.push(structuredClone(duplicateOutput.artifacts.at(-1)))
+    assert.equal(
+      validateBioWorkflowResultSemantics(duplicateOutput).errors.some(
+        (error) => error.code === 'duplicate_output',
+      ),
+      true,
+    )
     const aggregateOverflow = structuredClone(observed.run.result)
     aggregateOverflow.summaries = {}
     aggregateOverflow.artifacts = ['first', 'second'].map((outputId) => ({

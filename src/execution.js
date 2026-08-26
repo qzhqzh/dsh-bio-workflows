@@ -1499,6 +1499,7 @@ export function validateBioWorkflowResultSemantics(value) {
   }
 
   const summaryArtifactReferences = new Set()
+  const outputIds = new Set()
   let artifactCount = 0
   let inspectedArtifactItems = 0
   if (!Array.isArray(value.artifacts)) {
@@ -1506,6 +1507,18 @@ export function validateBioWorkflowResultSemantics(value) {
   } else {
     for (const [groupIndex, group] of value.artifacts.entries()) {
       if (!isPlainObject(group) || !Array.isArray(group.items)) continue
+      if (typeof group.outputId === 'string') {
+        if (outputIds.has(group.outputId)) {
+          pushResultSemanticError(
+            errors,
+            `$.artifacts[${groupIndex}].outputId`,
+            'duplicate_output',
+            'artifact outputId groups must be unique',
+          )
+        } else {
+          outputIds.add(group.outputId)
+        }
+      }
       artifactCount += group.items.length
       const inspectCount = Math.min(
         group.items.length,
