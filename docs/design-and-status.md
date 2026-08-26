@@ -148,7 +148,8 @@ not a general-purpose or production WDL runner.
 2. Promote `bam-qc` into the executable allowlist after the same real-run and
    cancellation tests, including BAM index handling if required.
 3. Add revision-bound custom-WDL drafts, deterministic validation, and
-   `WorkflowGraph v1` for DeepSeek Harness native visualization.
+   `WorkflowGraph v1` for DeepSeek Harness native visualization, following the
+   [AI-assisted WDL authoring RFC](./ai-assisted-wdl-and-visualization.md).
 4. Add controlled test, review, and immutable promotion before any custom draft
    can use the production execution adapter.
 5. Only then generalize to Cromwell/WES and Git/TRS Store providers.
