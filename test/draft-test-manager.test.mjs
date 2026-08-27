@@ -42,6 +42,31 @@ function runnerDigest(value, domain) {
     .digest('hex')}`
 }
 
+async function executableFixtureIdentity(path) {
+  const bytes = await readFile(path)
+  const launch = await lstat(path, { bigint: true })
+  const canonicalPath = await realpath(path)
+  const canonical = await lstat(canonicalPath, { bigint: true })
+  return {
+    launchPathDigest: `sha256:${createHash('sha256').update(path).digest('hex')}`,
+    canonicalPathDigest: `sha256:${createHash('sha256').update(canonicalPath).digest('hex')}`,
+    launchDevice: launch.dev.toString(),
+    launchInode: launch.ino.toString(),
+    launchMode: (launch.mode & 0o7777n).toString(8),
+    launchSizeBytes: Number(launch.size),
+    launchMtimeNs: launch.mtimeNs.toString(),
+    launchCtimeNs: launch.ctimeNs.toString(),
+    sha256: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+    sizeBytes: bytes.length,
+    device: canonical.dev.toString(),
+    inode: canonical.ino.toString(),
+    uid: canonical.uid.toString(),
+    mode: (canonical.mode & 0o777n).toString(8).padStart(3, '0'),
+    mtimeNs: canonical.mtimeNs.toString(),
+    ctimeNs: canonical.ctimeNs.toString(),
+  }
+}
+
 function fakeControllerIdentity(pid = 4321) {
   return {
     schemaVersion: '1',
@@ -496,6 +521,60 @@ class FakeSubprocess {
   }
 }
 
+class TransientCleanupSubprocess {
+  constructor() {
+    this.containerPresent = true
+    this.volumePresent = true
+    this.containerRemoveAttempts = 0
+    this.volumeRemoveAttempts = 0
+  }
+
+  async resolveExecutable(value) {
+    return value
+  }
+
+  spawn(spec) {
+    const kind = spec.argv[1]
+    const action = spec.argv[2]
+    let stdout = ''
+    let stderr = ''
+    let exitCode = 0
+    if (kind === 'container' && action === 'ls') {
+      stdout = this.containerPresent ? `${'c'.repeat(12)}\n` : ''
+    } else if (kind === 'container' && action === 'rm') {
+      this.containerRemoveAttempts += 1
+      if (this.containerRemoveAttempts === 1) {
+        exitCode = 1
+        stderr = 'transient container cleanup failure\n'
+      } else {
+        this.containerPresent = false
+      }
+    } else if (kind === 'volume' && action === 'ls') {
+      stdout = this.volumePresent ? `dshbio-vol-${'d'.repeat(20)}\n` : ''
+    } else if (kind === 'volume' && action === 'rm') {
+      this.volumeRemoveAttempts += 1
+      if (this.containerPresent) {
+        exitCode = 1
+        stderr = 'volume is still in use\n'
+      } else {
+        this.volumePresent = false
+      }
+    } else {
+      throw new Error(`unexpected cleanup command: ${JSON.stringify(spec.argv)}`)
+    }
+    return {
+      pid: 4400 + this.containerRemoveAttempts + this.volumeRemoveAttempts,
+      collected: {
+        stdout: new StaticReader(stdout),
+        stderr: new StaticReader(stderr),
+      },
+      done: Promise.resolve({ exitCode, signal: null }),
+      terminate() {},
+      waitForExit: async () => true,
+    }
+  }
+}
+
 class IdentityProbeSubprocess {
   constructor() {
     this.spawns = []
@@ -611,10 +690,10 @@ async function makeManager(options = {}) {
   const runsRoot = join(root, 'runs')
   await mkdir(runsRoot, { mode: 0o700 })
   await chmod(runsRoot, 0o700)
-  const runnerExecutable = options.useDefaultProbe
+  const runnerExecutable = options.runnerExecutable ?? (options.useDefaultProbe || options.createRunnerExecutable
     ? join(root, 'fixture-probe-executable')
-    : '/bin/true'
-  if (options.useDefaultProbe) {
+    : '/bin/true')
+  if (options.useDefaultProbe || options.createRunnerExecutable) {
     await writeFile(runnerExecutable, TRUE_BYTES, { mode: 0o700, flag: 'wx' })
   }
   const store = stores()
@@ -964,6 +1043,59 @@ test('startup recovery terminates an exact persisted live controller before Dock
     assert.equal(recovered.test.status, 'interrupted')
     assert.equal(recovered.test.evidence.resources.controllerTerminationVerified, true)
     assert.equal(recovered.test.evidence.resources.controllerTerminationMode, 'exact_identity_terminated')
+  } finally {
+    await removeTestRoot(first.root)
+  }
+})
+
+test('startup recovery retries transient exact-label cleanup failures before proving absence', async () => {
+  let runnerIdentity
+  const first = await makeManager({
+    hold: true,
+    createId: () => RESTART_UUID,
+    createRunnerExecutable: true,
+    probeRunnerIdentity: async () => structuredClone(runnerIdentity),
+  })
+  const runnerExecutable = first.config.runner.dockerExecutable
+  runnerIdentity = makeRunnerIdentity()
+  const executable = await executableFixtureIdentity(runnerExecutable)
+  runnerIdentity.internal.pythonPath = runnerExecutable
+  runnerIdentity.internal.dockerPath = runnerExecutable
+  runnerIdentity.public.executables.python = executable
+  runnerIdentity.public.executables.docker = executable
+  try {
+    const prepared = await first.manager.prepare(request, operation)
+    const started = await first.manager.start({
+      ...request,
+      expectedPlanDigest: prepared.planDigest,
+    }, operation)
+    assert.equal(started.ok, true)
+    const cleanupSubprocess = new TransientCleanupSubprocess()
+    const restarted = createDraftTestManager({
+      ...first.store,
+      config: first.config,
+      getSubprocess: () => cleanupSubprocess,
+      getJobs: () => new FakeJobs(),
+      probeRunnerIdentity: async () => structuredClone(runnerIdentity),
+      terminateRecoveredController: async () => ({ verified: true, mode: 'exact_identity_terminated' }),
+      runtimeId: 'runtime-cleanup-retry',
+      now: () => new Date('2026-08-27T12:05:00.000Z'),
+    })
+
+    const initialized = await restarted.initialize()
+    assert.equal(initialized.failed, false)
+    assert.equal(initialized.reconciledCount, 1)
+    const recovered = await restarted.get(started.testId, operation)
+    assert.equal(
+      recovered.test.evidence.failure.code,
+      'runtime_restart_interrupted',
+      JSON.stringify(recovered.test.evidence),
+    )
+    assert.equal(recovered.test.evidence.resources.cleanupVerified, true)
+    assert.equal(recovered.test.evidence.resources.containersRemaining, 0)
+    assert.equal(recovered.test.evidence.resources.volumesRemaining, 0)
+    assert.equal(cleanupSubprocess.containerRemoveAttempts, 2)
+    assert.equal(cleanupSubprocess.volumeRemoveAttempts, 2)
   } finally {
     await removeTestRoot(first.root)
   }

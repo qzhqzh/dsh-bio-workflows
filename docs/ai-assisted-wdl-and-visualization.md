@@ -1,8 +1,8 @@
 # AI-assisted WDL authoring and visualization
 
 Status: accepted for [issue #13](https://github.com/qzhqzh/dsh-bio-workflows/issues/13);
-the authoring core (`0.8.0`), deterministic graph (`0.9.0`), and native
-Workflow Center (`0.10.0`) are implemented.
+the authoring core (`0.8.0`), deterministic graph (`0.9.0`), native Workflow
+Center (`0.10.0`), and packaged on-demand Agent Skill are implemented.
 The integration notes are verified against the immutable DeepSeek Harness
 [`dsh-v0.1.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2)
 release (`b150a551b8`). This document defines no new execution authority.
@@ -13,14 +13,14 @@ release (`b150a551b8`). This document defines no new execution authority.
 | --- | --- |
 | Model ownership | DeepSeek Harness owns the model, Agent loop, conversation, and human interaction. |
 | Domain ownership | `dsh-bio-workflows` owns draft revisions, deterministic validation, graphs, tests, promotion, and execution policy. |
-| Model integration | Use the current DSH Agent and narrow plugin tools. Do not embed another LLM client; an optional on-demand Skill remains a later enhancement. |
+| Model integration | Use the current DSH Agent, packaged on-demand `bio-wdl-authoring` Skill, and narrow plugin tools. Do not embed another LLM client. |
 | Draft trust | Every generated or edited source is an untrusted, owner-scoped draft. |
 | Concurrency | Every mutation uses compare-and-swap over both `expectedRevision` and `expectedContentDigest`. |
 | Validation | Evidence is derived by the plugin from an exact revision, validator policy, and toolchain; model claims are never evidence. |
 | Visualization | `WorkflowGraph v1` is parsed from exact WDL source. The model may explain it but cannot create authoritative graph edges. |
 | First native UI | Ship a browser Client face in the same npm package: a keyed `tool.call.toolview` renderer plus a responsive Workflow Center. A correlated Conversation Node is deferred. |
 | Execution | Draft validation and graph generation cannot run WDL tasks. Test, promotion, and production execution remain separate approvals. |
-| Implemented slices | `0.8.0` create/get/update/validate; `0.8.1` replay-safe presentations; `0.9.0` graph; `0.10.0` Workflow Center; `0.11.0` bounded owner-session Mission authoring and validation repair; post-`0.11.0` branch: default-off, separately approved isolated fixture test. No graph editor, promotion, or new production execution allowlist. |
+| Implemented slices | `0.8.0` create/get/update/validate; `0.8.1` replay-safe presentations; `0.9.0` graph; `0.10.0` Workflow Center; `0.11.0` bounded owner-session Mission authoring and validation repair; post-`0.11.0` branch: packaged Skill and default-off, separately approved isolated fixture test. No graph editor, promotion, or new production execution allowlist. |
 
 ## Product boundary
 
@@ -295,9 +295,9 @@ it must not assign an update to the latest visually open card.
 5. **`0.10.0` native UI — complete:** same-package browser Client, Workflow
    Center, Agent intent bridge, readiness endpoint, and keyed read-only graph
    card.
-6. Add the packaged `bio-wdl-authoring` Skill after tool names and diagnostic
-   repair behavior are stable.
-7. **Post-`0.11.0` branch — implemented, review pending:** dedicated bounded
+6. **Packaged Skill — complete:** register `bio-wdl-authoring` through the
+   optional DSH `ctx.skills` service with revision/CAS and authority guidance.
+7. **Post-`0.11.0` branch — implemented and locally accepted:** dedicated bounded
    draft-test sandbox, declarative fixtures, independent approval, denial
    probes, resource/output limits, owner lifecycle, and real Docker acceptance.
 8. Add independent review evidence and immutable promotion with another independent

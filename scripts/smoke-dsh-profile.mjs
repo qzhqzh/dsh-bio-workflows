@@ -81,9 +81,20 @@ try {
     'runner',
     'dsh_fixture_runner.py',
   ))
+  await access(join(
+    dshHome,
+    'profiles',
+    'headless',
+    'node_modules',
+    'dsh-bio-workflows',
+    'skills',
+    'bio-wdl-authoring',
+    'SKILL.md',
+  ))
   assert.equal(installedPlugin.name, 'dsh-bio-workflows')
   assert.equal(typeof installedPlugin.apply, 'function')
   const registered = []
+  const registeredSkills = []
   const listeners = new Map()
   const waterfall = async (event, exec, terminal) => {
     const handlers = listeners.get(event) ?? []
@@ -95,12 +106,18 @@ try {
     return dispatch(0)
   }
   installedPlugin.apply({
+    skills: {
+      register: (skill) => registeredSkills.push(skill),
+    },
     tools: {
       register: (tool) => registered.push(tool),
       get: (name) => registered.find((tool) => tool.name === name),
     },
     on: (event, listener) => listeners.set(event, [...(listeners.get(event) ?? []), listener]),
   })
+  assert.equal(registeredSkills.length, 1)
+  assert.equal(registeredSkills[0].name, 'bio-wdl-authoring')
+  assert.match(registeredSkills[0].content, /ready_for_isolated_test/)
   assert.deepEqual(
     registered
       .filter((tool) => (

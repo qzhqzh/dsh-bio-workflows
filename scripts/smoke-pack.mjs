@@ -40,6 +40,7 @@ try {
   await access(join(installedRoot, 'lib', 'client.js'))
   await access(join(installedRoot, 'requirements', 'miniwdl-1.15.0.txt'))
   await access(join(installedRoot, 'runner', 'dsh_fixture_runner.py'))
+  await access(join(installedRoot, 'skills', 'bio-wdl-authoring', 'SKILL.md'))
   const fixture = JSON.parse(await readFile(join(fixtureRoot, 'fixture.json'), 'utf8'))
   const fixtureInput = await readFile(join(fixtureRoot, 'inputs', 'message.txt'))
   assert.equal(fixtureInput.length, fixture.files[0].sizeBytes)
@@ -51,6 +52,10 @@ try {
   const smokeProgram = String.raw`
     import assert from 'node:assert/strict'
     import * as plugin from 'dsh-bio-workflows'
+    import {
+      BIO_WDL_AUTHORING_SKILL_NAME,
+      registerBioWdlAuthoringSkill,
+    } from 'dsh-bio-workflows/authoring-skill'
     import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
     import { createDraftStore } from 'dsh-bio-workflows/draft-store'
     import {
@@ -98,6 +103,7 @@ try {
     import fixtureBundleSchema from 'dsh-bio-workflows/schema/fixture-bundle.schema.json' with { type: 'json' }
 
     assert.equal(typeof createWorkflowCatalog, 'function')
+    assert.equal(typeof registerBioWdlAuthoringSkill, 'function')
     assert.equal(typeof createDraftStore, 'function')
     assert.equal(typeof createDraftTestManager, 'function')
     assert.equal(typeof createDraftValidator, 'function')
@@ -130,6 +136,7 @@ try {
     assert.equal(typeof metadata.exports['./client'], 'string')
 
     const registered = []
+    const registeredSkills = []
     const listeners = new Map()
     const waterfall = async (event, exec, terminal) => {
       const handlers = listeners.get(event) ?? []
@@ -141,6 +148,9 @@ try {
       return dispatch(0)
     }
     plugin.apply({
+      skills: {
+        register: (skill) => registeredSkills.push(skill),
+      },
       tools: {
         register: (tool) => registered.push(tool),
         get: (name) => registered.find((tool) => tool.name === name),
@@ -159,6 +169,9 @@ try {
       }],
       environment: { engines: { nextflow: { available: true, version: '24.04' } } },
     })
+    assert.equal(registeredSkills.length, 1)
+    assert.equal(registeredSkills[0].name, BIO_WDL_AUTHORING_SKILL_NAME)
+    assert.match(registeredSkills[0].content, /ready_for_isolated_test/)
     assert.deepEqual(
       registered
         .filter((tool) => (
