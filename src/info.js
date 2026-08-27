@@ -12,6 +12,16 @@ export function getPackageInfo(
   draftTesting = {},
 ) {
   const executionEnabled = execution.enabled === true
+  const providers = Array.isArray(store.providers)
+    ? store.providers
+      .filter((provider) => provider && typeof provider === 'object')
+      .map((provider) => ({
+        id: provider.id ?? null,
+        kind: provider.kind ?? null,
+        revision: provider.revision ?? null,
+        readOnly: provider.readOnly === true,
+      }))
+    : []
   const executionReady = executionEnabled
     && execution.subprocessAvailable === true
     && execution.jobsAvailable === true
@@ -32,6 +42,7 @@ export function getPackageInfo(
       builtinWorkflowCount: store.builtinWorkflowCount ?? 0,
       localStoreConfigured: store.localStoreConfigured ?? false,
       writesEnabled: store.writesEnabled ?? false,
+      providers,
     },
     execution: {
       enabled: executionEnabled,
@@ -39,6 +50,12 @@ export function getPackageInfo(
       subprocessAvailable: execution.subprocessAvailable === true,
       jobsAvailable: execution.jobsAvailable === true,
       supportedWorkflows: [...(execution.supportedWorkflows ?? [])],
+      policy: {
+        inputChecksum: execution.policy?.inputChecksum ?? 'metadata',
+        networkIsolation: { ...(execution.policy?.networkIsolation ?? { mode: 'advisory' }) },
+        budgets: { ...(execution.policy?.budgets ?? {}) },
+        retention: { ...(execution.policy?.retention ?? { enabled: false }) },
+      },
     },
     authoring: {
       configured: authoring.configured === true,
@@ -77,6 +94,7 @@ export function getPackageInfo(
       manifestValidation: true,
       preflightValidation: true,
       workflowStore: true,
+      readOnlyWorkflowProviders: providers.length > 0,
       wdlBundleValidation: true,
       workflowInstallation: store.writesEnabled === true,
       workflowScaffolding: store.writesEnabled === true,
@@ -99,6 +117,12 @@ export function getPackageInfo(
       outputChecksums: executionEnabled,
       fastqcSummaries: executionEnabled
         && (execution.supportedWorkflows ?? []).includes('fastq-qc@1.2.0'),
+      preApprovalInputChecksums: executionEnabled
+        && execution.policy?.inputChecksum === 'sha256',
+      containerEgressIsolation: executionEnabled
+        && execution.policy?.networkIsolation?.mode === 'ephemeral_internal',
+      approvedRunRetentionCleanup: executionEnabled
+        && execution.policy?.retention?.enabled === true,
     },
   }
 }

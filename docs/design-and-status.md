@@ -109,7 +109,7 @@ model-authored command fragments or environment names to a host shell.
 | --- | --- | --- | --- |
 | DSH bundle installation | Implemented | Pack and isolated-profile smoke tests; both are CI gates | Validate the first remote CI run |
 | Manifest v1 and catalog | Implemented | Strict runtime validator, JSON Schema, deterministic list/get | Migration policy when v2 is needed |
-| WDL bundle and Store | Implemented foundation | Bounded reads, file SHA-256, local import closure, immutable opt-in installs | Git/TRS providers and visual Store UI |
+| WDL bundle and Store | Implemented foundation plus read-only providers | Bounded reads, file SHA-256, local import closure, immutable opt-in installs, exact-revision Git/TRS snapshot markers, provider-scoped search/resolve/install | Richer visual Store UI; providers intentionally do not fetch or execute |
 | AI-assisted draft authoring | Implemented core plus packaged Skill | Session-derived ownership, opaque ids, immutable full snapshots, dual CAS, model-driven DSH Agent-loop and approval smoke, optional `ctx.skills` registration, structural and validator tests | Collaboration and promotion remain separate boundaries |
 | Bounded autonomous WDL repair | Implemented 0.11 authoring slice | Exact plan digest, one owner-session grant, durable action/failure/wall budgets, stable fingerprints, repeated-failure circuit breaker, restart interruption, Mission/tool integration tests | Mission report remains authoring-only and `success: false` |
 | Isolated fixture testing | Implemented and locally accepted on unreleased branch; review pending | Separate exact-plan approval, declarative fixture/assertion contracts, hash-bound miniwdl environment and controller seccomp policy, dedicated backend, inspected Docker controls, 17 deterministic probes, bounded evidence, owner/restart lifecycle, and real success/timeout/cancel/overflow/adversarial acceptance | Independent high-risk review and first remote CI run; no promotion authority |
@@ -117,10 +117,10 @@ model-authored command fragments or environment names to a host shell.
 | Native Workflow Center | Implemented | Same-package Client build, official sidebar/overlay/tool slots, built-in-only bootstrap, exact execution-allowlist affordances, deep-validated graph replay, fail-closed current-Session Agent bridge, desktop/mobile and modal keyboard Playwright tests | Agent-mediated draft browsing, direct source editor, richer Store providers |
 | Starter workflows | Two families, four versions | All WDL 1.0 bundles pass pinned `miniwdl 1.15.0 check`; `fastq-qc@1.2.0` has a retained real result acceptance record | Promote and verify BAM separately |
 | Declaration-only preflight | Implemented and unchanged | Pure input/environment validation with `executionReady: false` | None inside this intentionally pure boundary |
-| Trusted execution plan | Implemented for `fastq-qc@1.1.0` and `1.2.0` | Canonical input checks, total snapshot bytes and 1 TiB cap, file facts, executable identities, active Swarm probe, deterministic `planDigest` | Optional pre-approval full content checksums for large inputs |
+| Trusted execution plan | Implemented for `fastq-qc@1.1.0` and `1.2.0` | Canonical input checks, optional pre-approval SHA-256, configurable snapshot/result/log/storage budgets, executable identities, active Swarm probe, deterministic `planDigest` | Full hashing remains opt-in for large inputs |
 | Execution authorization | Implemented | `tools/pre-execute` asks with exact bundle and plan digests; tool body replans | Policy presets beyond one-shot user approval |
-| miniwdl adapter | Implemented MVP | Exact executable/version, real semantic check, fixed argv, no ambient environment inheritance, fixed Docker host and Engine ID, no host shell | Docker egress confinement and additional backends |
-| Run lifecycle | Implemented | Real LocalJobRegistry success/read/kill/wait acceptance plus model-driven AgentLoop search/plan/run, approval audit, owner disposal, process-tree termination, owner fencing, bounded owner-scoped history, and fail-closed restart interruption reconciliation | Deliberate retry/resume policy; no automatic retry |
+| miniwdl adapter | Implemented MVP plus optional egress policy | Exact executable/version, real semantic check, fixed argv, no ambient environment inheritance, fixed Docker host and Engine ID, ephemeral verified internal Swarm overlay, no host shell | Hard filesystem quotas and additional backends; this is not the untrusted-draft fixture backend |
+| Run lifecycle | Implemented | Real LocalJobRegistry success/read/kill/wait acceptance plus model-driven AgentLoop search/plan/run, approval audit, owner disposal, process-tree termination, owner fencing, bounded owner-scoped history, fail-closed restart interruption reconciliation, and exact-plan approved retention cleanup | Deliberate retry/resume policy; no automatic retry or cleanup |
 | Provenance and outputs | Result v1 implemented | Atomic `run.json`, input snapshot hashes, checksummed artifact groups, FastQC summary adapter, bounded parser and hashing limits | Directory digests and additional workflow-specific adapters |
 
 ## Is the main functionality implemented?
@@ -237,14 +237,15 @@ full WDL IDE.
 1. Complete independent high-risk review and remote CI acceptance for the
    locally accepted default-off fixture runner, then release it without changing
    Mission report success or production trust.
-2. Add independent review evidence and immutable promotion as new approval
-   boundaries before any custom production execution.
-3. Add an explicit optional pre-approval input-checksum policy, deployable
-   container egress/isolation, storage budgets, and retention controls.
-4. Promote `bam-qc` into the executable allowlist after the same real-run and
-   cancellation tests, including BAM index handling if required.
-5. Add revision-pinned Git/TRS Store providers and richer draft browsing.
-6. Only then generalize to Cromwell/WES and editable visual round trips.
+2. Keep independent review and immutable promotion as a future, separately
+   approved trust boundary; the current Mission release remains authoring-only.
+3. Run remote CI for the optional checksum, ephemeral internal-network,
+   plan-bound budget, approved retention cleanup, and Git/TRS snapshot slices.
+4. Consider `bam-qc` only under a future explicit allowlist authorization with
+   real BAM/BAI success and cancellation evidence.
+5. Add richer provider and draft browsing without changing execution trust.
+6. Only after those explicit decisions, consider Cromwell/WES or editable
+   visual round trips.
 
 ## Execution MVP definition of done
 

@@ -112,6 +112,10 @@ human-readable pending and completed card presentations:
   summaries with exact status filtering and fixed cursor pagination. After a
   runtime restart it records definitively orphaned non-terminal runs as
   `interrupted`; it never retries them or signals a stale PID.
+- `bio_workflows_run_cleanup_plan`: previews the exact old terminal run
+  directories selected by the configured owner-scoped retention policy.
+- `bio_workflows_run_cleanup`: replans, requires the exact cleanup digest and
+  DSH approval, then deletes only unchanged terminal candidates.
 
 ## Workflow Center
 
@@ -279,6 +283,36 @@ configure an absolute, dedicated root:
       root: /absolute/path/to/dsh-workflow-store
       writeEnabled: true
 ```
+
+The Store can also discover externally synchronized Git and TRS snapshots
+without network access or credentials. Each provider is an absolute read-only
+source root, pinned to a full Git commit or exact TRS version. Its root must
+contain a matching `.dsh-provider.json`; bundles remain non-executable and an
+install still requires the exact bundle digest:
+
+```yaml
+store:
+  root: /srv/dsh-bio/store
+  writeEnabled: true
+  providers:
+    - id: workflow-git
+      kind: git
+      root: /srv/dsh-bio/providers/workflow-git
+      revision: 0123456789abcdef0123456789abcdef01234567
+    - id: dockstore
+      kind: trs
+      root: /srv/dsh-bio/providers/dockstore
+      revision: release-2026-08-27
+```
+
+```json
+{"schemaVersion":"1","id":"workflow-git","kind":"git","revision":"0123456789abcdef0123456789abcdef01234567","readOnly":true}
+```
+
+Provider roots use the same `<id>/<version>` bundle layout as the built-in
+Store. The plugin never fetches, updates, or writes them; synchronization and
+revision checkout remain an operator responsibility. See
+[Revision-pinned read-only providers](./docs/read-only-providers.md).
 
 Revisioned authoring refuses to use the configured root unless it is owned by
 the DSH process user and is not writable by group or other users (normally mode
@@ -484,6 +518,22 @@ entry replacement. Violations fail with `runs_root_unsafe`,
       runner:
         executable: /usr/local/bin/miniwdl
         dockerExecutable: /usr/bin/docker
+      policy:
+        inputChecksum: sha256
+        networkIsolation:
+          mode: ephemeral_internal
+        budgets:
+          maxInputSnapshotBytes: 1099511627776
+          maxRunStorageBytes: 2199023255552
+          maxResultArtifactBytes: 17179869184
+          maxTotalResultArtifactBytes: 68719476736
+          maxJobOutputBytes: 262144
+          maxSpillBytes: 16777216
+        retention:
+          enabled: true
+          minimumAgeDays: 30
+          retainLatest: 100
+          maxDeletesPerCall: 50
 ```
 
 The executable allowlist contains `fastq-qc@1.1.0` and `fastq-qc@1.2.0`; use
@@ -536,12 +586,26 @@ limited to 8 MiB and 16384 module lines. The host never extracts the ZIP report.
 Provenance has a separate 32 MiB read/write limit and remains readable after
 input mounts are removed.
 
-Current security limits are explicit in every plan: approval binds large
-biological inputs by canonical path and filesystem identity/metadata rather
-than precomputing full content hashes; the post-approval run-owned snapshot is
-hashed for provenance. The adapter blocks privileged/runtime-selected Docker
-networks but does not enforce complete container egress isolation. Use only the
-shipped digest-pinned workflow and container assets on an isolated host.
+The policy block is optional and backward compatible. `inputChecksum: sha256`
+streams each regular input before approval, binds the digest into `planDigest`,
+and rechecks it while making the run-owned snapshot. `ephemeral_internal`
+creates one labeled, non-attachable internal Swarm overlay after approval,
+injects it as the fixed miniwdl task-runtime default, verifies its Docker
+identity and isolation flags, and removes it after the runner exits. This is a
+production egress control for the trusted built-in allowlist; it is not the
+fixture runner's stronger host-service-denial evidence and grants no authority
+to AI-authored drafts.
+
+All byte budgets are plan-bound and may only reduce the package maxima. Input
+snapshots and result artifacts fail closed at their configured limits; job
+capture/spill uses the configured bounds. Total run storage is checked from
+allocated filesystem blocks at one-second intervals and once after exit; the
+plan explicitly identifies this as monitor enforcement rather than a hard
+filesystem quota. Retention is disabled by default and never runs
+automatically. Cleanup requires a preview, exact digest, owner fencing,
+unchanged terminal provenance, and a separate DSH approval.
+See [Production execution policies](./docs/execution-policies.md) for the
+configuration contract, threat boundary, and cleanup runbook.
 
 ## Preflight boundary
 
@@ -582,8 +646,11 @@ Releases add independently reviewable layers:
 13. Separately approved isolated draft-test runner and fixture/result
     assertions — implemented and locally accepted on the unreleased development
     branch; remote CI and release review remain required
-14. Next: independent review/promotion, Git/TRS Store providers, and additional
-    execution adapters
+14. Revision-pinned read-only Git/TRS snapshots plus optional execution
+    integrity, egress, budget, and retention policies — implemented on the
+    unreleased development branch
+15. Next: independent review/promotion only under a future explicit trust
+    boundary; additional production adapters remain intentionally deferred
 
 Execution support remains explicit, auditable, and disabled by default.
 

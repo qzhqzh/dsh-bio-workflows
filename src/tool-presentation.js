@@ -3,9 +3,9 @@ const TOOL_PRESENTATIONS = Object.freeze({
   bio_workflows_list: { title: 'List configured bio-workflows', kind: 'search' },
   bio_workflows_get: { title: 'Inspect configured bio-workflow', kind: 'read', fields: ['id'] },
   bio_workflows_preflight: { title: 'Preflight bio-workflow inputs', kind: 'read', fields: ['id'] },
-  bio_workflows_search: { title: 'Search the workflow store', kind: 'search', fields: ['query', 'language', 'tag', 'source'] },
-  bio_workflows_validate: { title: 'Validate a workflow bundle', kind: 'read', fields: ['id', 'version', 'source'] },
-  bio_workflows_install: { title: 'Install a workflow bundle', kind: 'edit', fields: ['id', 'version', 'source'] },
+  bio_workflows_search: { title: 'Search the workflow store', kind: 'search', fields: ['query', 'language', 'tag', 'source', 'provider'] },
+  bio_workflows_validate: { title: 'Validate a workflow bundle', kind: 'read', fields: ['id', 'version', 'source', 'provider'] },
+  bio_workflows_install: { title: 'Install a workflow bundle', kind: 'edit', fields: ['id', 'version', 'source', 'provider'] },
   bio_workflows_scaffold: { title: 'Scaffold a WDL workflow', kind: 'edit', fields: ['id', 'version', 'name'] },
   bio_workflows_mission_prepare: { title: 'Prepare an autonomous software trial', kind: 'read', fields: ['software', 'objective'] },
   bio_workflows_mission_start: { title: 'Start an autonomous software trial', kind: 'execute', fields: ['software', 'expectedPlanDigest'] },
@@ -26,6 +26,8 @@ const TOOL_PRESENTATIONS = Object.freeze({
   bio_workflows_run: { title: 'Start a bio-workflow run', kind: 'execute', fields: ['id', 'version', 'expectedPlanDigest'] },
   bio_workflows_run_get: { title: 'Inspect a bio-workflow run', kind: 'read', fields: ['runId'] },
   bio_workflows_run_list: { title: 'List bio-workflow runs', kind: 'search', fields: ['status', 'cursor'] },
+  bio_workflows_run_cleanup_plan: { title: 'Preview run cleanup', kind: 'search', fields: [] },
+  bio_workflows_run_cleanup: { title: 'Clean up workflow runs', kind: 'edit', fields: ['expectedCleanupPlanDigest'] },
 })
 
 function salientInput(args, fields) {
@@ -111,6 +113,12 @@ function summaryLines(name, payload) {
   ) {
     lines.push(`${payload.testId ?? payload.test?.testId ?? 'Isolated draft test'} · ${payload.status ?? payload.test?.status ?? 'unknown'}`)
     lines.push('No production or promotion authority')
+  } else if (name === 'bio_workflows_run_cleanup_plan') {
+    lines.push(`Cleanup plan ${payload.cleanupPlanDigest ?? 'unavailable'}`)
+    lines.push(`${payload.plan?.candidates?.length ?? 0} owner-scoped terminal candidates · no data deleted`)
+  } else if (name === 'bio_workflows_run_cleanup') {
+    lines.push(`${payload.removedCount ?? 0} workflow run director${payload.removedCount === 1 ? 'y' : 'ies'} removed`)
+    lines.push(`Cleanup plan ${payload.cleanupPlanDigest ?? 'unavailable'}`)
   } else if (name === 'bio_workflows_run_get' || name === 'bio_workflows_run') {
     lines.push(`${payload.runId ?? payload.run?.runId ?? 'Workflow run'} · ${payload.status ?? payload.run?.status ?? 'submitted'}`)
   } else if (name === 'bio_workflows_draft_create' || name === 'bio_workflows_draft_update' || name === 'bio_workflows_draft_get') {

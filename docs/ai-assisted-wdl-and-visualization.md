@@ -265,8 +265,8 @@ it must not assign an update to the latest visually open card.
 
 - Use WDL 1.0 initially; new language versions require explicit compatibility
   gates and fixtures.
-- Keep remote imports disabled until a revision-pinned Git or TRS provider is
-  designed.
+- Keep remote imports disabled even for revision-pinned Git/TRS snapshots;
+  providers must expose a complete local, digest-verified import closure.
 - Require digest-pinned containers before test or promotion.
 - Never expose arbitrary shell, environment variables, network options,
   engine flags, host paths, or execution commands in authoring arguments.
@@ -302,8 +302,9 @@ it must not assign an update to the latest visually open card.
    probes, resource/output limits, owner lifecycle, and real Docker acceptance.
 8. Add independent review evidence and immutable promotion with another independent
    approval.
-9. Add Git/TRS discovery and richer Store UI only after trust tiers are
-   enforced.
+9. **Read-only provider discovery — complete on the unreleased branch:** exact
+   Git/TRS revision markers and provider-scoped bundle digests; richer Store UI
+   remains separate and grants no execution authority.
 
 The `0.7.0` result and execution MVP is already complete. The sequence above
 keeps AI-generated assets outside its production allowlist while making the

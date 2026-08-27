@@ -65,7 +65,7 @@ test('built-in WDL bundles load with verified files and explicit limitations', a
   }
 
   assert.equal(resultAcceptance.schemaVersion, '1')
-  assert.equal(resultAcceptance.packageVersion, '0.7.0')
+  assert.equal(resultAcceptance.packageVersion, '0.11.0')
   assert.equal(resultAcceptance.workflow.bundleDigest, resultFastq.digest)
   assert.match(resultAcceptance.workflow.planDigest, /^sha256:[a-f0-9]{64}$/)
   assert.equal(resultAcceptance.runner.name, 'miniwdl')
@@ -78,6 +78,11 @@ test('built-in WDL bundles load with verified files and explicit limitations', a
   assert.equal(resultAcceptance.jobRuntime.provider, '@deepseek-ai/dsh-jobs-local@0.1.1-rc.2')
   assert.equal(resultAcceptance.jobRuntime.statusBeforeWait, 'running')
   assert.equal(resultAcceptance.jobRuntime.statusAfterWait, 'completed')
+  assert.equal(resultAcceptance.input.preApprovalContentSha256, `sha256:${resultAcceptance.input.snapshotSha256}`)
+  assert.equal(resultAcceptance.executionPolicy.inputChecksum, 'sha256')
+  assert.equal(resultAcceptance.executionPolicy.networkIsolation.network.internal, true)
+  assert.equal(resultAcceptance.executionPolicy.networkIsolation.cleanup, 'removed')
+  assert.equal(resultAcceptance.executionPolicy.storageBudget.violation, null)
   assert.equal(resultAcceptance.resultPolicy.maxArtifacts, 1024)
   assert.equal(resultAcceptance.resultPolicy.canonicalTargetNoFollowOpen, true)
   assert.equal(resultAcceptance.resultPolicy.hostZipExtraction, false)
@@ -98,25 +103,29 @@ test('built-in WDL bundles load with verified files and explicit limitations', a
   })
   assert.equal(resultAcceptance.result.summaries.fastqc.reports[0].overallStatus, 'fail')
   for (const [relativePath, expectedSha256] of Object.entries(resultAcceptance.adapterSources)) {
-    // 0.8.0 extends root tool registration; the retained 0.7.0 execution
-    // evidence remains authoritative for the unchanged execution adapter.
-    if (relativePath === 'index.js') continue
     const source = await readFile(new URL(`../${relativePath}`, import.meta.url), 'utf8')
     assert.equal(sha256Text(source), expectedSha256, `${relativePath} changed after acceptance`)
   }
 
   assert.equal(agentAcceptance.schemaVersion, '1')
-  assert.equal(agentAcceptance.candidate.package, 'dsh-bio-workflows@0.7.0')
+  assert.equal(agentAcceptance.candidate.package, 'dsh-bio-workflows@0.11.0')
   assert.equal(agentAcceptance.candidate.dsh, '0.1.1-rc.2')
   assert.equal(agentAcceptance.workflow.bundleDigest, resultFastq.digest)
   assert.match(agentAcceptance.workflow.planDigest, /^sha256:[a-f0-9]{64}$/)
   assert.deepEqual(agentAcceptance.model.toolCalls, [
+    'bio_workflows_draft_create',
+    'bio_workflows_draft_get',
+    'bio_workflows_draft_update',
+    'bio_workflows_draft_validate',
+    'bio_workflows_draft_graph',
     'bio_workflows_search',
     'bio_workflows_plan',
     'bio_workflows_run',
   ])
   assert.equal(agentAcceptance.approval.outcome, 'allowed-once')
   assert.equal(agentAcceptance.approval.auditIdsMatched, true)
+  assert.equal(agentAcceptance.authoring.valid, true)
+  assert.equal(agentAcceptance.authoring.executionAuthorized, false)
   assert.equal(agentAcceptance.owner.agentRemoved, true)
   assert.equal(agentAcceptance.owner.sessionRemoved, true)
   assert.equal(agentAcceptance.job.statusBeforeDispose, 'running')
@@ -128,9 +137,6 @@ test('built-in WDL bundles load with verified files and explicit limitations', a
   assert.equal(agentAcceptance.run.childProcessStopped, true)
   assert.equal(agentAcceptance.run.terminalProvenancePersisted, true)
   for (const [relativePath, expectedSha256] of Object.entries(agentAcceptance.sourceSha256)) {
-    // The historical Agent-loop record predates the additive authoring wiring
-    // and the expanded 0.8 smoke. Execution adapter hashes remain checked.
-    if (['index.js', 'scripts/smoke-dsh-agent-loop.mjs'].includes(relativePath)) continue
     const source = await readFile(new URL(`../${relativePath}`, import.meta.url), 'utf8')
     assert.equal(sha256Text(source), expectedSha256, `${relativePath} changed after Agent-loop acceptance`)
   }

@@ -7,6 +7,7 @@
           engines: {}
         store:
           writeEnabled: false
+          providers: []
         authoring:
           validator:
             executable: miniwdl
@@ -17,3 +18,9 @@
           enabled: false
         execution:
           enabled: false
+          policy:
+            inputChecksum: metadata
+            networkIsolation:
+              mode: advisory
+            retention:
+              enabled: false

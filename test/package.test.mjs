@@ -326,11 +326,13 @@ test('the bundle patch installs the expected package', async () => {
   assert.match(patch, /manifests: \[\]/)
   assert.match(patch, /engines: \{\}/)
   assert.match(patch, /writeEnabled: false/)
+  assert.match(patch, /providers: \[\]/)
   assert.match(patch, /authoring:/)
   assert.match(patch, /expectedVersion: 1\.15\.0/)
   assert.match(patch, /autonomy:/)
   assert.match(patch, /draftTesting:/)
   assert.match(patch, /execution:/)
+  assert.match(patch, /inputChecksum: metadata/)
   assert.match(patch, /enabled: false/)
 })
 
@@ -363,6 +365,7 @@ test('the info tool is read-only and registers once', async () => {
     builtinWorkflowCount: 0,
     localStoreConfigured: false,
     writesEnabled: false,
+    providers: [],
   })
   assert.deepEqual(result.execution, {
     enabled: false,
@@ -370,6 +373,12 @@ test('the info tool is read-only and registers once', async () => {
     subprocessAvailable: false,
     jobsAvailable: false,
     supportedWorkflows: [],
+    policy: {
+      inputChecksum: 'metadata',
+      networkIsolation: { mode: 'advisory' },
+      budgets: {},
+      retention: { enabled: false },
+    },
   })
   assert.deepEqual(result.authoring, {
     configured: false,
@@ -394,6 +403,7 @@ test('the info tool is read-only and registers once', async () => {
   assert.equal(result.capabilities.manifestValidation, true)
   assert.equal(result.capabilities.preflightValidation, true)
   assert.equal(result.capabilities.workflowStore, true)
+  assert.equal(result.capabilities.readOnlyWorkflowProviders, false)
   assert.equal(result.capabilities.wdlBundleValidation, true)
   assert.equal(result.capabilities.workflowInstallation, false)
   assert.equal(result.capabilities.workflowScaffolding, false)
@@ -414,6 +424,46 @@ test('the info tool is read-only and registers once', async () => {
   assert.equal(result.capabilities.normalizedWorkflowResults, false)
   assert.equal(result.capabilities.outputChecksums, false)
   assert.equal(result.capabilities.fastqcSummaries, false)
+  assert.equal(result.capabilities.preApprovalInputChecksums, false)
+  assert.equal(result.capabilities.containerEgressIsolation, false)
+  assert.equal(result.capabilities.approvedRunRetentionCleanup, false)
+})
+
+test('the info tool reports read-only providers and enabled execution hardening', () => {
+  const info = getPackageInfo(
+    0,
+    0,
+    {
+      providers: [{
+        id: 'git-main',
+        kind: 'git',
+        revision: 'a'.repeat(40),
+        root: '/private/provider',
+        readOnly: true,
+      }],
+    },
+    {
+      enabled: true,
+      policy: {
+        inputChecksum: 'sha256',
+        networkIsolation: { mode: 'ephemeral_internal' },
+        budgets: { maxRunStorageBytes: 4096 },
+        retention: { enabled: true, minimumAgeDays: 30 },
+      },
+    },
+  )
+
+  assert.deepEqual(info.store.providers, [{
+    id: 'git-main',
+    kind: 'git',
+    revision: 'a'.repeat(40),
+    readOnly: true,
+  }])
+  assert.equal(JSON.stringify(info).includes('/private/provider'), false)
+  assert.equal(info.capabilities.readOnlyWorkflowProviders, true)
+  assert.equal(info.capabilities.preApprovalInputChecksums, true)
+  assert.equal(info.capabilities.containerEgressIsolation, true)
+  assert.equal(info.capabilities.approvedRunRetentionCleanup, true)
 })
 
 test('the info tool reports explicitly enabled local store mutations', async () => {

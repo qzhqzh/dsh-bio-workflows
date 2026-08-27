@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, renameSync, symlinkSync, unlinkSync } from 'node:fs'
 import {
+  access,
   chmod,
   link,
   mkdir,
@@ -72,6 +73,8 @@ class FakeSubprocess {
     this.spawns = []
     this.terminated = false
     this.finishHeldRun = null
+    this.network = null
+    this.networkRemoveAttempts = 0
   }
 
   async resolveExecutable(command) {
@@ -97,6 +100,39 @@ class FakeSubprocess {
         Promise.resolve({ exitCode: 0, signal: null }),
         `fake-engine-id ${this.options.swarmState ?? 'active true'}\n`,
       )
+    }
+    if (spec.argv[1] === 'network' && spec.argv[2] === 'create') {
+      const runLabel = spec.argv.find((value) => value.startsWith('dsh.bio-workflows.run-id='))
+      this.network = {
+        Id: 'a'.repeat(64),
+        Name: spec.argv.at(-1),
+        Driver: 'overlay',
+        Scope: 'swarm',
+        Internal: true,
+        Attachable: false,
+        Ingress: false,
+        ConfigOnly: false,
+        Labels: {
+          'dsh.bio-workflows.managed': 'true',
+          'dsh.bio-workflows.run-id': runLabel.split('=', 2)[1],
+        },
+        Services: {},
+      }
+      return makeHandle(Promise.resolve({ exitCode: 0, signal: null }), `${this.network.Id}\n`)
+    }
+    if (spec.argv[1] === 'network' && spec.argv[2] === 'inspect') {
+      return makeHandle(
+        Promise.resolve({ exitCode: 0, signal: null }),
+        `${JSON.stringify(this.network)}\n`,
+      )
+    }
+    if (spec.argv[1] === 'network' && spec.argv[2] === 'rm') {
+      this.networkRemoveAttempts += 1
+      if (this.networkRemoveAttempts <= (this.options.networkRemoveFailures ?? 0)) {
+        return makeHandle(Promise.resolve({ exitCode: 1, signal: null }), '', 'network still in use\n')
+      }
+      this.network = null
+      return makeHandle(Promise.resolve({ exitCode: 0, signal: null }), `${spec.argv[3]}\n`)
     }
     if (spec.argv[1] !== 'run') throw new Error(`unexpected argv: ${spec.argv.join(' ')}`)
 
@@ -267,6 +303,7 @@ async function makeFixture(options = {}) {
       runsRoot,
       inputRoots: [inputRoot],
       runner: { executable: miniwdlExecutable, dockerExecutable },
+      ...(options.executionPolicy === undefined ? {} : { policy: options.executionPolicy }),
     },
     getSubprocess: () => subprocess,
     getJobs: () => jobs,
@@ -364,6 +401,24 @@ test('execution config is strict, disabled by default, and requires disjoint ded
     runsRoot: null,
     inputRoots: [],
     runner: { executable: 'miniwdl', dockerExecutable: 'docker' },
+    policy: {
+      inputChecksum: 'metadata',
+      networkIsolation: { mode: 'advisory' },
+      budgets: {
+        maxInputSnapshotBytes: 1024 ** 4,
+        maxRunStorageBytes: 2 * (1024 ** 4),
+        maxResultArtifactBytes: 16 * (1024 ** 3),
+        maxTotalResultArtifactBytes: 64 * (1024 ** 3),
+        maxJobOutputBytes: 256 * 1024,
+        maxSpillBytes: 16 * 1024 * 1024,
+      },
+      retention: {
+        enabled: false,
+        minimumAgeDays: 30,
+        retainLatest: 100,
+        maxDeletesPerCall: 50,
+      },
+    },
   })
   assert.throws(
     () => parseExecutionConfig({ enabled: true }),
@@ -417,6 +472,7 @@ test('planning binds a built-in bundle, canonical real inputs, and live runner f
     assert.equal(first.plan.inputFileFacts[0].size, '18')
     assert.deepEqual(first.plan.inputSnapshotPolicy, {
       mode: 'run_owned_copy_after_approval',
+      preApprovalIntegrity: 'metadata',
       totalBytes: '18',
       maxTotalBytes: String(1024 ** 4),
       minimumFreeSpaceReserveBytes: String(512 * 1024 * 1024),
@@ -430,6 +486,101 @@ test('planning binds a built-in bundle, canonical real inputs, and live runner f
     await writeFile(fixture.input, '@read\nACGTACGT\n+\n!!!!!!!!\n')
     const changed = await fixture.manager.plan(fixture.request)
     assert.notEqual(changed.planDigest, first.planDigest)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('strict execution binds pre-approval input content and uses an ephemeral internal network', async () => {
+  const fixture = await makeFixture({
+    networkRemoveFailures: 1,
+    executionPolicy: {
+      inputChecksum: 'sha256',
+      networkIsolation: { mode: 'ephemeral_internal' },
+    },
+  })
+  const agent = { id: 'owner-session' }
+  try {
+    const planned = await fixture.manager.plan(fixture.request, { agent })
+    assert.equal(planned.ok, true)
+    assert.equal(
+      planned.plan.inputFileFacts[0].contentSha256,
+      `sha256:${createHash('sha256').update('@read\nACGT\n+\n!!!!\n').digest('hex')}`,
+    )
+    assert.equal(planned.plan.inputSnapshotPolicy.preApprovalIntegrity, 'sha256')
+    assert.equal(planned.plan.runner.securityPolicy.networkIsolation.mode, 'ephemeral_internal_overlay')
+    assert.equal(planned.plan.limitations.includes('input_content_not_hashed'), false)
+    assert.equal(planned.plan.limitations.includes('container_network_isolation_not_enforced'), false)
+
+    const started = await fixture.manager.run({
+      ...fixture.request,
+      expectedPlanDigest: planned.planDigest,
+    }, { agent })
+    assert.equal(started.ok, true)
+    await fixture.jobs.records.get(started.jobId).settled
+
+    const completed = await fixture.manager.getRun(started.runId, { agent })
+    assert.equal(completed.run.status, 'completed')
+    assert.equal(completed.run.networkIsolation.mode, 'ephemeral_internal')
+    assert.equal(completed.run.networkIsolation.network.internal, true)
+    assert.equal(completed.run.networkIsolation.cleanup, 'removed')
+    assert.equal(fixture.subprocess.network, null)
+    assert.equal(fixture.subprocess.networkRemoveAttempts, 2)
+    const config = await readFile(join(started.runDirectory, 'miniwdl.cfg'), 'utf8')
+    assert.match(config, /allow_networks = \["dsh-bio-run-/)
+    assert.match(config, /defaults = \{"docker_network":"dsh-bio-run-/)
+    assert.equal(
+      fixture.subprocess.spawns.some((spawn) => spawn.argv.slice(1, 3).join(' ') === 'network create'),
+      true,
+    )
+    assert.equal(
+      fixture.subprocess.spawns.some((spawn) => spawn.argv.slice(1, 3).join(' ') === 'network rm'),
+      true,
+    )
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('configured execution budgets are plan-bound and fail closed on run storage overflow', async () => {
+  const fixture = await makeFixture({
+    executionPolicy: {
+      budgets: {
+        maxInputSnapshotBytes: 1024,
+        maxRunStorageBytes: 4096,
+        maxResultArtifactBytes: 1024,
+        maxTotalResultArtifactBytes: 2048,
+        maxJobOutputBytes: 1024,
+        maxSpillBytes: 2048,
+      },
+    },
+  })
+  const agent = { id: 'owner-session' }
+  try {
+    const planned = await fixture.manager.plan(fixture.request, { agent })
+    assert.deepEqual(planned.plan.budgets, {
+      maxInputSnapshotBytes: '1024',
+      maxRunStorageBytes: '4096',
+      runStorageEnforcement: 'periodic_allocated_bytes_scan',
+      runStorageScanIntervalMs: 1000,
+      maxResultArtifactBytes: '1024',
+      maxTotalResultArtifactBytes: '2048',
+      maxJobOutputBytes: 1024,
+      maxSpillBytesPerStream: 2048,
+    })
+    const started = await fixture.manager.run({
+      ...fixture.request,
+      expectedPlanDigest: planned.planDigest,
+    }, { agent })
+    assert.equal(started.ok, true)
+    await fixture.jobs.records.get(started.jobId).settled
+    const completed = await fixture.manager.getRun(started.runId, { agent })
+    assert.equal(completed.run.status, 'failed')
+    assert.equal(completed.run.error.code, 'run_storage_budget_exceeded')
+    assert.equal(completed.run.result, null)
+    const runSpawn = fixture.subprocess.spawns.find((spawn) => spawn.argv[1] === 'run')
+    assert.equal(runSpawn.stdio.stdout.maxBytes, 1024)
+    assert.equal(runSpawn.stdio.stdout.spill.maxBytes, 2048)
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
   }
@@ -1218,6 +1369,68 @@ test('FastQC summary parsing rejects malformed, control, non-UTF-8, and oversize
     } finally {
       await rm(fixture.root, { recursive: true, force: true })
     }
+  }
+})
+
+test('retention cleanup previews and deletes only exact old owner-scoped terminal runs', async () => {
+  const fixture = await makeFixture({
+    executionPolicy: {
+      retention: {
+        enabled: true,
+        minimumAgeDays: 30,
+        retainLatest: 1,
+        maxDeletesPerCall: 2,
+      },
+    },
+  })
+  const agent = { id: 'owner-session' }
+  try {
+    const newest = await writePersistedRun(fixture, {
+      runId: runIdFor(30),
+      startedAt: '2026-08-20T12:00:00.000Z',
+      finishedAt: '2026-08-20T12:00:00.000Z',
+    })
+    const oldA = await writePersistedRun(fixture, {
+      runId: runIdFor(31),
+      startedAt: '2026-05-01T12:00:00.000Z',
+      finishedAt: '2026-05-01T12:00:00.000Z',
+    })
+    const oldB = await writePersistedRun(fixture, {
+      runId: runIdFor(32),
+      startedAt: '2026-06-01T12:00:00.000Z',
+      finishedAt: '2026-06-01T12:00:00.000Z',
+    })
+    const otherOwner = await writePersistedRun(fixture, {
+      runId: runIdFor(33),
+      ownerSession: 'other-owner',
+      startedAt: '2026-04-01T12:00:00.000Z',
+      finishedAt: '2026-04-01T12:00:00.000Z',
+    })
+
+    const planned = await fixture.manager.cleanupPlan({ agent })
+    assert.equal(planned.ok, true)
+    assert.deepEqual(
+      planned.plan.candidates.map((candidate) => candidate.runId),
+      [oldA.record.runId, oldB.record.runId],
+    )
+    assert.equal((await access(oldA.runDirectory).then(() => true)), true)
+
+    const mismatched = await fixture.manager.cleanupRuns({
+      expectedCleanupPlanDigest: `sha256:${'f'.repeat(64)}`,
+    }, { agent })
+    assert.equal(mismatched.error.code, 'cleanup_plan_digest_mismatch')
+
+    const cleaned = await fixture.manager.cleanupRuns({
+      expectedCleanupPlanDigest: planned.cleanupPlanDigest,
+    }, { agent })
+    assert.equal(cleaned.ok, true)
+    assert.deepEqual(cleaned.removedRunIds, [oldA.record.runId, oldB.record.runId])
+    await assert.rejects(access(oldA.runDirectory), /ENOENT/)
+    await assert.rejects(access(oldB.runDirectory), /ENOENT/)
+    await access(newest.runDirectory)
+    await access(otherOwner.runDirectory)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
   }
 })
 

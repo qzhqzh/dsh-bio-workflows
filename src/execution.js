@@ -17,12 +17,24 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { TextDecoder } from 'node:util'
 
 export const EXECUTION_PLAN_SCHEMA_VERSION = '1'
+export const RUN_CLEANUP_PLAN_SCHEMA_VERSION = '1'
 export const RUN_PROVENANCE_SCHEMA_VERSION = '1'
 export const BIO_WORKFLOW_RESULT_SCHEMA_VERSION = '1'
 export const EXECUTABLE_WORKFLOWS = Object.freeze(['fastq-qc@1.1.0', 'fastq-qc@1.2.0'])
 
-const EXECUTION_CONFIG_KEYS = new Set(['enabled', 'runsRoot', 'inputRoots', 'runner'])
+const EXECUTION_CONFIG_KEYS = new Set(['enabled', 'runsRoot', 'inputRoots', 'runner', 'policy'])
 const RUNNER_CONFIG_KEYS = new Set(['executable', 'dockerExecutable'])
+const POLICY_CONFIG_KEYS = new Set(['inputChecksum', 'networkIsolation', 'budgets', 'retention'])
+const NETWORK_ISOLATION_CONFIG_KEYS = new Set(['mode'])
+const BUDGET_CONFIG_KEYS = new Set([
+  'maxInputSnapshotBytes',
+  'maxRunStorageBytes',
+  'maxResultArtifactBytes',
+  'maxTotalResultArtifactBytes',
+  'maxJobOutputBytes',
+  'maxSpillBytes',
+])
+const RETENTION_CONFIG_KEYS = new Set(['enabled', 'minimumAgeDays', 'retainLatest', 'maxDeletesPerCall'])
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/
 const SEMVER_PATTERN = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/
@@ -51,10 +63,23 @@ const MAX_ACTIVE_RUN_RECORDS = 256
 const MAX_RUN_LIST_DIAGNOSTICS = 32
 const RUN_LIST_PAGE_SIZE = 50
 const JOB_OUTPUT_LIMIT_BYTES = 256 * 1024
+const MAX_JOB_OUTPUT_LIMIT_BYTES = 64 * 1024 * 1024
+const DEFAULT_SPILL_LIMIT_BYTES = 16 * 1024 * 1024
+const MAX_SPILL_LIMIT_BYTES = 1024 * 1024 * 1024
+const DEFAULT_MAX_RUN_STORAGE_BYTES = 2n * 1024n * 1024n * 1024n * 1024n
+const MAX_CONFIGURED_STORAGE_BYTES = 8n * 1024n * 1024n * 1024n * 1024n
+const MAX_RETENTION_DAYS = 36500
+const MAX_RETAINED_RUNS = 4096
+const MAX_CLEANUP_DELETES = 256
+const RUN_STORAGE_SCAN_INTERVAL_MS = 1000
+const MAX_RUN_STORAGE_SCAN_ENTRIES = 65536
 const COPY_BUFFER_BYTES = 1024 * 1024
 const PROCESS_GRACE_MS = 10_000
 const PROBE_TIMEOUT_MS = 15_000
 const LOCAL_DOCKER_HOST = 'unix:///var/run/docker.sock'
+const RUN_NETWORK_PREFIX = 'dsh-bio-run-'
+const RUN_NETWORK_LABEL = 'dsh.bio-workflows.managed'
+const RUN_NETWORK_ID_LABEL = 'dsh.bio-workflows.run-id'
 const EXECUTABLE_SET = new Set(EXECUTABLE_WORKFLOWS)
 const SAFE_RUNS_ROOT_PATTERN = /^[A-Za-z0-9_./:+,@=-]+$/
 const PLACEHOLDER_PATTERN = '[A-Za-z0-9_./:@+=,-]+'
@@ -70,6 +95,7 @@ const RUN_STATUSES = Object.freeze([
 ])
 const RUN_STATUS_SET = new Set(RUN_STATUSES)
 const NON_TERMINAL_RUN_STATUS_SET = new Set(['prepared', 'running', 'stopping'])
+const TERMINAL_RUN_STATUS_SET = new Set(['completed', 'failed', 'killed', 'interrupted'])
 const FASTQC_SUMMARY_STATUSES = new Set(['PASS', 'WARN', 'FAIL'])
 const FASTQC_SUMMARY_CONTROL_PATTERN = /[\u0000-\u0008\u000B-\u001F\u007F]/
 const STRICT_UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
@@ -85,13 +111,15 @@ export const BIO_WORKFLOW_RESULT_LIMITS = Object.freeze({
   maxFastqcSummaryLineBytes: MAX_FASTQC_SUMMARY_LINE_BYTES,
 })
 
-function createMiniwdlConfig(runDirectory) {
+function createMiniwdlConfig(runDirectory, networkName = null) {
+  const allowedNetworks = networkName === null ? [] : [networkName]
+  const runtimeDefaults = networkName === null ? {} : { docker_network: networkName }
   return `[scheduler]
 container_backend = docker_swarm
 fail_fast = true
 
 [docker_swarm]
-allow_networks = []
+allow_networks = ${JSON.stringify(allowedNetworks)}
 auto_init = false
 
 [file_io]
@@ -104,6 +132,7 @@ allow_privileged = false
 memory_limit_multiplier = 1.0
 placeholder_regex = ${PLACEHOLDER_PATTERN}
 env = {}
+defaults = ${JSON.stringify(runtimeDefaults)}
 
 [download_cache]
 get = false
@@ -177,6 +206,185 @@ function validateExecutableName(value, path, errors, requireAbsolute) {
     errors.push({ path, code: 'format', message: 'must be an absolute path when execution is enabled' })
   } else if (!isAbsolute(value) && (value.includes('/') || value.includes('\\'))) {
     errors.push({ path, code: 'format', message: 'must be an absolute path or a bare executable name' })
+  }
+}
+
+function validateObjectKeys(value, path, allowed, errors) {
+  if (!isPlainObject(value)) {
+    errors.push({ path, code: 'type', message: 'must be an object' })
+    return false
+  }
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      errors.push({ path: `${path}.${key}`, code: 'additional_property', message: `unsupported property: ${key}` })
+    }
+  }
+  return true
+}
+
+function boundedInteger(value, fallback, path, minimum, maximum, errors) {
+  const selected = value ?? fallback
+  if (!Number.isSafeInteger(selected) || selected < minimum || selected > maximum) {
+    errors.push({
+      path,
+      code: 'range',
+      message: `must be a safe integer from ${minimum} through ${maximum}`,
+    })
+    return fallback
+  }
+  return selected
+}
+
+function parseExecutionPolicy(value, errors) {
+  const policyValue = value ?? {}
+  const policyValid = validateObjectKeys(policyValue, '$.policy', POLICY_CONFIG_KEYS, errors)
+  const inputChecksum = policyValid ? policyValue.inputChecksum ?? 'metadata' : 'metadata'
+  if (!['metadata', 'sha256'].includes(inputChecksum)) {
+    errors.push({
+      path: '$.policy.inputChecksum',
+      code: 'enum',
+      message: 'must be metadata or sha256',
+    })
+  }
+
+  const networkValue = policyValid ? policyValue.networkIsolation ?? {} : {}
+  const networkValid = validateObjectKeys(
+    networkValue,
+    '$.policy.networkIsolation',
+    NETWORK_ISOLATION_CONFIG_KEYS,
+    errors,
+  )
+  const networkMode = networkValid ? networkValue.mode ?? 'advisory' : 'advisory'
+  if (!['advisory', 'ephemeral_internal'].includes(networkMode)) {
+    errors.push({
+      path: '$.policy.networkIsolation.mode',
+      code: 'enum',
+      message: 'must be advisory or ephemeral_internal',
+    })
+  }
+
+  const budgetValue = policyValid ? policyValue.budgets ?? {} : {}
+  const budgetsValid = validateObjectKeys(budgetValue, '$.policy.budgets', BUDGET_CONFIG_KEYS, errors)
+  const selectedBudgets = budgetsValid ? budgetValue : {}
+  const budgets = {
+    maxInputSnapshotBytes: boundedInteger(
+      selectedBudgets.maxInputSnapshotBytes,
+      Number(MAX_TOTAL_SNAPSHOT_BYTES),
+      '$.policy.budgets.maxInputSnapshotBytes',
+      1,
+      Number(MAX_TOTAL_SNAPSHOT_BYTES),
+      errors,
+    ),
+    maxRunStorageBytes: boundedInteger(
+      selectedBudgets.maxRunStorageBytes,
+      Number(DEFAULT_MAX_RUN_STORAGE_BYTES),
+      '$.policy.budgets.maxRunStorageBytes',
+      1,
+      Number(MAX_CONFIGURED_STORAGE_BYTES),
+      errors,
+    ),
+    maxResultArtifactBytes: boundedInteger(
+      selectedBudgets.maxResultArtifactBytes,
+      Number(MAX_RESULT_ARTIFACT_BYTES),
+      '$.policy.budgets.maxResultArtifactBytes',
+      1,
+      Number(MAX_RESULT_ARTIFACT_BYTES),
+      errors,
+    ),
+    maxTotalResultArtifactBytes: boundedInteger(
+      selectedBudgets.maxTotalResultArtifactBytes,
+      Number(MAX_TOTAL_RESULT_ARTIFACT_BYTES),
+      '$.policy.budgets.maxTotalResultArtifactBytes',
+      1,
+      Number(MAX_TOTAL_RESULT_ARTIFACT_BYTES),
+      errors,
+    ),
+    maxJobOutputBytes: boundedInteger(
+      selectedBudgets.maxJobOutputBytes,
+      JOB_OUTPUT_LIMIT_BYTES,
+      '$.policy.budgets.maxJobOutputBytes',
+      1,
+      MAX_JOB_OUTPUT_LIMIT_BYTES,
+      errors,
+    ),
+    maxSpillBytes: boundedInteger(
+      selectedBudgets.maxSpillBytes,
+      DEFAULT_SPILL_LIMIT_BYTES,
+      '$.policy.budgets.maxSpillBytes',
+      1,
+      MAX_SPILL_LIMIT_BYTES,
+      errors,
+    ),
+  }
+  if (budgets.maxResultArtifactBytes > budgets.maxTotalResultArtifactBytes) {
+    errors.push({
+      path: '$.policy.budgets.maxResultArtifactBytes',
+      code: 'range',
+      message: 'must not exceed maxTotalResultArtifactBytes',
+    })
+  }
+  if (budgets.maxInputSnapshotBytes > budgets.maxRunStorageBytes) {
+    errors.push({
+      path: '$.policy.budgets.maxInputSnapshotBytes',
+      code: 'range',
+      message: 'must not exceed maxRunStorageBytes',
+    })
+  }
+  if (budgets.maxTotalResultArtifactBytes > budgets.maxRunStorageBytes) {
+    errors.push({
+      path: '$.policy.budgets.maxTotalResultArtifactBytes',
+      code: 'range',
+      message: 'must not exceed maxRunStorageBytes',
+    })
+  }
+
+  const retentionValue = policyValid ? policyValue.retention ?? {} : {}
+  const retentionValid = validateObjectKeys(
+    retentionValue,
+    '$.policy.retention',
+    RETENTION_CONFIG_KEYS,
+    errors,
+  )
+  const selectedRetention = retentionValid ? retentionValue : {}
+  const retentionEnabled = selectedRetention.enabled ?? false
+  if (typeof retentionEnabled !== 'boolean') {
+    errors.push({ path: '$.policy.retention.enabled', code: 'type', message: 'must be a boolean' })
+  }
+  const retention = {
+    enabled: retentionEnabled === true,
+    minimumAgeDays: boundedInteger(
+      selectedRetention.minimumAgeDays,
+      30,
+      '$.policy.retention.minimumAgeDays',
+      1,
+      MAX_RETENTION_DAYS,
+      errors,
+    ),
+    retainLatest: boundedInteger(
+      selectedRetention.retainLatest,
+      100,
+      '$.policy.retention.retainLatest',
+      0,
+      MAX_RETAINED_RUNS,
+      errors,
+    ),
+    maxDeletesPerCall: boundedInteger(
+      selectedRetention.maxDeletesPerCall,
+      50,
+      '$.policy.retention.maxDeletesPerCall',
+      1,
+      MAX_CLEANUP_DELETES,
+      errors,
+    ),
+  }
+
+  return {
+    inputChecksum: ['metadata', 'sha256'].includes(inputChecksum) ? inputChecksum : 'metadata',
+    networkIsolation: {
+      mode: ['advisory', 'ephemeral_internal'].includes(networkMode) ? networkMode : 'advisory',
+    },
+    budgets,
+    retention,
   }
 }
 
@@ -266,6 +474,7 @@ export function parseExecutionConfig(value = {}) {
   const dockerExecutable = isPlainObject(runnerValue) ? runnerValue.dockerExecutable ?? 'docker' : 'docker'
   validateExecutableName(executable, '$.runner.executable', errors, enabled === true)
   validateExecutableName(dockerExecutable, '$.runner.dockerExecutable', errors, enabled === true)
+  const policy = parseExecutionPolicy(value.policy, errors)
 
   if (enabled === true) {
     if (runsRoot === null) errors.push({ path: '$.runsRoot', code: 'required', message: 'is required when execution is enabled' })
@@ -289,6 +498,7 @@ export function parseExecutionConfig(value = {}) {
     runsRoot,
     inputRoots,
     runner: { executable, dockerExecutable },
+    policy,
   })
 }
 
@@ -638,7 +848,44 @@ function validateScalar(value, port, path) {
   }
 }
 
-async function normalizePathValue(value, port, inputRoots, inputId, index) {
+async function hashOpenedInput(handle, initial, canonical, signal) {
+  const digest = createHash('sha256')
+  const buffer = Buffer.allocUnsafe(COPY_BUFFER_BYTES)
+  const expectedBytes = Number(initial.size)
+  let position = 0
+  while (position < expectedBytes) {
+    throwIfAborted(signal)
+    const read = await handle.read(
+      buffer,
+      0,
+      Math.min(buffer.length, expectedBytes - position),
+      position,
+    )
+    if (read.bytesRead === 0) {
+      throw new ExecutionOperationError(
+        'input_changed_during_plan',
+        `input ended while its pre-approval checksum was being calculated: ${canonical}`,
+      )
+    }
+    digest.update(buffer.subarray(0, read.bytesRead))
+    position += read.bytesRead
+  }
+  const growthProbe = await handle.read(buffer, 0, 1, position)
+  const completed = await handle.stat({ bigint: true })
+  if (
+    growthProbe.bytesRead !== 0
+    || !sameInputMetadata(initial, completed)
+    || await openedDescriptorPath(handle, 'input_path') !== canonical
+  ) {
+    throw new ExecutionOperationError(
+      'input_changed_during_plan',
+      `input changed while its pre-approval checksum was being calculated: ${canonical}`,
+    )
+  }
+  return `sha256:${digest.digest('hex')}`
+}
+
+async function normalizePathValue(value, port, inputRoots, inputId, index, inputChecksum, signal) {
   if (value.length > MAX_PATH_LENGTH || !isAbsolute(value)) {
     throw new ExecutionOperationError(
       'invalid_workflow_inputs',
@@ -660,6 +907,7 @@ async function normalizePathValue(value, port, inputRoots, inputId, index) {
   let metadata
   let handle
   let openedPath
+  let contentSha256
   if (port.type === 'file') {
     try {
       handle = await open(
@@ -667,7 +915,12 @@ async function normalizePathValue(value, port, inputRoots, inputId, index) {
         constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0),
       )
       metadata = await handle.stat({ bigint: true })
-      if (metadata.isFile()) openedPath = await openedDescriptorPath(handle, 'input_path')
+      if (metadata.isFile()) {
+        openedPath = await openedDescriptorPath(handle, 'input_path')
+        if (inputChecksum === 'sha256') {
+          contentSha256 = await hashOpenedInput(handle, metadata, canonical, signal)
+        }
+      }
     } finally {
       await handle?.close()
     }
@@ -702,11 +955,19 @@ async function normalizePathValue(value, port, inputRoots, inputId, index) {
       ctimeNs: metadata.ctimeNs.toString(),
       device: metadata.dev.toString(),
       inode: metadata.ino.toString(),
+      ...(contentSha256 === undefined ? {} : { contentSha256 }),
     },
   }
 }
 
-async function normalizeInputs(manifest, values, inputRoots) {
+async function normalizeInputs(
+  manifest,
+  values,
+  inputRoots,
+  inputChecksum,
+  maxInputSnapshotBytes,
+  signal,
+) {
   const ports = new Map(manifest.inputs.map((port) => [port.id, port]))
   for (const key of Object.keys(values)) {
     if (!ports.has(key)) {
@@ -741,7 +1002,15 @@ async function normalizeInputs(manifest, values, inputRoots) {
         validateScalar(item, port, `${path}[${index}]`)
         if (port.type === 'file' || port.type === 'directory') {
           pathCount += 1
-          const inspected = await normalizePathValue(item, port, inputRoots, port.id, index)
+          const inspected = await normalizePathValue(
+            item,
+            port,
+            inputRoots,
+            port.id,
+            index,
+            inputChecksum,
+            signal,
+          )
           normalized[port.id].push(inspected.value)
           fileFacts.push(inspected.fact)
         } else {
@@ -752,7 +1021,15 @@ async function normalizeInputs(manifest, values, inputRoots) {
       validateScalar(supplied, port, path)
       if (port.type === 'file' || port.type === 'directory') {
         pathCount += 1
-        const inspected = await normalizePathValue(supplied, port, inputRoots, port.id, null)
+        const inspected = await normalizePathValue(
+          supplied,
+          port,
+          inputRoots,
+          port.id,
+          null,
+          inputChecksum,
+          signal,
+        )
         normalized[port.id] = inspected.value
         fileFacts.push(inspected.fact)
       } else {
@@ -766,13 +1043,14 @@ async function normalizeInputs(manifest, values, inputRoots) {
   const totalSnapshotBytes = fileFacts
     .filter((fact) => fact.type === 'file')
     .reduce((total, fact) => total + BigInt(fact.size), 0n)
-  if (totalSnapshotBytes > MAX_TOTAL_SNAPSHOT_BYTES) {
+  const maxSnapshotBytes = BigInt(maxInputSnapshotBytes)
+  if (totalSnapshotBytes > maxSnapshotBytes) {
     throw new ExecutionOperationError(
       'input_snapshot_limit_exceeded',
-      `workflow input snapshots exceed the ${MAX_TOTAL_SNAPSHOT_BYTES} byte per-run limit`,
+      `workflow input snapshots exceed the ${maxSnapshotBytes} byte per-run limit`,
       {
         totalSnapshotBytes: totalSnapshotBytes.toString(),
-        maxTotalSnapshotBytes: MAX_TOTAL_SNAPSHOT_BYTES.toString(),
+        maxTotalSnapshotBytes: maxSnapshotBytes.toString(),
       },
     )
   }
@@ -964,6 +1242,196 @@ async function probeRunner(config, subprocess, bundleDirectory, bundle, signal, 
   }
 }
 
+function assertNetworkIsolationCompatible(bundle, mode) {
+  if (mode !== 'ephemeral_internal') return
+  const declaresNetwork = bundle.descriptor.files
+    .filter((file) => file.path.endsWith('.wdl'))
+    .some((file) => /\bdocker_network\s*:/.test(bundle.contents[file.path]))
+  if (declaresNetwork) {
+    throw new ExecutionOperationError(
+      'workflow_network_policy_conflict',
+      'strict network isolation requires workflow tasks without a docker_network runtime override',
+    )
+  }
+}
+
+function networkNameForRun(runId) {
+  return `${RUN_NETWORK_PREFIX}${runId.slice(4)}`
+}
+
+function parseRunNetworkInspection(text, expected) {
+  let inspected
+  try {
+    inspected = JSON.parse(text)
+  } catch {
+    throw new ExecutionOperationError(
+      'network_isolation_probe_invalid',
+      'Docker returned invalid network isolation inspection JSON',
+    )
+  }
+  const services = inspected?.Services
+  const serviceCount = isPlainObject(services) ? Object.keys(services).length : services == null ? 0 : -1
+  if (
+    !isPlainObject(inspected)
+    || typeof inspected.Id !== 'string'
+    || !/^[a-z0-9]{12,64}$/.test(inspected.Id)
+    || inspected.Name !== expected.name
+    || inspected.Driver !== 'overlay'
+    || inspected.Scope !== 'swarm'
+    || inspected.Internal !== true
+    || inspected.Attachable !== false
+    || inspected.Ingress !== false
+    || inspected.ConfigOnly === true
+    || inspected.Labels?.[RUN_NETWORK_LABEL] !== 'true'
+    || inspected.Labels?.[RUN_NETWORK_ID_LABEL] !== expected.runId
+    || serviceCount !== 0
+  ) {
+    throw new ExecutionOperationError(
+      'network_isolation_probe_failed',
+      'ephemeral Docker network does not satisfy the dedicated internal-overlay policy',
+    )
+  }
+  return {
+    id: inspected.Id,
+    name: inspected.Name,
+    driver: inspected.Driver,
+    scope: inspected.Scope,
+    internal: true,
+    attachable: false,
+    ingress: false,
+    labels: {
+      [RUN_NETWORK_LABEL]: 'true',
+      [RUN_NETWORK_ID_LABEL]: expected.runId,
+    },
+    servicesAtAdmission: 0,
+  }
+}
+
+async function createRunNetwork(
+  config,
+  subprocess,
+  runner,
+  bundleDirectory,
+  runId,
+  signal,
+  ambientEnvironment,
+) {
+  if (config.policy.networkIsolation.mode !== 'ephemeral_internal') return null
+  const name = networkNameForRun(runId)
+  const created = await runProbe(
+    subprocess,
+    [
+      runner.docker.executable,
+      'network',
+      'create',
+      '--driver',
+      'overlay',
+      '--internal',
+      '--label',
+      `${RUN_NETWORK_LABEL}=true`,
+      '--label',
+      `${RUN_NETWORK_ID_LABEL}=${runId}`,
+      name,
+    ],
+    bundleDirectory,
+    signal,
+    runner.docker.identity,
+    'docker_executable',
+    ambientEnvironment,
+  )
+  const networkId = created.stdout.trim()
+  if (!/^[a-z0-9]{12,64}$/.test(networkId)) {
+    try {
+      await removeRunNetwork(
+        subprocess,
+        runner,
+        bundleDirectory,
+        { id: name },
+        ambientEnvironment,
+      )
+    } catch (cleanupError) {
+      throw new ExecutionOperationError(
+        'network_cleanup_failed',
+        `Docker returned an invalid network identity and cleanup failed: ${String(cleanupError?.message ?? cleanupError).slice(0, 384)}`,
+        { networkName: name },
+      )
+    }
+    throw new ExecutionOperationError(
+      'network_isolation_create_failed',
+      'Docker returned an invalid ephemeral network identity',
+    )
+  }
+  try {
+    const inspection = await runProbe(
+      subprocess,
+      [runner.docker.executable, 'network', 'inspect', networkId, '--format', '{{json .}}'],
+      bundleDirectory,
+      signal,
+      runner.docker.identity,
+      'docker_executable',
+      ambientEnvironment,
+    )
+    const network = parseRunNetworkInspection(inspection.stdout.trim(), { name, runId })
+    if (network.id !== networkId) {
+      throw new ExecutionOperationError(
+        'network_isolation_probe_failed',
+        'Docker network identity changed immediately after creation',
+      )
+    }
+    return network
+  } catch (error) {
+    try {
+      await runProbe(
+        subprocess,
+        [runner.docker.executable, 'network', 'rm', networkId],
+        bundleDirectory,
+        undefined,
+        runner.docker.identity,
+        'docker_executable',
+        ambientEnvironment,
+      )
+    } catch (cleanupError) {
+      throw new ExecutionOperationError(
+        'network_cleanup_failed',
+        `ephemeral network validation failed and cleanup also failed: ${String(cleanupError?.message ?? cleanupError).slice(0, 384)}`,
+        { networkId },
+      )
+    }
+    throw error
+  }
+}
+
+async function removeRunNetwork(
+  subprocess,
+  runner,
+  bundleDirectory,
+  network,
+  ambientEnvironment,
+) {
+  if (network === null) return
+  let lastError
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await runProbe(
+        subprocess,
+        [runner.docker.executable, 'network', 'rm', network.id],
+        bundleDirectory,
+        undefined,
+        runner.docker.identity,
+        'docker_executable',
+        ambientEnvironment,
+      )
+      return
+    } catch (error) {
+      lastError = error
+      if (attempt < 2) {
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, (attempt + 1) * 100))
+      }
+    }
+  }
+  throw lastError
+}
+
 async function writeExclusiveText(path, content) {
   let handle
   try {
@@ -1025,7 +1493,7 @@ function safeInputSuffix(path) {
   return FASTQ_SUFFIXES.find((suffix) => name.endsWith(suffix)) ?? '.data'
 }
 
-async function snapshotInputFile(sourcePath, targetPath, fact, signal) {
+async function snapshotInputFile(sourcePath, targetPath, fact, maxSnapshotBytes, signal) {
   let source
   let target
   let completed = false
@@ -1058,10 +1526,10 @@ async function snapshotInputFile(sourcePath, targetPath, fact, signal) {
         `input changed after the approved plan: ${sourcePath}`,
       )
     }
-    if (before.size > MAX_TOTAL_SNAPSHOT_BYTES) {
+    if (before.size > maxSnapshotBytes) {
       throw new ExecutionOperationError(
         'input_snapshot_limit_exceeded',
-        `input exceeds the ${MAX_TOTAL_SNAPSHOT_BYTES} byte per-run snapshot limit: ${sourcePath}`,
+        `input exceeds the ${maxSnapshotBytes} byte per-run snapshot limit: ${sourcePath}`,
       )
     }
     target = await open(
@@ -1117,12 +1585,19 @@ async function snapshotInputFile(sourcePath, targetPath, fact, signal) {
     if (!targetMetadata.isFile() || targetMetadata.size !== before.size) {
       throw new ExecutionOperationError('input_snapshot_failed', `input snapshot is incomplete: ${sourcePath}`)
     }
+    const sha256 = digest.digest('hex')
+    if (fact.contentSha256 !== undefined && fact.contentSha256 !== `sha256:${sha256}`) {
+      throw new ExecutionOperationError(
+        'input_content_changed_after_plan',
+        `input content does not match the approved checksum: ${sourcePath}`,
+      )
+    }
     completed = true
     return {
       sourcePath,
       stagedPath: targetPath,
       size: targetMetadata.size.toString(),
-      sha256: digest.digest('hex'),
+      sha256,
     }
   } finally {
     await target?.close()
@@ -1131,7 +1606,14 @@ async function snapshotInputFile(sourcePath, targetPath, fact, signal) {
   }
 }
 
-async function snapshotInputs(runDirectory, inputs, facts, totalSnapshotBytes, signal) {
+async function snapshotInputs(
+  runDirectory,
+  inputs,
+  facts,
+  totalSnapshotBytes,
+  maxSnapshotBytes,
+  signal,
+) {
   const filesystem = await statfs(runDirectory, { bigint: true })
   const availableBytes = filesystem.bavail * filesystem.bsize
   const requiredBytes = BigInt(totalSnapshotBytes) + SNAPSHOT_FREE_SPACE_RESERVE_BYTES
@@ -1160,7 +1642,13 @@ async function snapshotInputs(runDirectory, inputs, facts, totalSnapshotBytes, s
       inputDirectory,
       `input-${String(ordinal).padStart(4, '0')}${safeInputSuffix(fact.path)}`,
     )
-    const snapshot = await snapshotInputFile(fact.path, targetPath, fact, signal)
+    const snapshot = await snapshotInputFile(
+      fact.path,
+      targetPath,
+      fact,
+      BigInt(maxSnapshotBytes),
+      signal,
+    )
     snapshots.push({ input: fact.input, ...(fact.index === undefined ? {} : { index: fact.index }), ...snapshot })
     if (fact.index === undefined) stagedInputs[fact.input] = targetPath
     else stagedInputs[fact.input][fact.index] = targetPath
@@ -1302,6 +1790,7 @@ async function hashResultArtifact(
   engineRoot,
   inventory,
   budget,
+  limits,
   captureText = false,
   isCancelled = () => false,
 ) {
@@ -1335,14 +1824,14 @@ async function hashResultArtifact(
     if (!opened.isFile()) {
       throw resultCollectionError(`declared output is not a regular file: ${inventory.output}`)
     }
-    if (opened.size > MAX_RESULT_ARTIFACT_BYTES) {
+    if (opened.size > limits.maxResultArtifactBytes) {
       throw resultCollectionError(
-        `declared output exceeds the ${MAX_RESULT_ARTIFACT_BYTES} byte artifact limit: ${inventory.output}`,
+        `declared output exceeds the ${limits.maxResultArtifactBytes} byte artifact limit: ${inventory.output}`,
       )
     }
     if (opened.size > budget.remainingBytes) {
       throw resultCollectionError(
-        `declared outputs exceed the ${MAX_TOTAL_RESULT_ARTIFACT_BYTES} byte aggregate hashing limit`,
+        `declared outputs exceed the ${limits.maxTotalResultArtifactBytes} byte aggregate hashing limit`,
       )
     }
     if (captureText && opened.size > BigInt(MAX_FASTQC_SUMMARY_BYTES)) {
@@ -1654,6 +2143,7 @@ async function createBioWorkflowResult(
   planDigest,
   outputInventory,
   generatedAt,
+  limits,
   isCancelled = () => false,
 ) {
   throwIfResultCollectionCancelled(isCancelled)
@@ -1670,15 +2160,15 @@ async function createBioWorkflowResult(
     }
     seenEntities.add(entity)
     const size = BigInt(item.size)
-    if (size > MAX_RESULT_ARTIFACT_BYTES) {
+    if (size > limits.maxResultArtifactBytes) {
       throw resultCollectionError(
-        `declared output exceeds the ${MAX_RESULT_ARTIFACT_BYTES} byte artifact limit: ${item.output}`,
+        `declared output exceeds the ${limits.maxResultArtifactBytes} byte artifact limit: ${item.output}`,
       )
     }
     declaredBytes += size
-    if (declaredBytes > MAX_TOTAL_RESULT_ARTIFACT_BYTES) {
+    if (declaredBytes > limits.maxTotalResultArtifactBytes) {
       throw resultCollectionError(
-        `declared outputs exceed the ${MAX_TOTAL_RESULT_ARTIFACT_BYTES} byte aggregate hashing limit`,
+        `declared outputs exceed the ${limits.maxTotalResultArtifactBytes} byte aggregate hashing limit`,
       )
     }
     if (
@@ -1694,7 +2184,7 @@ async function createBioWorkflowResult(
       }
     }
   }
-  const budget = { remainingBytes: MAX_TOTAL_RESULT_ARTIFACT_BYTES }
+  const budget = { remainingBytes: limits.maxTotalResultArtifactBytes }
   const artifacts = []
   const fastqcReports = []
   let totalFastqcSummaryLines = 0
@@ -1713,6 +2203,7 @@ async function createBioWorkflowResult(
         engineRoot,
         inventory,
         budget,
+        limits,
         captureText,
         isCancelled,
       )
@@ -1805,6 +2296,124 @@ function createOutputReader(handle) {
     } catch {
       return '[bio-workflow output unavailable]\n'
     }
+  }
+}
+
+async function inspectRunStorage(runDirectory, maxBytes) {
+  const canonicalRoot = await realpath(runDirectory)
+  const pending = [canonicalRoot]
+  const seenEntities = new Set()
+  let observedEntries = 0
+  let allocatedBytes = 0n
+  while (pending.length > 0) {
+    const directoryPath = pending.pop()
+    let canonicalDirectory
+    try {
+      canonicalDirectory = await realpath(directoryPath)
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue
+      throw error
+    }
+    if (!isContainedPath(canonicalRoot, canonicalDirectory)) {
+      throw new ExecutionOperationError(
+        'run_storage_scan_unsafe',
+        'run storage scan encountered a directory outside the private run root',
+      )
+    }
+    let directory
+    try {
+      directory = await opendir(canonicalDirectory)
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue
+      throw error
+    }
+    for await (const entry of directory) {
+      observedEntries += 1
+      if (observedEntries > MAX_RUN_STORAGE_SCAN_ENTRIES) {
+        throw new ExecutionOperationError(
+          'run_storage_entry_limit_exceeded',
+          `run storage scan exceeds ${MAX_RUN_STORAGE_SCAN_ENTRIES} filesystem entries`,
+        )
+      }
+      const entryPath = join(canonicalDirectory, entry.name)
+      let metadata
+      try {
+        metadata = await lstat(entryPath, { bigint: true })
+      } catch (error) {
+        if (error?.code === 'ENOENT') continue
+        throw error
+      }
+      const entity = `${metadata.dev}:${metadata.ino}`
+      if (!seenEntities.has(entity)) {
+        seenEntities.add(entity)
+        const blocks = typeof metadata.blocks === 'bigint' ? metadata.blocks : 0n
+        allocatedBytes += blocks > 0n ? blocks * 512n : metadata.size
+      }
+      if (allocatedBytes > maxBytes) {
+        return { exceeded: true, allocatedBytes, observedEntries }
+      }
+      if (metadata.isDirectory() && !metadata.isSymbolicLink()) pending.push(entryPath)
+    }
+  }
+  return { exceeded: false, allocatedBytes, observedEntries }
+}
+
+function startRunStorageMonitor(runDirectory, maxBytes, handle) {
+  let stopped = false
+  let running = null
+  let violation = null
+  let maximumObservedBytes = 0n
+  const scan = async () => {
+    if (running !== null) return running
+    running = (async () => {
+      try {
+        const observed = await inspectRunStorage(runDirectory, maxBytes)
+        if (observed.allocatedBytes > maximumObservedBytes) {
+          maximumObservedBytes = observed.allocatedBytes
+        }
+        if (observed.exceeded && violation === null) {
+          violation = {
+            code: 'run_storage_budget_exceeded',
+            message: `run storage exceeded the ${maxBytes} byte allocation budget`,
+            observedBytes: observed.allocatedBytes.toString(),
+          }
+          handle.terminate()
+        }
+      } catch (error) {
+        if (violation === null) {
+          violation = {
+            code: error instanceof ExecutionOperationError
+              ? error.code
+              : 'run_storage_scan_failed',
+            message: String(error?.message ?? error).slice(0, 512),
+            observedBytes: maximumObservedBytes.toString(),
+          }
+          handle.terminate()
+        }
+      } finally {
+        running = null
+      }
+    })()
+    return running
+  }
+  const timer = setInterval(() => {
+    if (!stopped) void scan()
+  }, RUN_STORAGE_SCAN_INTERVAL_MS)
+  timer.unref?.()
+  void scan()
+  return {
+    async stop() {
+      stopped = true
+      clearInterval(timer)
+      if (running !== null) await running
+      if (violation === null) await scan()
+      return {
+        violation,
+        maximumObservedBytes: maximumObservedBytes.toString(),
+        enforcement: 'periodic_allocated_bytes_scan',
+        intervalMs: RUN_STORAGE_SCAN_INTERVAL_MS,
+      }
+    },
   }
 }
 
@@ -1955,6 +2564,7 @@ export function createExecutionManager(options) {
       subprocessAvailable: typeof subprocess?.resolveExecutable === 'function' && typeof subprocess?.spawn === 'function',
       jobsAvailable: typeof jobs?.start === 'function',
       supportedWorkflows: [...EXECUTABLE_WORKFLOWS],
+      policy: cloneJson(config.policy),
     }
   }
 
@@ -2081,6 +2691,208 @@ export function createExecutionManager(options) {
     }
   }
 
+  async function buildCleanupPlan(operation = {}) {
+    throwIfAborted(operation.signal)
+    if (!config.enabled) {
+      throw new ExecutionOperationError('execution_disabled', 'workflow execution is disabled by plugin configuration')
+    }
+    if (!config.policy.retention.enabled) {
+      throw new ExecutionOperationError(
+        'run_retention_disabled',
+        'run retention cleanup is disabled by plugin configuration',
+      )
+    }
+    const owner = requireOwner(operation)
+    const roots = await inspectRunsRoot(config, constants.R_OK | constants.W_OK | constants.X_OK)
+    const names = []
+    let observedEntries = 0
+    const directory = await opendir(roots.runsRoot)
+    for await (const entry of directory) {
+      throwIfAborted(operation.signal)
+      observedEntries += 1
+      if (observedEntries > MAX_RUN_DISCOVERY_ENTRIES) {
+        throw new ExecutionOperationError(
+          'run_cleanup_discovery_incomplete',
+          `cleanup discovery exceeds ${MAX_RUN_DISCOVERY_ENTRIES} directory entries`,
+        )
+      }
+      if (RUN_ID_PATTERN.test(entry.name)) names.push(entry.name)
+    }
+    if (names.length > MAX_RUN_DISCOVERY_RECORDS) {
+      throw new ExecutionOperationError(
+        'run_cleanup_discovery_incomplete',
+        `cleanup discovery exceeds ${MAX_RUN_DISCOVERY_RECORDS} run records`,
+      )
+    }
+    names.sort()
+    const aggregateBudget = {
+      maximumBytes: MAX_RUN_DISCOVERY_BYTES,
+      remainingBytes: MAX_RUN_DISCOVERY_BYTES,
+    }
+    const terminal = []
+    for (const runId of names) {
+      throwIfAborted(operation.signal)
+      if (activeRuns.has(runId)) continue
+      let persisted
+      try {
+        persisted = await readPersistedRun(roots, runId, aggregateBudget)
+      } catch (error) {
+        throw new ExecutionOperationError(
+          'run_cleanup_discovery_incomplete',
+          `cleanup cannot safely inspect run ${runId}: ${String(error?.message ?? error).slice(0, 256)}`,
+        )
+      }
+      const record = persisted.record
+      if (record === null) {
+        throw new ExecutionOperationError(
+          'run_cleanup_discovery_incomplete',
+          `cleanup cannot read provenance for run ${runId}`,
+        )
+      }
+      if (record.ownerSession !== owner.id) continue
+      if (record.runId !== runId || !TERMINAL_RUN_STATUS_SET.has(record.status)) continue
+      const finishedAtMs = Date.parse(record.finishedAt)
+      if (!Number.isFinite(finishedAtMs)) {
+        throw new ExecutionOperationError(
+          'run_cleanup_provenance_invalid',
+          `terminal run has an invalid finishedAt timestamp: ${runId}`,
+        )
+      }
+      terminal.push({
+        runId,
+        status: record.status,
+        finishedAt: record.finishedAt,
+        finishedAtMs,
+        recordDigest: digestValue(record),
+        runDirectoryIdentity: persisted.runDirectoryIdentity,
+      })
+    }
+    terminal.sort((left, right) => (
+      right.finishedAtMs - left.finishedAtMs || right.runId.localeCompare(left.runId)
+    ))
+    const cutoffMs = now().getTime() - config.policy.retention.minimumAgeDays * 24 * 60 * 60 * 1000
+    const candidates = terminal
+      .slice(config.policy.retention.retainLatest)
+      .filter((item) => item.finishedAtMs <= cutoffMs)
+      .sort((left, right) => left.finishedAtMs - right.finishedAtMs || left.runId.localeCompare(right.runId))
+      .slice(0, config.policy.retention.maxDeletesPerCall)
+      .map(({ finishedAtMs: _finishedAtMs, ...item }) => item)
+    const plan = {
+      schemaVersion: RUN_CLEANUP_PLAN_SCHEMA_VERSION,
+      ownerSession: owner.id,
+      runsRoot: roots.runsRoot,
+      runsRootIdentity: roots.runsRootIdentity,
+      policy: cloneJson(config.policy.retention),
+      candidates,
+      authorization: { required: true, binding: 'cleanupPlanDigest' },
+    }
+    return {
+      result: {
+        ok: true,
+        observedAt: now().toISOString(),
+        cleanupPlanDigest: digestValue(plan),
+        plan,
+        error: null,
+      },
+      roots,
+    }
+  }
+
+  async function prepareCleanup(request, operation = {}) {
+    try {
+      if (!isPlainObject(request) || Object.keys(request).some((key) => key !== 'expectedCleanupPlanDigest')) {
+        throw new ExecutionOperationError(
+          'invalid_run_cleanup_request',
+          'cleanup request must contain only expectedCleanupPlanDigest',
+        )
+      }
+      if (
+        typeof request.expectedCleanupPlanDigest !== 'string'
+        || !DIGEST_PATTERN.test(request.expectedCleanupPlanDigest)
+      ) {
+        throw new ExecutionOperationError(
+          'invalid_run_cleanup_request',
+          'expectedCleanupPlanDigest must be a SHA-256 plan digest',
+        )
+      }
+      const built = await buildCleanupPlan(operation)
+      if (built.result.plan.candidates.length === 0) {
+        return failure('run_cleanup_empty', 'no owner-scoped terminal runs satisfy the configured retention policy')
+      }
+      if (built.result.cleanupPlanDigest !== request.expectedCleanupPlanDigest) {
+        return failure(
+          'cleanup_plan_digest_mismatch',
+          'live cleanup plan does not match expectedCleanupPlanDigest',
+          {
+            expectedCleanupPlanDigest: request.expectedCleanupPlanDigest,
+            actualCleanupPlanDigest: built.result.cleanupPlanDigest,
+          },
+        )
+      }
+      return built
+    } catch (error) {
+      return operationFailure(error)
+    }
+  }
+
+  async function cleanupRuns(request, operation = {}) {
+    const prepared = await prepareCleanup(request, operation)
+    if (prepared.result === undefined) return prepared
+    const owner = requireOwner(operation)
+    const verified = []
+    try {
+      for (const candidate of prepared.result.plan.candidates) {
+        throwIfAborted(operation.signal)
+        if (activeRuns.has(candidate.runId)) {
+          throw new ExecutionOperationError(
+            'run_cleanup_candidate_changed',
+            `cleanup candidate became active: ${candidate.runId}`,
+          )
+        }
+        const persisted = await readPersistedRun(prepared.roots, candidate.runId)
+        const record = persisted.record
+        if (
+          record === null
+          || record.runId !== candidate.runId
+          || record.ownerSession !== owner.id
+          || !TERMINAL_RUN_STATUS_SET.has(record.status)
+          || digestValue(record) !== candidate.recordDigest
+          || digestValue(persisted.runDirectoryIdentity) !== digestValue(candidate.runDirectoryIdentity)
+        ) {
+          throw new ExecutionOperationError(
+            'run_cleanup_candidate_changed',
+            `cleanup candidate changed after approval: ${candidate.runId}`,
+          )
+        }
+        verified.push({ candidate, persisted })
+      }
+      await assertDirectoryUnchanged(prepared.roots.runsRootIdentity, 'runs_root')
+      const removedRunIds = []
+      for (const item of verified) {
+        try {
+          await assertDirectoryUnchanged(item.persisted.runDirectoryIdentity, 'run_directory')
+          await rm(item.persisted.runDirectoryIdentity.path, { recursive: true })
+          removedRunIds.push(item.candidate.runId)
+        } catch (error) {
+          throw new ExecutionOperationError(
+            'run_cleanup_partial',
+            `cleanup stopped after removing ${removedRunIds.length} runs: ${String(error?.message ?? error).slice(0, 256)}`,
+            { removedRunIds, failedRunId: item.candidate.runId },
+          )
+        }
+      }
+      return {
+        ok: true,
+        cleanupPlanDigest: prepared.result.cleanupPlanDigest,
+        removedCount: removedRunIds.length,
+        removedRunIds,
+        error: null,
+      }
+    } catch (error) {
+      return operationFailure(error)
+    }
+  }
+
   async function buildPlan(request, operation = {}) {
     throwIfAborted(operation.signal)
     validateRequestKeys(request, new Set(['id', 'version', 'expectedDigest', 'inputs']))
@@ -2118,11 +2930,18 @@ export function createExecutionManager(options) {
       )
     }
     const images = assertPinnedContainers(resolvedBundle.bundle)
+    assertNetworkIsolationCompatible(
+      resolvedBundle.bundle,
+      config.policy.networkIsolation.mode,
+    )
     const workflowName = extractWorkflowName(resolvedBundle.bundle)
     const inputs = await normalizeInputs(
       resolvedBundle.bundle.descriptor.manifest,
       request.inputs,
       roots.inputRoots,
+      config.policy.inputChecksum,
+      config.policy.budgets.maxInputSnapshotBytes,
+      operation.signal,
     )
     throwIfAborted(operation.signal)
     const runner = await probeRunner(
@@ -2150,8 +2969,9 @@ export function createExecutionManager(options) {
       inputFileFacts: inputs.fileFacts,
       inputSnapshotPolicy: {
         mode: 'run_owned_copy_after_approval',
+        preApprovalIntegrity: config.policy.inputChecksum,
         totalBytes: inputs.totalSnapshotBytes,
-        maxTotalBytes: MAX_TOTAL_SNAPSHOT_BYTES.toString(),
+        maxTotalBytes: config.policy.budgets.maxInputSnapshotBytes.toString(),
         minimumFreeSpaceReserveBytes: SNAPSHOT_FREE_SPACE_RESERVE_BYTES.toString(),
         rejectGrowthDuringCopy: true,
       },
@@ -2192,13 +3012,27 @@ export function createExecutionManager(options) {
         environmentPolicy: ENVIRONMENT_POLICY,
         securityPolicy: {
           inputMode: 'run_owned_snapshot',
-          maxTotalInputBytes: MAX_TOTAL_SNAPSHOT_BYTES.toString(),
+          inputChecksum: config.policy.inputChecksum,
+          maxTotalInputBytes: config.policy.budgets.maxInputSnapshotBytes.toString(),
           minimumFreeSpaceReserveBytes: SNAPSHOT_FREE_SPACE_RESERVE_BYTES.toString(),
           fileIoRoot: '<run-directory>',
           placeholderRegex: PLACEHOLDER_PATTERN,
           allowAnyInput: false,
           allowPrivileged: false,
-          allowedDockerNetworks: [],
+          networkIsolation: config.policy.networkIsolation.mode === 'ephemeral_internal'
+            ? {
+                mode: 'ephemeral_internal_overlay',
+                networkName: '<run-network>',
+                driver: 'overlay',
+                scope: 'swarm',
+                internal: true,
+                attachable: false,
+                ingress: false,
+              }
+            : { mode: 'advisory' },
+          allowedDockerNetworks: config.policy.networkIsolation.mode === 'ephemeral_internal'
+            ? ['<run-network>']
+            : [],
           swarmAutoInit: false,
           callCache: false,
           downloadCache: false,
@@ -2206,6 +3040,16 @@ export function createExecutionManager(options) {
       },
       runsRoot: roots.runsRoot,
       runsRootIdentity: roots.runsRootIdentity,
+      budgets: {
+        maxInputSnapshotBytes: config.policy.budgets.maxInputSnapshotBytes.toString(),
+        maxRunStorageBytes: config.policy.budgets.maxRunStorageBytes.toString(),
+        runStorageEnforcement: 'periodic_allocated_bytes_scan',
+        runStorageScanIntervalMs: RUN_STORAGE_SCAN_INTERVAL_MS,
+        maxResultArtifactBytes: config.policy.budgets.maxResultArtifactBytes.toString(),
+        maxTotalResultArtifactBytes: config.policy.budgets.maxTotalResultArtifactBytes.toString(),
+        maxJobOutputBytes: config.policy.budgets.maxJobOutputBytes,
+        maxSpillBytesPerStream: config.policy.budgets.maxSpillBytes,
+      },
       expectedOutputs: resolvedBundle.bundle.descriptor.manifest.outputs.map((output) => ({
         id: output.id,
         type: output.type,
@@ -2218,8 +3062,11 @@ export function createExecutionManager(options) {
       services: { jobsAvailable },
       readyToRun: jobsAvailable,
       limitations: [
-        'input_content_not_hashed',
-        'container_network_isolation_not_enforced',
+        ...(config.policy.inputChecksum === 'sha256' ? [] : ['input_content_not_hashed']),
+        ...(config.policy.networkIsolation.mode === 'ephemeral_internal'
+          ? []
+          : ['container_network_isolation_not_enforced']),
+        'run_storage_budget_is_monitor_enforced_not_filesystem_quota',
         'builtin_fastq_qc_only',
       ],
     }
@@ -2288,10 +3135,24 @@ export function createExecutionManager(options) {
     }
   }
 
-  async function finalizeRun(state, handle, manifest, workflowName, engineDirectory) {
+  async function finalizeRun(
+    state,
+    handle,
+    storageMonitor,
+    manifest,
+    workflowName,
+    engineDirectory,
+    subprocess,
+    runner,
+    bundleDirectory,
+    network,
+  ) {
+    let networkCleanupComplete = false
     try {
       const outcome = await handle.done
       await handle.waitForExit()
+      const storage = await storageMonitor.stop()
+      state.record.storageBudget = storage
       let status = state.cancelRequested
         ? 'killed'
         : outcome.exitCode === 0 ? 'completed' : 'failed'
@@ -2299,11 +3160,19 @@ export function createExecutionManager(options) {
       let outputInventory = []
       let result = null
       let error = null
+      if (storage.violation !== null && !state.cancelRequested) {
+        status = 'failed'
+        error = storage.violation
+      }
       if (status === 'completed') {
         try {
           outputs = await readBoundedJson(join(engineDirectory, 'outputs.json'))
           outputInventory = await inventoryOutputs(engineDirectory, manifest, workflowName, outputs)
           const generatedAt = now().toISOString()
+          const resultLimits = {
+            maxResultArtifactBytes: BigInt(state.record.plan.budgets.maxResultArtifactBytes),
+            maxTotalResultArtifactBytes: BigInt(state.record.plan.budgets.maxTotalResultArtifactBytes),
+          }
           result = await createBioWorkflowResult(
             engineDirectory,
             manifest,
@@ -2311,6 +3180,7 @@ export function createExecutionManager(options) {
             state.record.planDigest,
             outputInventory,
             generatedAt,
+            resultLimits,
             () => state.cancelRequested,
           )
           if (state.cancelRequested) {
@@ -2331,13 +3201,32 @@ export function createExecutionManager(options) {
             }
           }
         }
-      } else if (status === 'failed') {
+      } else if (status === 'failed' && error === null) {
         const miniwdlError = await readBoundedJson(join(engineDirectory, 'error.json'), true).catch(() => null)
         error = {
           code: 'miniwdl_failed',
           message: `miniwdl exited with ${outcome.exitCode === null ? outcome.signal : `code ${outcome.exitCode}`}`,
           ...(miniwdlError === null ? {} : { miniwdl: miniwdlError }),
         }
+      }
+      try {
+        await removeRunNetwork(
+          subprocess,
+          runner,
+          bundleDirectory,
+          network,
+          getEnvironment(),
+        )
+        state.record.networkIsolation.cleanup = network === null ? 'not_configured' : 'removed'
+        networkCleanupComplete = true
+      } catch (cleanupError) {
+        status = state.cancelRequested ? 'killed' : 'failed'
+        result = null
+        error = {
+          code: 'network_cleanup_failed',
+          message: String(cleanupError?.message ?? cleanupError).slice(0, 512),
+        }
+        state.record.networkIsolation.cleanup = 'failed'
       }
       state.record.status = status
       state.record.finishedAt = now().toISOString()
@@ -2355,6 +3244,21 @@ export function createExecutionManager(options) {
           : `${error.code}: ${error.message}`,
       }
     } catch (error) {
+      await storageMonitor.stop().catch(() => null)
+      if (!networkCleanupComplete) {
+        try {
+          await removeRunNetwork(
+            subprocess,
+            runner,
+            bundleDirectory,
+            network,
+            getEnvironment(),
+          )
+          state.record.networkIsolation.cleanup = network === null ? 'not_configured' : 'removed'
+        } catch {
+          state.record.networkIsolation.cleanup = 'failed'
+        }
+      }
       state.record.status = state.cancelRequested ? 'killed' : 'failed'
       state.record.finishedAt = now().toISOString()
       state.record.error = {
@@ -2388,6 +3292,8 @@ export function createExecutionManager(options) {
     }
     const runDirectory = join(prepared.roots.runsRoot, runId)
     let runDirectoryCreated = false
+    let createdNetwork = null
+    let networkManagedByFinalize = false
     try {
       await assertDirectoryUnchanged(prepared.roots.runsRootIdentity, 'runs_root')
       await mkdir(runDirectory, { mode: 0o700 })
@@ -2407,7 +3313,17 @@ export function createExecutionManager(options) {
         prepared.result.plan.inputs,
         prepared.result.plan.inputFileFacts,
         prepared.result.plan.inputSnapshotPolicy.totalBytes,
+        prepared.result.plan.inputSnapshotPolicy.maxTotalBytes,
         operation.signal,
+      )
+      createdNetwork = await createRunNetwork(
+        config,
+        prepared.subprocess,
+        prepared.runner,
+        staged.wdlRoot,
+        runId,
+        operation.signal,
+        getEnvironment(),
       )
       const qualifiedInputs = Object.fromEntries(
         Object.entries(stagedInputResult.stagedInputs).map(([key, value]) => [
@@ -2419,7 +3335,10 @@ export function createExecutionManager(options) {
       const configPath = join(canonicalRunDirectory, 'miniwdl.cfg')
       const engineDirectory = join(canonicalRunDirectory, 'engine')
       await writeExclusiveText(inputsPath, `${JSON.stringify(qualifiedInputs, null, 2)}\n`)
-      await writeExclusiveText(configPath, createMiniwdlConfig(canonicalRunDirectory))
+      await writeExclusiveText(
+        configPath,
+        createMiniwdlConfig(canonicalRunDirectory, createdNetwork?.name ?? null),
+      )
       const argv = [
         prepared.runner.miniwdl.executable,
         'run',
@@ -2456,6 +3375,17 @@ export function createExecutionManager(options) {
           plan: prepared.result.plan,
           inputSnapshots: stagedInputResult.snapshots,
           command: { argv, cwd: canonicalRunDirectory, environmentPolicy: ENVIRONMENT_POLICY },
+          networkIsolation: {
+            mode: config.policy.networkIsolation.mode,
+            network: createdNetwork,
+            cleanup: createdNetwork === null ? 'not_configured' : 'pending',
+          },
+          storageBudget: {
+            violation: null,
+            maximumObservedBytes: '0',
+            enforcement: 'periodic_allocated_bytes_scan',
+            intervalMs: RUN_STORAGE_SCAN_INTERVAL_MS,
+          },
           pid: null,
           exit: null,
           outputs: null,
@@ -2488,11 +3418,12 @@ export function createExecutionManager(options) {
 
       let handle
       let jobId
+      let finalization = null
       try {
         jobId = jobs.start({
           kind: 'bio',
           label: `${request.id}@${request.version} ${runId}`,
-          outputLimitBytes: JOB_OUTPUT_LIMIT_BYTES,
+          outputLimitBytes: config.policy.budgets.maxJobOutputBytes,
           owner,
           run() {
             handle = prepared.subprocess.spawn({
@@ -2500,8 +3431,14 @@ export function createExecutionManager(options) {
               cwd: canonicalRunDirectory,
               stdio: {
                 stdin: 'ignore',
-                stdout: { maxBytes: JOB_OUTPUT_LIMIT_BYTES, spill: { maxBytes: 16 * 1024 * 1024 } },
-                stderr: { maxBytes: JOB_OUTPUT_LIMIT_BYTES, spill: { maxBytes: 16 * 1024 * 1024 } },
+                stdout: {
+                  maxBytes: config.policy.budgets.maxJobOutputBytes,
+                  spill: { maxBytes: config.policy.budgets.maxSpillBytes },
+                },
+                stderr: {
+                  maxBytes: config.policy.budgets.maxJobOutputBytes,
+                  spill: { maxBytes: config.policy.budgets.maxSpillBytes },
+                },
               },
               graceMs: PROCESS_GRACE_MS,
               env: createChildEnvironment(getEnvironment()),
@@ -2509,6 +3446,24 @@ export function createExecutionManager(options) {
             state.record.status = 'running'
             state.record.pid = handle.pid
             persistInBackground(state)
+            const storageMonitor = startRunStorageMonitor(
+              canonicalRunDirectory,
+              BigInt(config.policy.budgets.maxRunStorageBytes),
+              handle,
+            )
+            networkManagedByFinalize = true
+            finalization = finalizeRun(
+              state,
+              handle,
+              storageMonitor,
+              prepared.bundle.descriptor.manifest,
+              prepared.result.plan.workflow.workflowName,
+              engineDirectory,
+              prepared.subprocess,
+              prepared.runner,
+              staged.wdlRoot,
+              createdNetwork,
+            )
             return {
               cancel() {
                 if (state.cancelRequested) return
@@ -2517,13 +3472,7 @@ export function createExecutionManager(options) {
                 persistInBackground(state)
                 handle.terminate()
               },
-              done: finalizeRun(
-                state,
-                handle,
-                prepared.bundle.descriptor.manifest,
-                prepared.result.plan.workflow.workflowName,
-                engineDirectory,
-              ),
+              done: finalization,
               readOutput: createOutputReader(handle),
             }
           },
@@ -2532,6 +3481,7 @@ export function createExecutionManager(options) {
         if (handle !== undefined) {
           handle.terminate()
           await handle.waitForExit().catch(() => false)
+          await finalization?.catch(() => null)
         }
         throw new ExecutionOperationError(
           'job_start_failed',
@@ -2551,6 +3501,23 @@ export function createExecutionManager(options) {
       }
     } catch (error) {
       activeRuns.delete(runId)
+      if (createdNetwork !== null && !networkManagedByFinalize) {
+        try {
+          await removeRunNetwork(
+            prepared.subprocess,
+            prepared.runner,
+            runDirectory,
+            createdNetwork,
+            getEnvironment(),
+          )
+        } catch (cleanupError) {
+          return failure(
+            'network_cleanup_failed',
+            `workflow launch failed and its ephemeral network could not be removed: ${String(cleanupError?.message ?? cleanupError).slice(0, 384)}`,
+            { runId, networkId: createdNetwork.id },
+          )
+        }
+      }
       if (runDirectoryCreated) {
         try {
           await rm(runDirectory, { recursive: true, force: true })
@@ -2832,5 +3799,14 @@ export function createExecutionManager(options) {
     run,
     listRuns,
     getRun,
+    async cleanupPlan(operation = {}) {
+      try {
+        return (await buildCleanupPlan(operation)).result
+      } catch (error) {
+        return operationFailure(error)
+      }
+    },
+    prepareCleanup,
+    cleanupRuns,
   })
 }
