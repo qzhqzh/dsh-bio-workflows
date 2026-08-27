@@ -794,13 +794,14 @@ try {
     source: `version 1.0
 
 task identity {
+  input { Int count }
   command <<<true>>>
   runtime { docker: "${taskImage}" }
 }
 
 workflow bomb {
   Array[Int] xs = range(100000000)
-  call identity
+  call identity { input: count = length(xs) }
   output { Int count = length(xs) }
 }
 `,
