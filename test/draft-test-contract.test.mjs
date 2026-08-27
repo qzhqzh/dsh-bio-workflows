@@ -207,6 +207,7 @@ test('Draft Test Plan v1 binds exact Mission, draft, validation, fixture, runner
   const distributions = [{ name: 'miniwdl', version: '1.15.0', fileCount: 1, sizeBytes: 1, digest: digest('9') }]
   const startupPolicy = {
     mode: 'python_isolated_no_site',
+    dontWriteBytecode: true,
     ignoreEnvironment: true,
     noUserSite: true,
     pthFilesExecuted: false,
@@ -299,7 +300,7 @@ test('Draft Test Plan v1 binds exact Mission, draft, validation, fixture, runner
   assert.equal(created.plan.authorization.workflowPromotion, false)
   assert.equal(
     created.planDigest,
-    'sha256:e7fa35c94159ff03ce723c4aac5de0e72b9ef9931c0628313282b1e6ceee1912',
+    'sha256:a2d3ed1c55fd35a340f6b071c926c6e8041539feb6ddcbfb72b8bbd2f9ce7b42',
   )
 
   const stale = readyMission()

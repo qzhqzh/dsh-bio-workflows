@@ -29,7 +29,8 @@
   kernel-enforced controller non-Unix-socket denial, and 17 deterministic
   controller/container egress/host-service/credential denial probes.
 - Bind the hash-locked miniwdl dependency closure and controller seccomp-filter
-  identity into each plan; start with Python `-I -S` without startup hooks,
+  identity into each plan; start with Python `-B -I -S` without bytecode writes
+  or startup hooks,
   reject remote/traversal/symlink imports and relative file coercions, enforce
   hard controller and bounded Docker-broker resource budgets, and prove
   exact-label Docker cleanup only after exact controller-group termination.

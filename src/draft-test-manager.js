@@ -978,6 +978,7 @@ async function probeRunnerIdentity({ config, subprocess, taskImage, budgets, sig
     subprocess,
     [
       python.path,
+      '-B',
       '-I',
       '-S',
       wrapper.path,
@@ -1459,6 +1460,7 @@ task_count = ${budgets.taskCount}
 function runnerArgv({ runner, entrypoint, inputsPath, engineDirectory, configPath }) {
   return [
     runner.pythonPath,
+    '-B',
     '-I',
     '-S',
     runner.wrapperPath,

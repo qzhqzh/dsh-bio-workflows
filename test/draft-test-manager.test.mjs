@@ -116,6 +116,7 @@ function makeRunnerIdentity() {
   }]
   const startupPolicy = {
     mode: 'python_isolated_no_site',
+    dontWriteBytecode: true,
     ignoreEnvironment: true,
     noUserSite: true,
     pthFilesExecuted: false,
@@ -521,6 +522,7 @@ class IdentityProbeSubprocess {
     if (spec.argv.includes('--dsh-version')) {
       const startupPolicy = {
         mode: 'python_isolated_no_site',
+        dontWriteBytecode: true,
         ignoreEnvironment: true,
         noUserSite: true,
         pthFilesExecuted: false,
@@ -712,6 +714,7 @@ test('default runner preflight binds isolated Python startup, TSYNC seccomp, Doc
     const prepared = await fixture.manager.prepare(request, operation)
     assert.equal(prepared.ok, true, JSON.stringify(prepared))
     assert.equal(prepared.plan.runner.identity.pythonEnvironment.startupPolicy.mode, 'python_isolated_no_site')
+    assert.equal(prepared.plan.runner.identity.pythonEnvironment.startupPolicy.dontWriteBytecode, true)
     assert.equal(prepared.plan.runner.identity.pythonEnvironment.startupPolicy.pthFilesExecuted, false)
     assert.equal(
       prepared.plan.runner.identity.controller.network.threadSynchronization,
@@ -726,7 +729,7 @@ test('default runner preflight binds isolated Python startup, TSYNC seccomp, Doc
       ['name=apparmor', 'name=seccomp,profile=builtin'],
     )
     assert.equal(subprocess.spawns.length, 4)
-    assert.deepEqual(subprocess.spawns[0].argv.slice(1, 4), ['-I', '-S', FIXTURE_RUNNER_PATH])
+    assert.deepEqual(subprocess.spawns[0].argv.slice(1, 5), ['-B', '-I', '-S', FIXTURE_RUNNER_PATH])
     assert.equal(subprocess.spawns.every((spec) => spec.env.HOME === '/nonexistent'), true)
   } finally {
     await removeTestRoot(fixture.root)
