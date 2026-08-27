@@ -1,9 +1,9 @@
 {
   "schemaVersion": "1",
-  "recordedAt": "2026-08-27T16:01:01.391Z",
+  "recordedAt": "2026-08-27T17:45:16.619Z",
   "purpose": "Model-driven DSH draft-authoring, execution, approval, and owner-disposal lifecycle acceptance",
   "candidate": {
-    "package": "dsh-bio-workflows@0.11.0",
+    "package": "dsh-bio-workflows@0.12.0",
     "dsh": "0.1.1-rc.2"
   },
   "runtime": {
@@ -24,16 +24,16 @@
   "workflow": {
     "key": "fastq-qc@1.2.0",
     "bundleDigest": "sha256:6dac1d1a37672462a1e4539fccf967f6a1204a9667c94799f36351d8d92e564e",
-    "planDigest": "sha256:8b8bb277fe6f84860baa9c0b22d377830bbcc1c16cced2f55f464e55c812ac5c"
+    "planDigest": "sha256:d4fe379fb5ddc7893e1a8db439356a8d98a2685b8582a898ad80d8c8f20e909f"
   },
   "authoring": {
-    "draftId": "draft-8e0a09cf-d520-4695-92f8-89d3aab3d9ee",
+    "draftId": "draft-e3bade2d-bd99-4807-b741-575c4797620b",
     "revision": 2,
     "contentDigest": "sha256:f51de268edb077a40ac333e678ad3f696ccc435e52fd2871a8668e17358c9cea",
-    "validationDigest": "sha256:e1795bd8b23ab4338d6ac33c3bd1b0a7786f828973e60708e4478959d61b578a",
+    "validationDigest": "sha256:a77adf33867f4ad3c15a12bbf8b7d3698aad692036af5593202a87dd0fd13367",
     "valid": true,
     "executionAuthorized": false,
-    "graphDigest": "sha256:fa54f97938e3fbcc7eddbc796183512f26bae748448e2aa9c6f042c0058a7892",
+    "graphDigest": "sha256:3ab5f8c129e6ab4cebda0c4b17f9ab31959e07ef909eddb8410786310e68e8e2",
     "graphNodes": 2
   },
   "model": {
@@ -74,7 +74,7 @@
     "reconciliationStatus": "active"
   },
   "run": {
-    "id": "run-3cee25e0-5f10-47f1-a547-59116033dc96",
+    "id": "run-69a04fb2-1aa8-450b-bea6-a015d972e81f",
     "statusAfterDispose": "killed",
     "exit": {
       "exitCode": 143,

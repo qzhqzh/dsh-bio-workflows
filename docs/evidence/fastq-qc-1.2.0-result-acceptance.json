@@ -1,8 +1,8 @@
 {
   "schemaVersion": "1",
-  "recordedAt": "2026-08-27T16:00:34.623Z",
+  "recordedAt": "2026-08-27T17:44:47.528Z",
   "scope": "real-bioworkflow-result-acceptance",
-  "packageVersion": "0.11.0",
+  "packageVersion": "0.12.0",
   "adapterSources": {
     "index.js": "7660fa4456dcbc30b382801c7d69d567b8047d9b656637a38f4072ac42f9804f",
     "src/execution.js": "efd6da1f0ee1fe561558fd1ce4cf7fc2200c8ddcd8b6be1a062e9ae445fc3375",
@@ -13,7 +13,7 @@
     "id": "fastq-qc",
     "version": "1.2.0",
     "bundleDigest": "sha256:6dac1d1a37672462a1e4539fccf967f6a1204a9667c94799f36351d8d92e564e",
-    "planDigest": "sha256:78888e9baa20e049d69cbb3e0ed80fd15bcc77cb20d75aa3cf360989651005be"
+    "planDigest": "sha256:048628029b7a1ef549ab1cca33983b4bf8f9c01ed483c7dec33b8fee51104904"
   },
   "runner": {
     "name": "miniwdl",
@@ -53,8 +53,8 @@
     "networkIsolation": {
       "mode": "ephemeral_internal",
       "network": {
-        "id": "g3niledryyvs6e473t09ebnwd",
-        "name": "dsh-bio-run-ef11bad3-175f-4e32-8b28-43fe650f1e38",
+        "id": "usgb7smd9uudmpmile1ebclkh",
+        "name": "dsh-bio-run-3e533f60-c92a-4b75-9f9c-ba60bbaf52f8",
         "driver": "overlay",
         "scope": "swarm",
         "internal": true,
@@ -62,7 +62,7 @@
         "ingress": false,
         "labels": {
           "dsh.bio-workflows.managed": "true",
-          "dsh.bio-workflows.run-id": "run-ef11bad3-175f-4e32-8b28-43fe650f1e38"
+          "dsh.bio-workflows.run-id": "run-3e533f60-c92a-4b75-9f9c-ba60bbaf52f8"
         },
         "servicesAtAdmission": 0
       },
@@ -113,8 +113,8 @@
         "outputId": "zip_reports",
         "ordinal": 0,
         "sizeBytes": "288628",
-        "sha256": "sha256:f6986be1adfc2bbd6700ac528d9736605c6d89e9723e57eb137d1eb6cc6b3d49",
-        "directSha256": "sha256:f6986be1adfc2bbd6700ac528d9736605c6d89e9723e57eb137d1eb6cc6b3d49"
+        "sha256": "sha256:b678481894dca1932e89aa486843ddba9753e0ddd331082fb1c70c4785b21aec",
+        "directSha256": "sha256:b678481894dca1932e89aa486843ddba9753e0ddd331082fb1c70c4785b21aec"
       },
       {
         "outputId": "summary_reports",

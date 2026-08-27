@@ -1042,7 +1042,7 @@ workflow bomb {
     schemaVersion: '1',
     scope: 'real-isolated-fixture-runner-acceptance',
     recordedAt: new Date().toISOString(),
-    candidate: { package: 'dsh-bio-workflows@0.11.0+unreleased-fixture-runner', dsh: DSH_VERSION },
+    candidate: { package: 'dsh-bio-workflows@0.12.0', dsh: DSH_VERSION },
     identities: report.report.identities,
     planDigest: passing.prepared.planDigest,
     evidenceDigest: passed.test.evidence.evidenceDigest,

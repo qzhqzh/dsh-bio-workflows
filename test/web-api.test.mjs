@@ -58,7 +58,7 @@ test('Workflow Center bootstrap exposes bounded public catalog facts but no owne
   const value = await createWorkflowCenterBootstrap(options())
 
   assert.equal(value.schemaVersion, '1')
-  assert.equal(value.package.version, '0.11.0')
+  assert.equal(value.package.version, '0.12.0')
   assert.equal(value.workflows.length, 4)
   assert.equal(value.workflows.every((workflow) => workflow.source === 'builtin'), true)
   assert.equal(value.workflows.find((workflow) => workflow.id === 'fastq-qc' && workflow.version === '1.2.0').executionSupported, true)

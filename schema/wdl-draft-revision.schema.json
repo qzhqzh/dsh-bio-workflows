@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/dsh-bio-workflows@0.11.0/schema/wdl-draft-revision.schema.json",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.12.0/schema/wdl-draft-revision.schema.json",
   "title": "WDL Draft Revision v1",
   "$comment": "The runtime contract is authoritative for well-formed Unicode, exact UTF-8 byte budgets (1 MiB per file and 4 MiB aggregate), the required main.wdl workflow role, unique paths, and canonical contentDigest semantics; these cross-field and byte-level invariants are not fully expressible in portable JSON Schema.",
   "type": "object",

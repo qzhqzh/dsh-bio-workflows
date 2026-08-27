@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/dsh-bio-workflows@0.11.0/schema/mission.schema.json",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.12.0/schema/mission.schema.json",
   "title": "Bounded Autonomous WDL Authoring Mission v1",
   "$comment": "A Mission grant is owner-session and runtime scoped. Runtime restart is fail-closed and never retries an in-flight operation. This schema describes the public Mission snapshot, not its private persistence record.",
   "type": "object",

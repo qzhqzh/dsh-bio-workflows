@@ -1,5 +1,5 @@
 export const PACKAGE_NAME = 'dsh-bio-workflows'
-export const PACKAGE_VERSION = '0.11.0'
+export const PACKAGE_VERSION = '0.12.0'
 export const TOOL_NAME = 'bio_workflows_info'
 
 export function getPackageInfo(

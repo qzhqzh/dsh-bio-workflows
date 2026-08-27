@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.12.0 - 2026-08-27
+
 - Add optional plan-bound production policies for pre-approval input SHA-256,
   per-run ephemeral internal Swarm overlays, configurable input/result/log/run
   storage budgets, and explicit owner-scoped retention cleanup. Cleanup remains

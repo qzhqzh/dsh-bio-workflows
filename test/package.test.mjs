@@ -265,7 +265,7 @@ test('isolated draft-test schemas and built-in fixture preserve separate false p
 
 test('retained fixture-runner evidence is bound to every current acceptance source', async () => {
   const evidence = JSON.parse(await readFile(
-    new URL('../docs/evidence/dsh-bio-workflows-0.11.0-unreleased-fixture-runner.json', import.meta.url),
+    new URL('../docs/evidence/dsh-bio-workflows-0.12.0-fixture-runner.json', import.meta.url),
     'utf8',
   ))
   const expectedSources = [

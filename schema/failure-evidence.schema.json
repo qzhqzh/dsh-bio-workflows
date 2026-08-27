@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/dsh-bio-workflows@0.11.0/schema/failure-evidence.schema.json",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.12.0/schema/failure-evidence.schema.json",
   "title": "Autonomous WDL Authoring Failure Evidence v1",
   "$comment": "failureFingerprint is stable across equivalent bounded diagnostics; evidenceDigest also binds the exact draft revision and normalized evidence.",
   "type": "object",

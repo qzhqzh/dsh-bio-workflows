@@ -116,7 +116,7 @@ try {
     assert.equal(typeof preflightWorkflow, 'function')
     assert.equal(typeof createWorkflowStore, 'function')
     assert.equal(metadata.name, plugin.name)
-    assert.equal(metadata.version, '0.11.0')
+    assert.equal(metadata.version, '0.12.0')
     assert.equal(schema.properties.schemaVersion.const, MANIFEST_SCHEMA_VERSION)
     assert.equal(bundleSchema.properties.bundleVersion.const, WDL_BUNDLE_SCHEMA_VERSION)
     assert.equal(resultSchema.properties.schemaVersion.const, BIO_WORKFLOW_RESULT_SCHEMA_VERSION)

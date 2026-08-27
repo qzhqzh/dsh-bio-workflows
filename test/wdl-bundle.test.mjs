@@ -65,7 +65,7 @@ test('built-in WDL bundles load with verified files and explicit limitations', a
   }
 
   assert.equal(resultAcceptance.schemaVersion, '1')
-  assert.equal(resultAcceptance.packageVersion, '0.11.0')
+  assert.equal(resultAcceptance.packageVersion, '0.12.0')
   assert.equal(resultAcceptance.workflow.bundleDigest, resultFastq.digest)
   assert.match(resultAcceptance.workflow.planDigest, /^sha256:[a-f0-9]{64}$/)
   assert.equal(resultAcceptance.runner.name, 'miniwdl')
@@ -108,7 +108,7 @@ test('built-in WDL bundles load with verified files and explicit limitations', a
   }
 
   assert.equal(agentAcceptance.schemaVersion, '1')
-  assert.equal(agentAcceptance.candidate.package, 'dsh-bio-workflows@0.11.0')
+  assert.equal(agentAcceptance.candidate.package, 'dsh-bio-workflows@0.12.0')
   assert.equal(agentAcceptance.candidate.dsh, '0.1.1-rc.2')
   assert.equal(agentAcceptance.workflow.bundleDigest, resultFastq.digest)
   assert.match(agentAcceptance.workflow.planDigest, /^sha256:[a-f0-9]{64}$/)

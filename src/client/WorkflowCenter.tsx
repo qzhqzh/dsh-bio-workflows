@@ -27,7 +27,7 @@ const AREAS: Array<{ id: Area; label: string; icon: typeof WorkflowIcon }> = [
 
 const EMPTY_BOOTSTRAP: WorkflowCenterBootstrap = {
   schemaVersion: '1',
-  package: { name: 'dsh-bio-workflows', version: '0.11.0' },
+  package: { name: 'dsh-bio-workflows', version: '0.12.0' },
   workflows: [],
   diagnostics: [],
   capabilities: {},
@@ -213,7 +213,7 @@ function WorkflowsArea({ workflows, selected, onSelect, ask, busy }: {
             {!selected.executionSupported && (
               <div className="dsh-bio-trust-note">
                 <WarningIcon />
-                <div><strong>Not execution-allowlisted</strong><p>This bundle can be inspected and validated, but 0.11.0 will not plan or run it.</p></div>
+                <div><strong>Not execution-allowlisted</strong><p>This bundle can be inspected and validated, but 0.12.0 will not plan or run it.</p></div>
               </div>
             )}
             <div className="dsh-bio-actions">
