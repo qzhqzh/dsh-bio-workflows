@@ -1,27 +1,27 @@
 {
   "schemaVersion": "1",
   "scope": "real-isolated-fixture-runner-acceptance",
-  "recordedAt": "2026-08-27T15:25:06.071Z",
+  "recordedAt": "2026-08-27T16:23:17.167Z",
   "candidate": {
     "package": "dsh-bio-workflows@0.11.0+unreleased-fixture-runner",
     "dsh": "0.1.1-rc.2"
   },
   "identities": {
-    "missionId": "mission-36ad5eef-1dbe-492f-9326-c52bb2833497",
-    "draftId": "draft-f7a749b8-59f4-46df-a883-fb4e05aad7a2",
+    "missionId": "mission-fd10f8b0-e7d3-413d-9762-609affd82a6a",
+    "draftId": "draft-0e02e8a5-a3a9-4545-a794-887b1a2a4eb3",
     "revision": 2,
     "contentDigest": "sha256:75b37b435be60cffa0a8665d2e7a97678ba7f980bc6bc44e81d621cb18069408",
-    "validationDigest": "sha256:b7f38c6cb3f84ce2824a0340356e1510f3f813bef78c6819a6a1f68e944d3dd8",
+    "validationDigest": "sha256:5378f828cb62a53acd1981c09ae01bb78a7874324f17e136c46acb7d2b96b9ee",
     "fixtureDigest": "sha256:66f7db98d4ca72101b659fc8c39210e2590440d48c1fc97002daca55187e7d95",
-    "runnerDigest": "sha256:d1f72fa7703e902a21a5c10e0de75546c910f219f5112c492f221e0566ac8c82",
+    "runnerDigest": "sha256:d956d9b2fcf4f7a3a7151fa8e0e4d084c439843b1ebfdf04f961b5c55f87aed3",
     "isolationPolicyDigest": "sha256:439e1d6b82056aaf353a14fc49ffbfbdcc04b77c63d1999c238c0c2d0f5d84d6",
     "containerImages": [
       "python@sha256:540c7d91f98ff6880174c40e99067bf5941eb54d818a7a5e094d188b196a934d",
       "python@sha256:fde50be32b99989c47c97e62a30b972bf805baca108f81c9be36c3c57945cae1"
     ]
   },
-  "planDigest": "sha256:244cba60da6181d2546207d3d3eaf0e77c788dd1e185d72356d4c20790469871",
-  "evidenceDigest": "sha256:3171c2952acec7142e775b80c8371c9bef54b019dc2a32637497774f01572329",
+  "planDigest": "sha256:58157b1b60214cdf9a78fecac48a34a6731913bd7e740976456a2c65045cbb09",
+  "evidenceDigest": "sha256:f80002b946bcdfa5e1932fa69fd0c01adce9f21a2d4dd2e20aa0705f99391f35",
   "assertions": {
     "exactFixtureAndOutputDigest": true,
     "isolationProbeCount": 17,
@@ -68,7 +68,7 @@
     "schema/draft-test-evidence.schema.json": "abda7aecf577adbd4d8edaaf880f8ce30f3ca61e9090f84ad726974d6a2d6b96",
     "schema/draft-test-plan.schema.json": "3b6283a9f27c0f2696117455e50014e7121d9ac0ad2a14de562a71931896b6b7",
     "schema/fixture-bundle.schema.json": "2b940c58570c70b91d08436c71425cfbee0e1df7dee1b8a0a56a48351eb4a2cf",
-    "scripts/accept-draft-fixture-runner.mjs": "6239b2fd23da5534b9c86676d037511ea80ff369cbcb6a6bef12c9ffb82e9913",
+    "scripts/accept-draft-fixture-runner.mjs": "63cda84bf384e2a8c3ff7fbab49664c0719d03e26a78b712accf2914bdea25de",
     "scripts/accept-draft-fixture-restart-child.mjs": "eea8b143094991bc4074884edd6b800107541c4908517ee7184cd545548ccb8c",
     "src/draft-test-contract.js": "0a11683a16d39c9c067671831cbf8203d3a5619e68a4b7e30fb54dc2cf5a53cd",
     "src/draft-test-manager.js": "2ce4b563ee8972e1d2c22d5a1dcc66e63e96f36b31666114eebab2e39b057bcb",
