@@ -805,7 +805,6 @@ workflow bomb {
 }
 `,
   })
-  const memoryStartedAt = Date.now()
   const memoryTrial = await startTrial(
     manager,
     jobs,
@@ -825,7 +824,11 @@ workflow bomb {
   await jobs.wait(memoryTrial.started.jobId, 60_000, owner)
   const memoryLimited = await manager.get(memoryTrial.started.testId, operation)
   assert.equal(memoryLimited.test.evidence.passed, false)
-  assert.equal(Date.now() - memoryStartedAt < 30_000, true)
+  assert.equal(
+    memoryLimited.test.evidence.exit.timedOut,
+    false,
+    JSON.stringify(memoryLimited.test.evidence.exit),
+  )
   assert.equal(memoryLimited.test.evidence.resources.cleanupVerified, true)
   assert.equal(memoryLimited.test.evidence.failure.code, 'runner_evidence_invalid')
   assert.equal(
