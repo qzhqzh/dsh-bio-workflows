@@ -23,6 +23,7 @@ const query = new URLSearchParams(location.search)
 const disconnected = query.get('session') === 'none'
 const rejectPrompt = query.get('prompt') === 'reject'
 const draftWritesEnabled = query.get('writes') !== 'off'
+const isolatedTestReady = query.get('isolated') === 'on'
 const catalogWarning = query.get('catalog') === 'warning'
 
 const workflows = [
@@ -82,7 +83,9 @@ const bootstrap: WorkflowCenterBootstrap = {
     draftWritesEnabled,
     miniwdlValidator: true,
     autonomousMissionAuthoring: true,
-    isolatedSoftwareTrial: false,
+    isolatedSoftwareTrialConfigured: isolatedTestReady,
+    isolatedSoftwareTrialPreflightVerified: isolatedTestReady,
+    isolatedSoftwareTrial: isolatedTestReady,
     workflowGraph: true,
     executionConfigured: true,
     executionEnabled: false,
@@ -91,6 +94,7 @@ const bootstrap: WorkflowCenterBootstrap = {
   privacy: {
     ownerScopedDraftsViaAgent: true,
     ownerScopedMissionsViaAgent: true,
+    ownerScopedDraftTestsViaAgent: true,
     ownerScopedRunsViaAgent: true,
   },
 }

@@ -86,8 +86,48 @@ jobs:
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: '3.11'
-      - run: python -m pip install --disable-pip-version-check miniwdl==1.15.0
+      - run: python -m pip install --disable-pip-version-check --require-hashes -r requirements/miniwdl-1.15.0.txt
       - run: miniwdl check workflows/fastq-qc/1.0.0/main.wdl
       - run: miniwdl check workflows/fastq-qc/1.1.0/main.wdl
       - run: miniwdl check workflows/fastq-qc/1.2.0/main.wdl
       - run: miniwdl check workflows/bam-qc/1.0.0/main.wdl
+
+  isolated-fixture-runner:
+    name: Real isolated fixture runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DSH_BIO_DOCKER_EXECUTABLE: /usr/bin/docker
+      DSH_BIO_FIXTURE_SUPPORT_IMAGE: python@sha256:540c7d91f98ff6880174c40e99067bf5941eb54d818a7a5e094d188b196a934d
+      DSH_BIO_FIXTURE_TASK_IMAGE: python@sha256:fde50be32b99989c47c97e62a30b972bf805baca108f81c9be36c3c57945cae1
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.x
+          cache: npm
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.11'
+      - run: npm ci
+      - name: Create a permission-safe pinned miniwdl environment
+        run: |
+          python -m venv --copies "$RUNNER_TEMP/miniwdl-1.15"
+          "$RUNNER_TEMP/miniwdl-1.15/bin/pip" install --disable-pip-version-check --require-hashes -r requirements/miniwdl-1.15.0.txt
+          chmod -R go-w "$RUNNER_TEMP/miniwdl-1.15"
+      - name: Install the pinned DeepSeek Harness CLI
+        run: npm install --global @deepseek-ai/dsh@0.1.1-rc.2
+      - name: Preload exact runner images
+        run: |
+          docker pull "$DSH_BIO_FIXTURE_SUPPORT_IMAGE"
+          docker pull "$DSH_BIO_FIXTURE_TASK_IMAGE"
+      - name: Run real denial, limits, lifecycle, and cleanup acceptance
+        run: |
+          mkdir -p "$RUNNER_TEMP/dsh-bio-fixture"
+          chmod 0700 "$RUNNER_TEMP/dsh-bio-fixture"
+          DSH_BIO_FIXTURE_PYTHON="$RUNNER_TEMP/miniwdl-1.15/bin/python" \
+          DSH_BIO_DRAFT_TEST_ROOT="$RUNNER_TEMP/dsh-bio-fixture" \
+          npm run accept:draft-fixture-runner

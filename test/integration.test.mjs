@@ -9,7 +9,9 @@ import { ToolRuntime } from '@deepseek-ai/dsh-tools'
 import * as plugin from 'dsh-bio-workflows'
 import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
 import { createDraftStore } from 'dsh-bio-workflows/draft-store'
+import { createDraftTestManager } from 'dsh-bio-workflows/draft-test-manager'
 import { createDraftValidator } from 'dsh-bio-workflows/draft-validation'
+import { loadFixtureBundle } from 'dsh-bio-workflows/fixture-bundle'
 import { MANIFEST_SCHEMA_VERSION } from 'dsh-bio-workflows/manifest'
 import { MISSION_SCHEMA_VERSION, createMissionStore } from 'dsh-bio-workflows/mission-store'
 import metadata from 'dsh-bio-workflows/package.json' with { type: 'json' }
@@ -24,6 +26,9 @@ import workflowGraphSchema from 'dsh-bio-workflows/schema/workflow-graph.schema.
 import missionSchema from 'dsh-bio-workflows/schema/mission.schema.json' with { type: 'json' }
 import failureEvidenceSchema from 'dsh-bio-workflows/schema/failure-evidence.schema.json' with { type: 'json' }
 import softwareTrialReportSchema from 'dsh-bio-workflows/schema/software-trial-report.schema.json' with { type: 'json' }
+import draftTestEvidenceSchema from 'dsh-bio-workflows/schema/draft-test-evidence.schema.json' with { type: 'json' }
+import draftTestPlanSchema from 'dsh-bio-workflows/schema/draft-test-plan.schema.json' with { type: 'json' }
+import fixtureBundleSchema from 'dsh-bio-workflows/schema/fixture-bundle.schema.json' with { type: 'json' }
 import { WORKFLOW_GRAPH_SCHEMA_VERSION } from 'dsh-bio-workflows/workflow-graph'
 
 import { makeManifest } from './fixtures.mjs'
@@ -35,7 +40,9 @@ test('public self-references and the dependency-free root DSH apply entry work',
   assert.deepEqual(plugin.inject, ['tools'])
   assert.equal(typeof createWorkflowCatalog, 'function')
   assert.equal(typeof createDraftStore, 'function')
+  assert.equal(typeof createDraftTestManager, 'function')
   assert.equal(typeof createDraftValidator, 'function')
+  assert.equal(typeof loadFixtureBundle, 'function')
   assert.equal(typeof createMissionStore, 'function')
   assert.equal(typeof preflightWorkflow, 'function')
   assert.equal(typeof createWorkflowStore, 'function')
@@ -47,6 +54,10 @@ test('public self-references and the dependency-free root DSH apply entry work',
   assert.equal(missionSchema.properties.schemaVersion.const, MISSION_SCHEMA_VERSION)
   assert.equal(failureEvidenceSchema.properties.schemaVersion.const, '1')
   assert.equal(softwareTrialReportSchema.properties.success.const, false)
+  assert.equal(fixtureBundleSchema.properties.schemaVersion.const, '1')
+  assert.equal(draftTestPlanSchema.properties.schemaVersion.const, '1')
+  assert.equal(draftTestEvidenceSchema.properties.schemaVersion.const, '1')
+  assert.equal(draftTestEvidenceSchema.$defs.capabilities.properties.productionExecution.const, false)
 
   const registered = []
   const listeners = new Map()
@@ -73,6 +84,13 @@ test('public self-references and the dependency-free root DSH apply entry work',
     },
   })
 
+  const infoTool = registered.find((tool) => tool.name === 'bio_workflows_info')
+  const info = JSON.parse(await infoTool.execute({}))
+  assert.equal(info.draftTesting.enabled, false)
+  assert.equal(info.capabilities.isolatedSoftwareTrial, false)
+  assert.equal(infoTool.isConcurrencySafe({}), true)
+  assert.deepEqual(infoTool.output.render({}, 'info'), [{ type: 'text', text: 'info' }])
+
   const missionToolNames = new Set([
     'bio_workflows_mission_prepare',
     'bio_workflows_mission_start',
@@ -80,8 +98,15 @@ test('public self-references and the dependency-free root DSH apply entry work',
     'bio_workflows_mission_cancel',
     'bio_workflows_mission_report',
   ])
+  const draftTestToolNames = new Set([
+    'bio_workflows_draft_test_prepare',
+    'bio_workflows_draft_test_start',
+    'bio_workflows_draft_test_get',
+    'bio_workflows_draft_test_cancel',
+    'bio_workflows_draft_test_report',
+  ])
   const legacyRegistration = registered
-    .filter((tool) => !missionToolNames.has(tool.name))
+    .filter((tool) => !missionToolNames.has(tool.name) && !draftTestToolNames.has(tool.name))
     .map((tool) => {
       let parameters = tool.parameters
       if ([
@@ -517,6 +542,14 @@ test('public self-references and the dependency-free root DSH apply entry work',
     ['name', 'version', 'containerImage'],
   )
   assert.equal(missionTools[1].parameters.required.includes('expectedPlanDigest'), true)
+  const draftTestTools = registered.filter((tool) => draftTestToolNames.has(tool.name))
+  assert.deepEqual(draftTestTools.map((tool) => tool.name), [...draftTestToolNames])
+  assert.deepEqual(
+    draftTestTools[0].parameters.required,
+    ['missionId', 'fixtureId', 'fixtureVersion'],
+  )
+  assert.equal(draftTestTools[1].parameters.required.includes('expectedPlanDigest'), true)
+  assert.equal(draftTestTools[0].parameters.properties.budgets.additionalProperties, false)
   for (const name of [
     'bio_workflows_draft_create',
     'bio_workflows_draft_update',

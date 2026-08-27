@@ -94,7 +94,7 @@ retry, test, promotion, or production-run capability.
 Successful validation is terminal too: the Mission enters `ready`, revokes its
 write grant, and reports only `ready_for_isolated_test`.
 
-## Why container testing is still off
+## Why container testing is off in 0.11.x
 
 The existing production adapter is intentionally allowlist-only. miniwdl's
 Docker network setting attaches task containers to a selected Docker network,
@@ -104,17 +104,26 @@ with container addresses and the network gateway remains available. Therefore
 `0.11.0` does not treat an internal bridge as both egress and host-service
 isolation, and model-authored WDL never enters the existing runner.
 
-The next execution slice needs a separate draft-test backend with deterministic
-fixtures, read-only input snapshots, no ambient credentials, CPU/memory/PID/time
-and output-byte limits, proven egress denial, proven host-service denial,
-bounded logs/artifacts, and a new explicit authorization boundary. See the
-[Docker network create reference](https://docs.docker.com/reference/cli/docker/network/create/).
+The post-`0.11.0` development slice now implements that separate boundary as a
+default-off miniwdl `dsh_fixture_docker` backend. It uses deterministic
+fixtures, read-only snapshots, a scrubbed fixed environment, hard resource and
+output limits, network `none`, container-configuration inspection, and
+positive/negative egress and host-service probes. It requires a new approval
+bound to a Draft Test Plan digest and does not inherit the Mission grant or
+reuse the production adapter. See [Isolated fixture runner](./isolated-fixture-runner.md).
+
+This implementation status does not retroactively change the published
+`0.11.x` contract. A separate release and acceptance review are required before
+operators should enable it.
 
 ## Public contracts
 
 - [`Mission v1`](../schema/mission.schema.json)
 - [`Failure Evidence v1`](../schema/failure-evidence.schema.json)
 - [`Software Trial Report v1`](../schema/software-trial-report.schema.json)
+- [`Fixture Bundle v1`](../schema/fixture-bundle.schema.json)
+- [`Draft Test Plan v1`](../schema/draft-test-plan.schema.json)
+- [`Draft Test Evidence v1`](../schema/draft-test-evidence.schema.json)
 
 `Software Trial Report v1.success` is fixed to `false` in this release. A valid
 WDL draft produces `ready_for_isolated_test`; this is not evidence that the

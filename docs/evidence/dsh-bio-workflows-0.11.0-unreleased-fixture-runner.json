@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "1",
+  "scope": "real-isolated-fixture-runner-acceptance",
+  "recordedAt": "2026-08-27T16:55:03.772Z",
+  "candidate": {
+    "package": "dsh-bio-workflows@0.11.0+unreleased-fixture-runner",
+    "dsh": "0.1.1-rc.2"
+  },
+  "identities": {
+    "missionId": "mission-39ee9ab9-ca6c-47bc-a898-2c0df96d22f3",
+    "draftId": "draft-ed33bbe9-e475-46fb-85fc-0277cd254286",
+    "revision": 2,
+    "contentDigest": "sha256:75b37b435be60cffa0a8665d2e7a97678ba7f980bc6bc44e81d621cb18069408",
+    "validationDigest": "sha256:162fe605aa4f2d1049901f14a12f9583f486da1b214ac75133e1e7696d3f2874",
+    "fixtureDigest": "sha256:66f7db98d4ca72101b659fc8c39210e2590440d48c1fc97002daca55187e7d95",
+    "runnerDigest": "sha256:5a05580f27a01dfd240ec05a67efc963c7bd9705a3b0bcf9eab3d3f6c4e6b464",
+    "isolationPolicyDigest": "sha256:439e1d6b82056aaf353a14fc49ffbfbdcc04b77c63d1999c238c0c2d0f5d84d6",
+    "containerImages": [
+      "python@sha256:540c7d91f98ff6880174c40e99067bf5941eb54d818a7a5e094d188b196a934d",
+      "python@sha256:fde50be32b99989c47c97e62a30b972bf805baca108f81c9be36c3c57945cae1"
+    ]
+  },
+  "planDigest": "sha256:f13ef9a5449d3fd5d8780d4afa76c71eb9be1dbf026ab207a27b9edc46b3f939",
+  "evidenceDigest": "sha256:f1fc166e3e302ce989e9d4bf983bbf182a1428358351cc75d088b5095c54d111",
+  "assertions": {
+    "exactFixtureAndOutputDigest": true,
+    "isolationProbeCount": 17,
+    "egressAndHostServiceDenial": true,
+    "controllerAndContainerEnvironmentScrubbed": true,
+    "controllerRemoteImportConnections": 0,
+    "controllerRemoteImportRequests": 0,
+    "controllerTraversalImportDeniedBeforeContainer": true,
+    "controllerSymlinkImportDeniedBeforeContainer": true,
+    "controllerLocalImportSecretLeaked": false,
+    "controllerMemoryLimitFailsClosed": "runner_evidence_invalid",
+    "controllerMemoryProcessExit": {
+      "exitCode": 2,
+      "signal": null,
+      "timedOut": false,
+      "cancelled": false,
+      "ambiguous": false
+    },
+    "controllerMemoryBudgetBytes": 268435456,
+    "relativeFileCoercionDenied": "runner_evidence_invalid",
+    "inspectedContainerControlsBound": true,
+    "timeoutFailsClosed": "task_time_exceeded",
+    "cancellationFailsClosed": "draft_test_cancelled",
+    "outputAndLogLimitsFailClosed": "runner_evidence_invalid",
+    "crossOwnerReadDenied": true,
+    "dockerResourcesRestoredToBaseline": true,
+    "restartCleanupVerified": true,
+    "restartLiveControllerAndResources": {
+      "controllerPidPersisted": true,
+      "containers": 1,
+      "volumes": 1
+    },
+    "restartControllerTerminationMode": "exact_identity_terminated",
+    "productionExecutionAuthorized": false,
+    "workflowPromotionAuthorized": false,
+    "softwareTrialReportSuccess": false
+  },
+  "sourceSha256": {
+    "fixtures/text-roundtrip/1.0.0/fixture.json": "15240bd22a67a3afcc95e2e9e81f2d1da5137a6b27e6e8db2d47934e6eaaa908",
+    "fixtures/text-roundtrip/1.0.0/inputs/message.txt": "dc3d4277c40a080b5f5f2cad371625fbb56d4eca7c0c31c587bc1185e75842ba",
+    "index.js": "109bf8935250d8a26c09921f596bea891a971e08fce1e92a5f045611af0a8381",
+    "requirements/miniwdl-1.15.0.txt": "289de696eb6987ea7e7cc4ee9e6da45e9fe09135a785c581dee5743da083389e",
+    "runner/dsh_fixture_runner.py": "3fd4888409ce074f5b902e154820e4345d969f90586ce9d96bd556a8b6e0cda1",
+    "schema/draft-test-evidence.schema.json": "abda7aecf577adbd4d8edaaf880f8ce30f3ca61e9090f84ad726974d6a2d6b96",
+    "schema/draft-test-plan.schema.json": "10d174d4dff73e83fce2fb099bf1bbba4525c3578622f9091533a54784cff496",
+    "schema/fixture-bundle.schema.json": "2b940c58570c70b91d08436c71425cfbee0e1df7dee1b8a0a56a48351eb4a2cf",
+    "scripts/accept-draft-fixture-runner.mjs": "df2587bf333bff4ac4ad03ce523b883f67e0dab37adab33dd3cd42edd2fb3e30",
+    "scripts/accept-draft-fixture-restart-child.mjs": "eea8b143094991bc4074884edd6b800107541c4908517ee7184cd545548ccb8c",
+    "src/draft-test-contract.js": "c29a635f38bd90105b2b49bc4f50b9f7de4df8f4cef58cbfc5b8a37c5c3a909d",
+    "src/draft-test-manager.js": "0e2d202b2fbc7121eea65e9c1f5d3ed745661787faa5377c27f0600262bf3841",
+    "src/draft-test-tools.js": "e15a6fb9a8e59d9bdf49d90a7684b93effc46cde4fc780dfa81aac59e86ebab6",
+    "src/fixture-assertions.js": "1e9ea85fb4296799788eea47ed09b9e6993ad003fff419e016d120efc1898dce",
+    "src/fixture-bundle.js": "34c9b1858f2a799f0f6e967ccb31adf18204c37288a7eada00476edae794a60b"
+  }
+}

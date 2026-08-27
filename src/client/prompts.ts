@@ -20,6 +20,12 @@ export const prompts = {
   validateDraft(draftId: string, revision: number) {
     return `Validate owner-scoped WDL draft ${draftId} at exact immutable revision ${revision} with bio_workflows_draft_validate. Explain the deterministic evidence. If a repair is needed, first read the exact source and content digest; any update must use both expectedRevision and expectedContentDigest, stop on conflict, and never use last-write-wins.`
   },
+  prepareDraftTest(missionId: string, fixtureId: string, fixtureVersion: string) {
+    return `Prepare a separately authorized isolated fixture test for ready Mission ${missionId} with exact fixture ${fixtureId}@${fixtureVersion} by calling bio_workflows_draft_test_prepare. Explain the bound draft, validation, fixture, container, runner, isolation, assertion, and budget digests. Do not call bio_workflows_draft_test_start until I review that exact plan and explicitly approve it. Never install, promote, allowlist, or production-run the draft.`
+  },
+  inspectDraftTest(testId: string) {
+    return `Call bio_workflows_draft_test_get and bio_workflows_draft_test_report for owner-scoped isolated test ${testId}. Summarize isolation probes, exact identities, bounded logs and artifacts, assertion evidence, and failure facts. Do not retry, promote, allowlist, or production-run anything.`
+  },
   listRuns() {
     return 'Use bio_workflows_run_list to list my owner-scoped workflow runs, newest first. Summarize status, workflow identity, and the next safe action for failures. Do not start a new run.'
   },

@@ -20,7 +20,7 @@ release (`b150a551b8`). This document defines no new execution authority.
 | Visualization | `WorkflowGraph v1` is parsed from exact WDL source. The model may explain it but cannot create authoritative graph edges. |
 | First native UI | Ship a browser Client face in the same npm package: a keyed `tool.call.toolview` renderer plus a responsive Workflow Center. A correlated Conversation Node is deferred. |
 | Execution | Draft validation and graph generation cannot run WDL tasks. Test, promotion, and production execution remain separate approvals. |
-| Implemented slices | `0.8.0` create/get/update/validate; `0.8.1` replay-safe presentations; `0.9.0` graph; `0.10.0` Workflow Center; `0.11.0` bounded owner-session Mission authoring and validation repair. No graph editor, isolated draft test, promotion, or new execution allowlist. |
+| Implemented slices | `0.8.0` create/get/update/validate; `0.8.1` replay-safe presentations; `0.9.0` graph; `0.10.0` Workflow Center; `0.11.0` bounded owner-session Mission authoring and validation repair; post-`0.11.0` branch: default-off, separately approved isolated fixture test. No graph editor, promotion, or new production execution allowlist. |
 
 ## Product boundary
 
@@ -153,7 +153,11 @@ decision.
 | `bio_workflows_draft_update` | Apply explicit file replacements/deletions under revision-and-digest CAS, then atomically commit one immutable revision. | Store writes enabled + `tools/pre-execute` ask |
 | `bio_workflows_draft_validate` | Validate one exact revision without running WDL tasks and return bound evidence. | None |
 | `bio_workflows_draft_graph` | Produce `WorkflowGraph v1` for one exact revision. | None; implemented in `0.9.0` |
-| `bio_workflows_draft_test` | Run only declared fixtures in a dedicated draft sandbox under strict budgets. | Separate ask; deferred |
+| `bio_workflows_draft_test_prepare` | Build an exact non-executing plan for one ready Mission revision and immutable fixture. | None; post-`0.11.0` branch |
+| `bio_workflows_draft_test_start` | Run only the approved fixture in the dedicated bounded backend using the exact live plan digest. | Separate ask; post-`0.11.0` branch |
+| `bio_workflows_draft_test_get` | Read one owner-session test and bounded evidence. | None; post-`0.11.0` branch |
+| `bio_workflows_draft_test_cancel` | Stop one active owner-session test without retry. | None; owner-fenced mutation |
+| `bio_workflows_draft_test_report` | Return the bounded trial report with all production/promotion capabilities false. | None; post-`0.11.0` branch |
 | `bio_workflows_draft_promote` | Recheck current evidence and materialize one immutable promoted bundle digest. | Separate ask; deferred |
 
 Mutation tools accept structured data, never a model-authored host command,
@@ -293,8 +297,10 @@ it must not assign an update to the latest visually open card.
    card.
 6. Add the packaged `bio-wdl-authoring` Skill after tool names and diagnostic
    repair behavior are stable.
-7. Add a dedicated bounded draft-test sandbox with an independent approval.
-8. Add review evidence and immutable promotion with another independent
+7. **Post-`0.11.0` branch — implemented, review pending:** dedicated bounded
+   draft-test sandbox, declarative fixtures, independent approval, denial
+   probes, resource/output limits, owner lifecycle, and real Docker acceptance.
+8. Add independent review evidence and immutable promotion with another independent
    approval.
 9. Add Git/TRS discovery and richer Store UI only after trust tiers are
    enforced.

@@ -9,17 +9,23 @@ export function getPackageInfo(
   execution = {},
   authoring = {},
   autonomy = {},
+  draftTesting = {},
 ) {
   const executionEnabled = execution.enabled === true
   const executionReady = executionEnabled
     && execution.subprocessAvailable === true
     && execution.jobsAvailable === true
+  const draftTestingReady = draftTesting.enabled === true
+    && draftTesting.subprocessAvailable === true
+    && draftTesting.jobsAvailable === true
+    && draftTesting.preflightVerified === true
+    && draftTesting.ready === true
   return {
     package: PACKAGE_NAME,
     version: PACKAGE_VERSION,
     status: 'preview',
     phase: 'workflow-center',
-    readOnly: store.writesEnabled !== true && !executionEnabled,
+    readOnly: store.writesEnabled !== true && !executionEnabled && !draftTesting.enabled,
     workflowCount,
     declaredEngineCount,
     store: {
@@ -53,6 +59,19 @@ export function getPackageInfo(
       capabilities: { ...(autonomy.capabilities ?? {}) },
       limits: { ...(autonomy.limits ?? {}) },
     },
+    draftTesting: {
+      configured: draftTesting.configured === true,
+      enabled: draftTesting.enabled === true,
+      ready: draftTestingReady,
+      preflightVerified: draftTesting.preflightVerified === true,
+      preflightScope: draftTesting.preflightScope ?? 'exact_mission_plan_only',
+      subprocessAvailable: draftTesting.subprocessAvailable === true,
+      jobsAvailable: draftTesting.jobsAvailable === true,
+      ownerScope: draftTesting.ownerScope ?? 'session',
+      schemaVersions: { ...(draftTesting.schemaVersions ?? {}) },
+      capabilities: { ...(draftTesting.capabilities ?? {}) },
+      budgets: { ...(draftTesting.budgets ?? {}) },
+    },
     capabilities: {
       workflowCatalog: true,
       manifestValidation: true,
@@ -68,7 +87,7 @@ export function getPackageInfo(
       boundedAutonomousDraftAuthoring: autonomy.enabled === true,
       autonomousWdlValidationRepair: autonomy.enabled === true
         && authoring.validator?.subprocessAvailable === true,
-      isolatedSoftwareTrial: false,
+      isolatedSoftwareTrial: draftTestingReady,
       autonomousProductionExecution: false,
       nativeWorkflowCenter: true,
       liveExecutionPlanning: executionEnabled && execution.subprocessAvailable === true,
@@ -92,6 +111,7 @@ export function createInfoTool(
   execution = {},
   authoring = {},
   autonomy = {},
+  draftTesting = {},
 ) {
   return defineTool({
     name: TOOL_NAME,
@@ -106,6 +126,7 @@ export function createInfoTool(
     execute: async () => {
       const executionSummary = typeof execution === 'function' ? execution() : execution
       const authoringSummary = typeof authoring === 'function' ? authoring() : authoring
+      const draftTestingSummary = typeof draftTesting === 'function' ? draftTesting() : draftTesting
       return JSON.stringify(
         getPackageInfo(
           workflowCount,
@@ -114,6 +135,7 @@ export function createInfoTool(
           executionSummary,
           authoringSummary,
           autonomy,
+          draftTestingSummary,
         ),
         null,
         2,
@@ -131,6 +153,7 @@ export function registerInfoTool(
   execution = {},
   authoring = {},
   autonomy = {},
+  draftTesting = {},
 ) {
   const tool = createInfoTool(
     defineTool,
@@ -140,6 +163,7 @@ export function registerInfoTool(
     execution,
     authoring,
     autonomy,
+    draftTesting,
   )
   ctx.tools.register(tool)
   return tool

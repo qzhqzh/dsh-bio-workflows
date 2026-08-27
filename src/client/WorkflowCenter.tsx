@@ -35,6 +35,7 @@ const EMPTY_BOOTSTRAP: WorkflowCenterBootstrap = {
   privacy: {
     ownerScopedDraftsViaAgent: true,
     ownerScopedMissionsViaAgent: true,
+    ownerScopedDraftTestsViaAgent: true,
     ownerScopedRunsViaAgent: true,
   },
 }
@@ -226,16 +227,25 @@ function WorkflowsArea({ workflows, selected, onSelect, ask, busy }: {
   )
 }
 
-function DraftsArea({ ask, busy, draftWritesEnabled }: {
+function DraftsArea({ ask, busy, draftWritesEnabled, isolatedTestConfigured }: {
   ask(text: string): void
   busy: boolean
   draftWritesEnabled: boolean
+  isolatedTestConfigured: boolean
 }) {
   const [draft, setDraft] = useState({ id: '', name: '', summary: '' })
   const [draftId, setDraftId] = useState('')
   const [revision, setRevision] = useState('1')
+  const [missionId, setMissionId] = useState('')
+  const [fixtureId, setFixtureId] = useState('text-roundtrip')
+  const [fixtureVersion, setFixtureVersion] = useState('1.0.0')
+  const [testId, setTestId] = useState('')
   const validCreate = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(draft.id) && draft.name.trim() !== '' && draft.summary.trim() !== ''
   const validExisting = /^draft-[0-9a-f-]{36}$/.test(draftId) && Number.isSafeInteger(Number(revision)) && Number(revision) > 0
+  const validMission = /^mission-[0-9a-f-]{36}$/.test(missionId)
+    && /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(fixtureId)
+    && /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)/.test(fixtureVersion)
+  const validTest = /^test-[0-9a-f-]{36}$/.test(testId)
 
   return (
     <div className="dsh-bio-area dsh-bio-area--single">
@@ -265,6 +275,20 @@ function DraftsArea({ ask, busy, draftWritesEnabled }: {
         <div className="dsh-bio-trust-note">
           <WarningIcon />
           <div><strong>Source is authoritative</strong><p>Every update requires both the current revision and content digest. A conflict stops the write; reload and merge explicitly.</p></div>
+        </div>
+        <div className="dsh-bio-workbench__split dsh-bio-workbench__split--runs">
+          <form onSubmit={(event) => { event.preventDefault(); if (validMission && isolatedTestConfigured) ask(prompts.prepareDraftTest(missionId, fixtureId, fixtureVersion)) }}>
+            <div className="dsh-bio-section-title"><SetupIcon /><div><h3>Prepare an isolated fixture test</h3><p>A new approval binds one ready Mission to exact fixture and runner identities.</p></div></div>
+            <Field label="Ready Mission id"><input value={missionId} onChange={(event) => { setMissionId(event.target.value) }} placeholder="mission-…" /></Field>
+            <Field label="Fixture id"><input value={fixtureId} onChange={(event) => { setFixtureId(event.target.value) }} /></Field>
+            <Field label="Fixture version"><input value={fixtureVersion} onChange={(event) => { setFixtureVersion(event.target.value) }} /></Field>
+            <button className="dsh-bio-button" type="submit" disabled={!validMission || busy || !isolatedTestConfigured} title={isolatedTestConfigured ? 'Runs the exact Mission-specific preflight before producing an approval plan.' : 'Enable and configure the isolated fixture runner first.'}>Prepare with Agent<ArrowIcon /></button>
+          </form>
+          <form onSubmit={(event) => { event.preventDefault(); if (validTest) ask(prompts.inspectDraftTest(testId)) }}>
+            <div className="dsh-bio-section-title"><RunsIcon /><div><h3>Inspect isolated evidence</h3><p>Owner data stays behind the current Agent; bootstrap exposes readiness only.</p></div></div>
+            <Field label="Test id"><input value={testId} onChange={(event) => { setTestId(event.target.value) }} placeholder="test-…" /></Field>
+            <button className="dsh-bio-button dsh-bio-button--secondary" type="submit" disabled={!validTest || busy}>Inspect with Agent<ArrowIcon /></button>
+          </form>
         </div>
       </section>
     </div>
@@ -305,7 +329,7 @@ function RunsArea({ selected, ask, busy }: { selected?: WorkflowSummary; ask(tex
   )
 }
 
-const READINESS_COPY: Record<string, [string, string]> = {
+const READINESS_COPY: Record<string, [string, string, string?, string?]> = {
   workflowCenter: ['Workflow Center', 'Native browser surface is loaded.'],
   workflowStore: ['Workflow store', 'Built-ins are visible here; Agent tools can inspect configured local bundles.'],
   localStoreConfigured: ['Local store', 'Persistent install and draft root is configured.'],
@@ -314,7 +338,9 @@ const READINESS_COPY: Record<string, [string, string]> = {
   draftWritesEnabled: ['Draft writes', 'Revisioned draft create and update mutations are enabled.'],
   miniwdlValidator: ['miniwdl validator bridge', 'DSH subprocess is available; validation still verifies the pinned executable.'],
   autonomousMissionAuthoring: ['Autonomous authoring Missions', 'One approval grants a bounded owner-session draft repair loop.'],
-  isolatedSoftwareTrial: ['Isolated software trials', 'Off until container and host isolation can be enforced and evidenced.'],
+  isolatedSoftwareTrialConfigured: ['Fixture runner configuration', 'Dedicated storage, immutable fixtures, subprocess, and jobs are configured.', 'Configured', 'Off'],
+  isolatedSoftwareTrialPreflightVerified: ['Exact trial preflight', 'miniwdl, Docker, images, controller identity, cgroup v2, AppArmor, and denial controls are verified per Mission plan.', 'Verified', 'Unverified'],
+  isolatedSoftwareTrial: ['Isolated software trials', 'Ready is reported only for a fresh, exact Mission-specific preflight; prepare performs that check.', 'Ready', 'Not ready'],
   workflowGraph: ['WorkflowGraph v1', 'Deterministic read-only WDL graph extraction is available.'],
   executionConfigured: ['Execution adapter', 'Input roots, runs root, and work directory are configured.'],
   executionEnabled: ['Workflow execution', 'Opt-in miniwdl execution is enabled.'],
@@ -330,13 +356,13 @@ function SetupArea({ bootstrap, ask, busy }: { bootstrap: WorkflowCenterBootstra
           <span className="dsh-bio-version">v{bootstrap.package.version}</span>
         </div>
         <div className="dsh-bio-readiness">
-          {Object.entries(READINESS_COPY).map(([key, [label, description]]) => {
+          {Object.entries(READINESS_COPY).map(([key, [label, description, onLabel = 'Ready', offLabel = 'Off']]) => {
             const ready = bootstrap.readiness[key] === true
             return (
               <div key={key}>
                 <span className={`dsh-bio-readiness__icon dsh-bio-readiness__icon--${ready ? 'ready' : 'off'}`}>{ready ? <CheckIcon /> : <WarningIcon />}</span>
                 <div><strong>{label}</strong><p>{description}</p></div>
-                <span className={`dsh-bio-status dsh-bio-status--${ready ? 'success' : 'neutral'}`}>{ready ? 'Ready' : 'Off'}</span>
+                <span className={`dsh-bio-status dsh-bio-status--${ready ? 'success' : 'neutral'}`}>{ready ? onLabel : offLabel}</span>
               </div>
             )
           })}
@@ -507,7 +533,7 @@ export function WorkflowCenter({ sessions, open, onClose, loadBootstrap = defaul
           ) : (
             <>
               {area === 'workflows' && <WorkflowsArea workflows={bootstrap.workflows} selected={selected} onSelect={(workflow) => { setSelectedDigest(workflow.digest) }} ask={ask} busy={actionsDisabled} />}
-              {area === 'drafts' && <DraftsArea ask={ask} busy={actionsDisabled} draftWritesEnabled={bootstrap.readiness.draftWritesEnabled === true} />}
+              {area === 'drafts' && <DraftsArea ask={ask} busy={actionsDisabled} draftWritesEnabled={bootstrap.readiness.draftWritesEnabled === true} isolatedTestConfigured={bootstrap.readiness.isolatedSoftwareTrialConfigured === true} />}
               {area === 'runs' && <RunsArea selected={selected} ask={ask} busy={actionsDisabled} />}
               {area === 'setup' && <SetupArea bootstrap={bootstrap} ask={ask} busy={actionsDisabled} />}
             </>

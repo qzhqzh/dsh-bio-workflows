@@ -84,6 +84,19 @@ test('Workflow Center exposes catalog diagnostics and disabled draft writes', as
   await expect(page.getByRole('button', { name: /Create with Agent/ })).toBeDisabled()
 })
 
+test('Workflow Center submits isolated draft-test intent only through the Agent bridge', async ({ page }) => {
+  await page.goto('/?isolated=on')
+  await page.getByRole('button', { name: 'AI Drafts' }).click()
+  await page.getByLabel('Ready Mission id').fill('mission-11111111-1111-4111-8111-111111111111')
+  await page.getByRole('button', { name: /Prepare with Agent/ }).click()
+
+  const prompt = await page.evaluate(() => window.__BIO_PREVIEW__.lastPrompt)
+  expect(prompt).toContain('bio_workflows_draft_test_prepare')
+  expect(prompt).toContain('text-roundtrip@1.0.0')
+  expect(prompt).toContain('Do not call bio_workflows_draft_test_start')
+  expect(prompt).toContain('Never install, promote, allowlist, or production-run')
+})
+
 test('Workflow Center exposes the exact execution allowlist and blocks unsupported plans', async ({ page }) => {
   await page.goto('/')
 

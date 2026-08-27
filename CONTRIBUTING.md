@@ -32,6 +32,15 @@ npm run smoke:dsh
 npm run smoke:dsh-agent
 ```
 
+Fixture-runner changes additionally require the real, source-bound acceptance
+with the pinned miniwdl 1.15.0 environment, digest-pinned images, Docker
+executable, and private run root documented in
+`docs/isolated-fixture-runner.md`:
+
+```bash
+npm run accept:draft-fixture-runner
+```
+
 The integration test verifies the registry-ready tool schemas and fail-closed
 argument validation. The pack smoke test installs the produced tarball in an
 isolated temporary consumer and loads every public subpath. Public schema or API
@@ -45,7 +54,7 @@ npm run smoke:dsh
 ```
 
 This installs the tarball in an isolated profile, imports and applies the
-installed plugin, checks all seventeen tool contracts, loads all four versioned
+installed plugin, checks all twenty-seven tool contracts, loads all four versioned
 built-in WDL bundles, and boots the real DSH headless help path.
 The Agent-loop smoke additionally drives draft create/get/update/validate/graph
 with two mutation approvals before the existing search/plan/run and

@@ -28,6 +28,7 @@ export interface WorkflowCenterBootstrap {
   privacy: {
     ownerScopedDraftsViaAgent: true
     ownerScopedMissionsViaAgent: true
+    ownerScopedDraftTestsViaAgent: true
     ownerScopedRunsViaAgent: true
   }
 }

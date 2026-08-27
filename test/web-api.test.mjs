@@ -34,6 +34,13 @@ function options() {
       capabilities: { boundedDraftAuthoring: true, isolatedDraftTest: false },
       limits: { maxActions: 32 },
     },
+    draftTesting: () => ({
+      configured: true,
+      enabled: false,
+      subprocessAvailable: true,
+      jobsAvailable: true,
+      capabilities: { isolatedDraftTest: false, productionExecution: false },
+    }),
   }
 }
 
@@ -59,12 +66,36 @@ test('Workflow Center bootstrap exposes bounded public catalog facts but no owne
   assert.equal(value.readiness.miniwdlValidator, true)
   assert.equal(value.readiness.autonomousMissionAuthoring, true)
   assert.equal(value.readiness.isolatedSoftwareTrial, false)
+  assert.equal(value.readiness.isolatedSoftwareTrialConfigured, false)
+  assert.equal(value.readiness.isolatedSoftwareTrialPreflightVerified, false)
   assert.equal(value.readiness.executionEnabled, false)
   assert.equal(value.privacy.ownerScopedDraftsViaAgent, true)
   assert.equal(value.privacy.ownerScopedMissionsViaAgent, true)
+  assert.equal(value.privacy.ownerScopedDraftTestsViaAgent, true)
   assert.equal(value.privacy.ownerScopedRunsViaAgent, true)
   const serialized = JSON.stringify(value)
   assert.doesNotMatch(serialized, /ownerSession|draftId|runId|runsRoot|inputRoots/)
+})
+
+test('Workflow Center exposes only boolean isolated-test readiness, never its owner or runner identity', async () => {
+  const configured = options()
+  configured.draftTesting = () => ({
+    configured: true,
+    enabled: true,
+    subprocessAvailable: true,
+    jobsAvailable: true,
+    ownerScope: 'session',
+    runsRoot: '/data/private/draft-tests',
+    runner: { engineId: 'private-engine' },
+  })
+
+  const value = await createWorkflowCenterBootstrap(configured)
+
+  assert.equal(value.readiness.isolatedSoftwareTrialConfigured, true)
+  assert.equal(value.readiness.isolatedSoftwareTrialPreflightVerified, false)
+  assert.equal(value.readiness.isolatedSoftwareTrial, false)
+  assert.equal(value.privacy.ownerScopedDraftTestsViaAgent, true)
+  assert.doesNotMatch(JSON.stringify(value), /private-engine|private\/draft-tests|runsRoot/)
 })
 
 test('Workflow Center bootstrap never exposes configured local or draft catalog summaries', async () => {
