@@ -31,6 +31,7 @@ const fixtureRoot = join(packageRoot, 'fixtures')
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const sentinelName = 'DSH_BIO_ACCEPTANCE_SECRET_SENTINEL'
 const sentinelValue = `must-not-cross-${randomUUID()}`
+let lastValidatorProbe = null
 process.env[sentinelName] = sentinelValue
 assert.equal(process.platform, 'linux', 'real fixture-runner acceptance requires Linux')
 assert.notEqual(process.getuid?.(), 0, 'real fixture-runner acceptance requires a non-root controller')
@@ -196,6 +197,46 @@ async function runBoundedChild(executable, args, options = {}) {
   })
 }
 
+function tracedValidatorSubprocess(subprocess) {
+  return {
+    resolveExecutable: (...args) => subprocess.resolveExecutable(...args),
+    spawn(spec) {
+      const handle = subprocess.spawn(spec)
+      if (spec.argv.length !== 2 || spec.argv[1] !== '--version') return handle
+      const sanitize = (value) => value
+        .replaceAll(spec.cwd, '$VALIDATION')
+        .replaceAll(spec.argv[0], '$VALIDATOR')
+        .slice(0, 4096)
+      lastValidatorProbe = { status: 'running' }
+      const done = handle.done.then(async (outcome) => {
+        await handle.waitForExit()
+        const read = (reader) => {
+          if (reader === undefined) return { text: '', lossy: false }
+          const result = reader.readFrom(0)
+          return { text: sanitize(result.text), lossy: result.lossy }
+        }
+        lastValidatorProbe = {
+          status: 'completed',
+          outcome,
+          stdout: read(handle.collected?.stdout),
+          stderr: read(handle.collected?.stderr),
+        }
+        return outcome
+      })
+      return {
+        pid: handle.pid,
+        stdin: handle.stdin,
+        stdout: handle.stdout,
+        stderr: handle.stderr,
+        collected: handle.collected,
+        done,
+        terminate: () => handle.terminate(),
+        waitForExit: (signal) => handle.waitForExit(signal),
+      }
+    },
+  }
+}
+
 async function runControllerImportProbe({
   root,
   name,
@@ -293,7 +334,7 @@ task_count = ${budgets.taskCount}
 `, { mode: 0o400, flag: 'wx' })
   const wrapper = join(packageRoot, 'runner', 'dsh_fixture_runner.py')
   const outcome = await runBoundedChild(pythonExecutable, [
-    '-I', '-S', wrapper, 'run', '--input', inputsPath, '--dir', `${engineRoot}/.`, '--cfg', configPath,
+    '-B', '-I', '-S', wrapper, 'run', '--input', inputsPath, '--dir', `${engineRoot}/.`, '--cfg', configPath,
     '--error-json', '--log-json', '--no-color', '--no-cache', '--no-outside-imports', '--as-me', entrypoint,
   ], {
     cwd: wdlRoot,
@@ -486,7 +527,7 @@ async function createReadyTrial({
   )
   assert.equal(validationReservation.ok, true, JSON.stringify(validationReservation))
   const validation = await validator.validate(validationRequest, operation)
-  assert.equal(validation.ok, true, JSON.stringify(validation))
+  assert.equal(validation.ok, true, JSON.stringify({ validation, lastValidatorProbe }))
   assert.equal(validation.validation.valid, true, JSON.stringify(validation.validation.diagnostics))
   const ready = await missionStore.recordValidationResult(
     mission.missionId,
@@ -584,6 +625,7 @@ try {
     persona: 'Real isolated fixture-runner acceptance owner.',
   })
   new runtime.LocalSubprocessRuntime(ctx)
+  const validatorSubprocess = tracedValidatorSubprocess(ctx.get('subprocess'))
   const jobs = new runtime.LocalJobRegistry(ctx, { maxConcurrentJobsPerOwner: 1 })
   jobs.attachController('dsh-bio-workflows-fixture-acceptance')
   new runtime.AgentLoop(ctx, { agents: [], maxParallelToolCalls: 1 })
@@ -605,7 +647,7 @@ try {
     config: {
       validator: { executable: miniwdlExecutable, expectedVersion: '1.15.0' },
     },
-    getSubprocess: () => ctx.get('subprocess'),
+    getSubprocess: () => validatorSubprocess,
     getEnvironment: () => ({}),
   })
   const draftTestConfig = {

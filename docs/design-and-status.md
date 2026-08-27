@@ -177,7 +177,7 @@ full WDL IDE.
   Docker-socket, credential, capability, and root-write denials.
 - Before user WDL loading, the controller installs a digest-bound kernel
   thread-synchronized seccomp filter that permits only Unix socket creation.
-  Python `-I -S` verifies dependencies before loading them, the local reader
+  Python `-B -I -S` disables bytecode writes and verifies dependencies before loading them, the local reader
   rejects traversal/symlink/special/changing sources, and hard address-space,
   CPU, process/thread, file, and wall-time budgets apply. A separately bounded
   Docker broker uses the same network filter and only the exact approved CLI.

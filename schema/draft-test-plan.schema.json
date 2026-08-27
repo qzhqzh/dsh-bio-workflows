@@ -280,9 +280,10 @@
             "startupPolicy": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["mode", "ignoreEnvironment", "noUserSite", "pthFilesExecuted", "sitecustomizeImported", "usercustomizeImported", "sitePackagesPathDigest"],
+              "required": ["mode", "dontWriteBytecode", "ignoreEnvironment", "noUserSite", "pthFilesExecuted", "sitecustomizeImported", "usercustomizeImported", "sitePackagesPathDigest"],
               "properties": {
                 "mode": { "const": "python_isolated_no_site" },
+                "dontWriteBytecode": { "const": true },
                 "ignoreEnvironment": { "const": true },
                 "noUserSite": { "const": true },
                 "pthFilesExecuted": { "const": false },
