@@ -1137,7 +1137,7 @@ test('result collection hashes a stable confined miniwdl-style output symlink', 
   }
 })
 
-test('result collection rejects an artifact changed while hashing', async () => {
+test('result collection rejects an artifact changed during collection', async () => {
   let keepMutating = true
   let mutation = Promise.resolve()
   const fixture = await makeFixture({
@@ -1172,7 +1172,7 @@ test('result collection rejects an artifact changed while hashing', async () => 
     const observed = await fixture.manager.getRun(started.runId, { agent })
     assert.equal(observed.run.status, 'failed')
     assert.equal(observed.run.error.code, 'result_collection_failed')
-    assert.match(observed.run.error.message, /changed while hashing/)
+    assert.match(observed.run.error.message, /changed (?:before|while) hashing/)
     assert.equal(observed.run.result, null)
   } finally {
     keepMutating = false
