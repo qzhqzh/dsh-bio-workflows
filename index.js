@@ -1,5 +1,6 @@
 import { createWorkflowCatalog } from './src/catalog.js'
 import { registerCatalogTools } from './src/catalog-tools.js'
+import { registerBioWdlAuthoringSkill } from './src/authoring-skill.js'
 import { createDraftStore } from './src/draft-store.js'
 import { createDraftTestManager } from './src/draft-test-manager.js'
 import {
@@ -32,6 +33,7 @@ function optionalService(ctx, name) {
 }
 
 export function apply(ctx, config = {}) {
+  registerBioWdlAuthoringSkill(optionalService(ctx, 'skills'))
   const catalog = createWorkflowCatalog(config?.manifests ?? [])
   const environment = parsePreflightEnvironment(config?.environment ?? {})
   const store = createWorkflowStore(config?.store ?? {})

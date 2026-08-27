@@ -322,6 +322,13 @@ untrusted. The authoring loop is:
 4. Call `bio_workflows_draft_validate` for that exact immutable revision.
 5. Repair diagnostics by repeating steps 2–4.
 
+When the DSH composition exposes `ctx.skills`, this package also registers the
+on-demand `bio-wdl-authoring` Skill. The Agent can select it from the normal
+skill catalog, or the user can invoke `/bio-wdl-authoring`. The packaged Skill
+adds workflow-specific guidance only; all mutations and isolated tests still
+cross their ordinary tool and approval boundaries. Profiles without the Skill
+service keep the same Host behavior.
+
 Ownership comes only from `exec.agent.session.id`; no tool argument can claim
 another owner. Revisions begin at 1, are complete immutable snapshots, and are
 limited to 128 files, 1 MiB per file, 4 MiB total, and 256 revisions. Concurrent
@@ -570,10 +577,12 @@ Releases add independently reviewable layers:
     package — available in `0.10.0`
 11. Bounded owner-session autonomous WDL authoring and validation-repair
     Missions — available in `0.11.0`
-12. Separately approved isolated draft-test runner and fixture/result
+12. Packaged on-demand `bio-wdl-authoring` Agent Skill — implemented on the
+    unreleased development branch
+13. Separately approved isolated draft-test runner and fixture/result
     assertions — implemented and locally accepted on the unreleased development
     branch; remote CI and release review remain required
-13. Next: independent review/promotion, Git/TRS Store providers, and additional
+14. Next: independent review/promotion, Git/TRS Store providers, and additional
     execution adapters
 
 Execution support remains explicit, auditable, and disabled by default.

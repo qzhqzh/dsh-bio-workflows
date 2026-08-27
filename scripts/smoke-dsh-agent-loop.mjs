@@ -43,6 +43,7 @@ async function loadDshRuntime() {
     jobsLocal,
     llm,
     session,
+    skill,
     subprocessLocal,
     systemPrompt,
     tools,
@@ -54,6 +55,7 @@ async function loadDshRuntime() {
     import(resolveDshPackage('dsh-jobs-local')),
     import(resolveDshPackage('dsh-llm')),
     import(resolveDshPackage('dsh-session')),
+    import(resolveDshPackage('dsh-skill')),
     import(resolveDshPackage('dsh-subprocess-local')),
     import(resolveDshPackage('dsh-system-prompt')),
     import(resolveDshPackage('dsh-tools')),
@@ -72,6 +74,7 @@ async function loadDshRuntime() {
     LocalSubprocessRuntime: subprocessLocal.LocalSubprocessRuntime,
     SessionId: session.SessionId,
     SessionStore: session.SessionStore,
+    SkillRegistry: skill.SkillRegistry,
     SystemPrompt: systemPrompt.SystemPrompt,
     ToolRuntime: tools.ToolRuntime,
   }
@@ -203,6 +206,7 @@ exit 2
   ctx = new runtime.Context()
   const sessions = new runtime.SessionStore(ctx)
   const agents = new runtime.AgentRegistry(ctx)
+  new runtime.SkillRegistry(ctx)
   const llm = new runtime.LlmRuntime(ctx)
   new runtime.SystemPrompt(ctx, {
     includeHarnessIdentity: false,
@@ -244,6 +248,9 @@ exit 2
       runner: { executable: miniwdlExecutable, dockerExecutable },
     },
   })
+  const authoringSkill = await ctx.skills.get('bio-wdl-authoring')
+  assert.equal(authoringSkill.name, 'bio-wdl-authoring')
+  assert.match(authoringSkill.content, /ready_for_isolated_test/)
 
   class ScriptedWorkflowAdapter extends runtime.LlmAdapter {
     calls = []

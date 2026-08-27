@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Package and register the on-demand `bio-wdl-authoring` Agent Skill when the
+  optional DSH `ctx.skills` service is present. It guides exact revision/CAS
+  authoring, deterministic validation repair, graph review, and separately
+  approved fixture trials without granting promotion or production authority.
 - Add a default-off, separately approved isolated fixture-test lifecycle for
   exact ready Mission revisions: `draft_test_prepare`, `start`, `get`, `cancel`,
   and `report`. The approval binds the draft/validation, declarative fixture,

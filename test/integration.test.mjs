@@ -7,6 +7,7 @@ import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { ToolRuntime } from '@deepseek-ai/dsh-tools'
 import * as plugin from 'dsh-bio-workflows'
+import { BIO_WDL_AUTHORING_SKILL_NAME } from 'dsh-bio-workflows/authoring-skill'
 import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
 import { createDraftStore } from 'dsh-bio-workflows/draft-store'
 import { createDraftTestManager } from 'dsh-bio-workflows/draft-test-manager'
@@ -60,6 +61,7 @@ test('public self-references and the dependency-free root DSH apply entry work',
   assert.equal(draftTestEvidenceSchema.$defs.capabilities.properties.productionExecution.const, false)
 
   const registered = []
+  const registeredSkills = []
   const listeners = new Map()
   const waterfall = async (event, exec, terminal) => {
     const handlers = listeners.get(event) ?? []
@@ -71,6 +73,9 @@ test('public self-references and the dependency-free root DSH apply entry work',
     return dispatch(0)
   }
   const ctx = {
+    skills: {
+      register: (skill) => registeredSkills.push(skill),
+    },
     tools: {
       register: (tool) => registered.push(tool),
       get: (name) => registered.find((tool) => tool.name === name),
@@ -83,6 +88,10 @@ test('public self-references and the dependency-free root DSH apply entry work',
       engines: { nextflow: { available: true, version: '24.04' } },
     },
   })
+
+  assert.equal(registeredSkills.length, 1)
+  assert.equal(registeredSkills[0].name, BIO_WDL_AUTHORING_SKILL_NAME)
+  assert.match(registeredSkills[0].content, /ready_for_isolated_test/)
 
   const infoTool = registered.find((tool) => tool.name === 'bio_workflows_info')
   const info = JSON.parse(await infoTool.execute({}))
