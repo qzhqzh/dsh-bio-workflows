@@ -2,7 +2,7 @@
 
 ## Executive assessment
 
-The `0.11.0` candidate adds a bounded autonomous repair loop to the usable
+The published `0.11.0` baseline adds a bounded autonomous repair loop to the usable
 AI-assisted WDL experience. One digest-bound approval creates an owner-session
 Mission whose durable budgets cover only draft create, compare-and-swap update,
 and exact-revision validation. Stable failure fingerprints, wall/action/failure
@@ -15,10 +15,18 @@ The `0.7.0` `BioWorkflowResult v1`, bounded output hashing, FastQC summary
 parsing, and opt-in execution MVP remain backward compatible. Built-in
 `fastq-qc@1.1.0` and `1.2.0` remain the only executable workflows.
 
+The post-`0.11.0` development branch adds a second, default-off execution
+boundary for fixture-only draft tests. A new plan/start approval binds the exact
+ready Mission revision, fixture, local image, runner, isolation policy,
+assertions, and budgets. Its dedicated `dsh_fixture_docker` backend is not the
+production adapter and cannot install, promote, allowlist, or production-run a
+draft. This work is not part of the published `0.11.x` contract.
+
 This is intentionally narrower than general WDL execution. `bam-qc`, installed
-bundles, and user drafts remain non-executable. Execution is disabled by
-default, uses optional DSH `subprocess` and `jobs` services, and never changes
-the semantics of declaration-only `bio_workflows_preflight`.
+bundles, and user drafts remain outside production execution. Both production
+execution and isolated fixture testing are disabled by default, use optional
+DSH `subprocess` and `jobs` services, and never change the semantics of
+declaration-only `bio_workflows_preflight`.
 
 The adapter contract and lifecycle are covered with deterministic integration
 fixtures, while CI runs real `miniwdl check` for all four versioned bundles.
@@ -72,6 +80,11 @@ flowchart LR
   AM --> AN[One owner-session bounded approval]
   AN --> AX[Mission-bound draft create/update/validate]
   AX --> Y
+  A --> AT[Draft-test prepare and exact planDigest]
+  AT --> AU[Separate owner-session approval]
+  AU --> AV[Dedicated dsh_fixture_docker backend]
+  AV --> AW[Immutable fixture + denial probes + bounded evidence]
+  AW -. no install, promotion, allowlist, or production authority .-> E
   A --> X[Draft create/get/update]
   X --> Y[Session owner + immutable revisions + dual CAS]
   Y --> Z[Exact revision structural validation]
@@ -98,7 +111,8 @@ model-authored command fragments or environment names to a host shell.
 | Manifest v1 and catalog | Implemented | Strict runtime validator, JSON Schema, deterministic list/get | Migration policy when v2 is needed |
 | WDL bundle and Store | Implemented foundation | Bounded reads, file SHA-256, local import closure, immutable opt-in installs | Git/TRS providers and visual Store UI |
 | AI-assisted draft authoring | Implemented 0.10 core | Session-derived ownership, opaque ids, immutable full snapshots, dual CAS, model-driven DSH Agent-loop and approval smoke, structural and validator tests | Agent Skill, collaboration, test and promotion |
-| Bounded autonomous WDL repair | Implemented 0.11 authoring slice | Exact plan digest, one owner-session grant, durable action/failure/wall budgets, stable fingerprints, repeated-failure circuit breaker, restart interruption, Mission/tool integration tests | Separately isolated fixture runner; no software-container success claim yet |
+| Bounded autonomous WDL repair | Implemented 0.11 authoring slice | Exact plan digest, one owner-session grant, durable action/failure/wall budgets, stable fingerprints, repeated-failure circuit breaker, restart interruption, Mission/tool integration tests | Mission report remains authoring-only and `success: false` |
+| Isolated fixture testing | Implemented and locally accepted on unreleased branch; review pending | Separate exact-plan approval, declarative fixture/assertion contracts, hash-bound miniwdl environment and controller seccomp policy, dedicated backend, inspected Docker controls, 17 deterministic probes, bounded evidence, owner/restart lifecycle, and real success/timeout/cancel/overflow/adversarial acceptance | Independent high-risk review and first remote CI run; no promotion authority |
 | Deterministic workflow graph | Implemented | Exact owner/revision/digest binding, schema validation, stable nodes/edges/source ranges, partial-graph diagnostics, parser and tool tests | Additional WDL syntax coverage and source editor navigation |
 | Native Workflow Center | Implemented | Same-package Client build, official sidebar/overlay/tool slots, built-in-only bootstrap, exact execution-allowlist affordances, deep-validated graph replay, fail-closed current-Session Agent bridge, desktop/mobile and modal keyboard Playwright tests | Agent-mediated draft browsing, direct source editor, richer Store providers |
 | Starter workflows | Two families, four versions | All WDL 1.0 bundles pass pinned `miniwdl 1.15.0 check`; `fastq-qc@1.2.0` has a retained real result acceptance record | Promote and verify BAM separately |
@@ -111,20 +125,27 @@ model-authored command fragments or environment names to a host shell.
 
 ## Is the main functionality implemented?
 
-Yes for the intentionally bounded `0.11.0` authoring experience: an Agent can
+Yes for the intentionally bounded published `0.11.0` authoring experience: an Agent can
 prepare an exact Mission, cross one visible approval, create a private draft,
 inspect one exact revision/file, submit multiple Mission-budgeted CAS patches,
 validate each immutable revision, diagnose stable failure fingerprints, stop at
 configured thresholds, and produce a truthful report. Cross-session reads are
 silent, runtime restart never retries, and no draft can enter the existing
-execution allowlist. A valid draft is only `ready_for_isolated_test`; no
-software container was run and report success remains false.
+execution allowlist. A valid draft is only `ready_for_isolated_test`, and
+Mission report success remains false.
+
+On the unreleased development branch, an operator can separately enable and
+approve an exact fixture test. Real acceptance proves the exact fixture/output
+digest, egress and host-service denial, fixed environment, hard task timeout,
+cancellation, output/log overflow failure, owner fencing, and Docker resource
+cleanup. A passing test still has no install, promotion, allowlist, or
+production authority.
 
 At the code-contract and real container-execution levels, the earlier execution
 MVP also remains complete for one deliberately narrow workflow. This is still
-not a general production runner or full WDL IDE: canvas/source editing, draft
-tests, review/promotion, collaboration, container egress isolation, and broad
-workflow execution are not implemented.
+not a general production runner or full WDL IDE: canvas/source editing,
+review/promotion, collaboration, and broad workflow execution are not
+implemented.
 
 The correct release description is therefore **AI-assisted revisioned WDL
 authoring, deterministic visualization, and miniwdl execution MVP / preview**,
@@ -139,6 +160,34 @@ full WDL IDE.
   owned by the DSH process user, not writable by group/other users, with a
   replacement-protected ancestor chain. Owner and revision directory identities
   are rechecked before atomic commits and stale cleanup.
+- Draft testing is independently default-off. Its private `runsRoot` cannot
+  overlap fixture roots or the authoring Store; only owner-session reads and
+  actions are visible, and restart interrupts without retry.
+- Fixture files are immutable size/SHA-256-bound snapshots. Inputs cannot name
+  host paths or remote URLs, and assertions are limited to deterministic value
+  equality or file size/SHA-256 checks.
+- The dedicated backend requires Linux, a non-root controller, cgroup v2,
+  Docker builtin seccomp and AppArmor, and preloaded digest-pinned task and
+  support images. It never pulls.
+- Every draft-test container is inspected before start for network `none`,
+  read-only root, dropped capabilities, `no-new-privileges`, non-root uid/gid,
+  no devices/groups, fixed scrubbed environment, exact read-only binds, and
+  approved CPU/memory/swap/PID/ulimit/tmpfs limits. Seventeen deterministic
+  controller/container probes must prove fixture/write positives plus egress, gateway, host-loopback,
+  Docker-socket, credential, capability, and root-write denials.
+- Before user WDL loading, the controller installs a digest-bound kernel
+  thread-synchronized seccomp filter that permits only Unix socket creation.
+  Python `-I -S` verifies dependencies before loading them, the local reader
+  rejects traversal/symlink/special/changing sources, and hard address-space,
+  CPU, process/thread, file, and wall-time budgets apply. A separately bounded
+  Docker broker uses the same network filter and only the exact approved CLI.
+- Exact owner/test/plan/token labels bind Docker resources. Exit and restart
+  reconciliation remove only matching resources and require bounded absence
+  probes. Startup recovery verifies and terminates the exact persisted
+  controller process group before Docker cleanup; ambiguity fails the test.
+- Outputs are held in a bounded tmpfs volume, scanned before and after copy-out,
+  and retained only as bounded logs, regular artifacts, assertions, and
+  digest-bound evidence without host-sensitive paths.
 - Only `builtin:fastq-qc@1.1.0` and `builtin:fastq-qc@1.2.0` are executable,
   with exact bundle digests and a digest-pinned container image.
 - Input paths are canonicalized inside allowed roots and bound to size,
@@ -185,16 +234,19 @@ full WDL IDE.
 
 ## Next milestones
 
-1. Package the on-demand `bio-wdl-authoring` Agent Skill after diagnostic repair
+1. Complete independent high-risk review and remote CI acceptance for the
+   locally accepted default-off fixture runner, then release it without changing
+   Mission report success or production trust.
+2. Package the on-demand `bio-wdl-authoring` Agent Skill after diagnostic repair
    behavior is stable.
-2. Add controlled fixture testing, independent review evidence, and immutable
-   promotion as separate approval boundaries before any custom execution.
-3. Add an explicit optional pre-approval input-checksum policy, deployable
+3. Add independent review evidence and immutable promotion as new approval
+   boundaries before any custom production execution.
+4. Add an explicit optional pre-approval input-checksum policy, deployable
    container egress/isolation, storage budgets, and retention controls.
-4. Promote `bam-qc` into the executable allowlist after the same real-run and
+5. Promote `bam-qc` into the executable allowlist after the same real-run and
    cancellation tests, including BAM index handling if required.
-5. Add revision-pinned Git/TRS Store providers and richer draft browsing.
-6. Only then generalize to Cromwell/WES and editable visual round trips.
+6. Add revision-pinned Git/TRS Store providers and richer draft browsing.
+7. Only then generalize to Cromwell/WES and editable visual round trips.
 
 ## Execution MVP definition of done
 

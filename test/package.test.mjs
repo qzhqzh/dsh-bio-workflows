@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import { validateBioWorkflowResultSemantics } from '../src/execution.js'
 import { DRAFT_LIMITS, DRAFT_SCHEMA_VERSION } from '../src/draft-store.js'
+import {
+  DRAFT_TEST_EVIDENCE_SCHEMA_VERSION,
+  DRAFT_TEST_PLAN_SCHEMA_VERSION,
+} from '../src/draft-test-contract.js'
 import { DRAFT_VALIDATION_SCHEMA_VERSION } from '../src/draft-validation.js'
+import { FIXTURE_BUNDLE_SCHEMA_VERSION } from '../src/fixture-bundle.js'
 import {
   FAILURE_EVIDENCE_SCHEMA_VERSION,
   MISSION_DEFAULT_LIMITS,
@@ -37,7 +43,11 @@ test('package metadata matches the runtime identity', () => {
   assert.equal(packageJson.publishConfig.registry, 'https://registry.npmjs.org/')
   assert.equal(packageJson.exports['./catalog'], './src/catalog.js')
   assert.equal(packageJson.exports['./draft-store'], './src/draft-store.js')
+  assert.equal(packageJson.exports['./draft-test-contract'], './src/draft-test-contract.js')
+  assert.equal(packageJson.exports['./draft-test-manager'], './src/draft-test-manager.js')
   assert.equal(packageJson.exports['./draft-validation'], './src/draft-validation.js')
+  assert.equal(packageJson.exports['./fixture-assertions'], './src/fixture-assertions.js')
+  assert.equal(packageJson.exports['./fixture-bundle'], './src/fixture-bundle.js')
   assert.equal(packageJson.exports['./mission-store'], './src/mission-store.js')
   assert.equal(packageJson.exports['./workflow-graph'], './src/workflow-graph.js')
   assert.equal(packageJson.exports['./client'], './lib/client.js')
@@ -82,7 +92,22 @@ test('package metadata matches the runtime identity', () => {
     packageJson.exports['./schema/software-trial-report.schema.json'],
     './schema/software-trial-report.schema.json',
   )
+  assert.equal(
+    packageJson.exports['./schema/fixture-bundle.schema.json'],
+    './schema/fixture-bundle.schema.json',
+  )
+  assert.equal(
+    packageJson.exports['./schema/draft-test-plan.schema.json'],
+    './schema/draft-test-plan.schema.json',
+  )
+  assert.equal(
+    packageJson.exports['./schema/draft-test-evidence.schema.json'],
+    './schema/draft-test-evidence.schema.json',
+  )
   assert.ok(packageJson.files.includes('workflows/'))
+  assert.ok(packageJson.files.includes('fixtures/'))
+  assert.ok(packageJson.files.includes('requirements/'))
+  assert.ok(packageJson.files.includes('runner/dsh_fixture_runner.py'))
   assert.ok(packageJson.files.includes('lib/'))
   assert.equal(packageJson.dsh.client.platform, 'web')
   assert.equal(packageJson.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-tool'), true)
@@ -190,6 +215,83 @@ test('Mission, failure evidence, and software trial report schemas preserve the 
   assert.equal(report.properties.readiness.properties.isolatedTestCompleted.const, false)
 })
 
+test('isolated draft-test schemas and built-in fixture preserve separate false production authority', async () => {
+  const [fixtureSchema, planSchema, evidenceSchema, fixture] = await Promise.all([
+    readFile(new URL('../schema/fixture-bundle.schema.json', import.meta.url), 'utf8').then(JSON.parse),
+    readFile(new URL('../schema/draft-test-plan.schema.json', import.meta.url), 'utf8').then(JSON.parse),
+    readFile(new URL('../schema/draft-test-evidence.schema.json', import.meta.url), 'utf8').then(JSON.parse),
+    readFile(new URL('../fixtures/text-roundtrip/1.0.0/fixture.json', import.meta.url), 'utf8').then(JSON.parse),
+  ])
+
+  assert.equal(fixtureSchema.properties.schemaVersion.const, FIXTURE_BUNDLE_SCHEMA_VERSION)
+  assert.match(fixtureSchema.$id, /dsh-bio-workflows@0\.12\.0/)
+  assert.equal(fixtureSchema.$defs.jsonValue['x-maxDepth'], 16)
+  assert.equal(fixtureSchema.$defs.jsonValue['x-maxNodes'], 4096)
+  assert.deepEqual(fixtureSchema.properties.assertions.items.oneOf.map((item) => item.$ref), [
+    '#/$defs/valueAssertion',
+    '#/$defs/fileAssertion',
+  ])
+  assert.equal(planSchema.properties.schemaVersion.const, DRAFT_TEST_PLAN_SCHEMA_VERSION)
+  assert.match(planSchema.$id, /dsh-bio-workflows@0\.12\.0/)
+  assert.equal(planSchema.$defs.runnerIdentity.additionalProperties, false)
+  assert.equal(planSchema.$defs.controllerNetwork.additionalProperties, false)
+  assert.equal(planSchema.$defs.controllerNetwork.properties.policy.const, 'seccomp_deny_non_unix_sockets_before_wdl_load')
+  assert.equal(planSchema.$defs.controllerNetwork.properties.noNewPrivileges.const, true)
+  assert.equal(planSchema.$defs.authorization.properties.productionExecution.const, false)
+  assert.equal(planSchema.$defs.authorization.properties.workflowPromotion.const, false)
+  assert.equal(planSchema.$defs.authorization.properties.productionAllowlistMutation.const, false)
+  assert.equal(evidenceSchema.properties.schemaVersion.const, DRAFT_TEST_EVIDENCE_SCHEMA_VERSION)
+  assert.match(evidenceSchema.$id, /dsh-bio-workflows@0\.12\.0/)
+  assert.equal(evidenceSchema.required.includes('resources'), true)
+  assert.equal(evidenceSchema.required.includes('evidenceDigest'), true)
+  assert.equal(evidenceSchema.$defs.capabilities.properties.productionExecution.const, false)
+  assert.equal(evidenceSchema.$defs.capabilities.properties.workflowPromotion.const, false)
+  assert.equal(evidenceSchema.$defs.containerFact.required.includes('imageId'), true)
+  assert.equal(evidenceSchema.$defs.containerFact.required.includes('containerControls'), true)
+  assert.equal(evidenceSchema.$defs.containerControls.properties.networkMode.const, 'none')
+  assert.equal(evidenceSchema.$defs.containerControls.properties.readonlyRootfs.const, true)
+  assert.equal(evidenceSchema.$defs.containerControls.properties.environment.maxProperties, 133)
+  assert.equal(evidenceSchema.$defs.containerControls.properties.environment.additionalProperties.const, '')
+  assert.equal(evidenceSchema.$defs.controllerEvidence.properties.network.properties.kernelEnforced.const, true)
+  assert.equal(evidenceSchema.$defs.assertionResult.additionalProperties, false)
+  assert.equal(evidenceSchema.$defs.assertionResult.allOf.length, 1)
+  assert.equal(evidenceSchema.$defs.containerControls.properties.mounts.items.$ref, '#/$defs/mountControl')
+  assert.equal(evidenceSchema.$defs.mountControl.properties.source, undefined)
+  assert.equal(fixture.schemaVersion, FIXTURE_BUNDLE_SCHEMA_VERSION)
+  assert.equal(fixture.assertions.every((assertion) => ['value_equals', 'file_digest'].includes(assertion.kind)), true)
+})
+
+test('retained fixture-runner evidence is bound to every current acceptance source', async () => {
+  const evidence = JSON.parse(await readFile(
+    new URL('../docs/evidence/dsh-bio-workflows-0.11.0-unreleased-fixture-runner.json', import.meta.url),
+    'utf8',
+  ))
+  const expectedSources = [
+    'fixtures/text-roundtrip/1.0.0/fixture.json',
+    'fixtures/text-roundtrip/1.0.0/inputs/message.txt',
+    'index.js',
+    'requirements/miniwdl-1.15.0.txt',
+    'runner/dsh_fixture_runner.py',
+    'schema/draft-test-evidence.schema.json',
+    'schema/draft-test-plan.schema.json',
+    'schema/fixture-bundle.schema.json',
+    'scripts/accept-draft-fixture-restart-child.mjs',
+    'scripts/accept-draft-fixture-runner.mjs',
+    'src/draft-test-contract.js',
+    'src/draft-test-manager.js',
+    'src/draft-test-tools.js',
+    'src/fixture-assertions.js',
+    'src/fixture-bundle.js',
+  ]
+
+  assert.deepEqual(Object.keys(evidence.sourceSha256).sort(), expectedSources.toSorted())
+  for (const path of expectedSources) {
+    const source = await readFile(new URL(`../${path}`, import.meta.url))
+    const actual = createHash('sha256').update(source).digest('hex')
+    assert.equal(evidence.sourceSha256[path], actual, path)
+  }
+})
+
 test('the foundation package has no install lifecycle scripts', () => {
   assert.equal(packageJson.scripts.preinstall, undefined)
   assert.equal(packageJson.scripts.install, undefined)
@@ -225,6 +327,7 @@ test('the bundle patch installs the expected package', async () => {
   assert.match(patch, /authoring:/)
   assert.match(patch, /expectedVersion: 1\.15\.0/)
   assert.match(patch, /autonomy:/)
+  assert.match(patch, /draftTesting:/)
   assert.match(patch, /execution:/)
   assert.match(patch, /enabled: false/)
 })
@@ -369,4 +472,34 @@ test('the info tool reports bounded Mission authoring without implying isolated 
   assert.equal(info.capabilities.autonomousWdlValidationRepair, true)
   assert.equal(info.capabilities.isolatedSoftwareTrial, false)
   assert.equal(info.capabilities.autonomousProductionExecution, false)
+})
+
+test('the info tool reports isolated fixture readiness without implying production authority', () => {
+  const info = getPackageInfo(
+    0,
+    0,
+    {},
+    {},
+    {},
+    {},
+    {
+      configured: true,
+      enabled: true,
+      subprocessAvailable: true,
+      jobsAvailable: true,
+      preflightVerified: true,
+      ready: true,
+      capabilities: {
+        isolatedDraftTest: true,
+        productionExecution: false,
+        workflowPromotion: false,
+      },
+    },
+  )
+
+  assert.equal(info.draftTesting.ready, true)
+  assert.equal(info.capabilities.isolatedSoftwareTrial, true)
+  assert.equal(info.capabilities.autonomousProductionExecution, false)
+  assert.equal(info.draftTesting.capabilities.productionExecution, false)
+  assert.equal(info.draftTesting.capabilities.workflowPromotion, false)
 })

@@ -13,5 +13,7 @@
             expectedVersion: 1.15.0
         autonomy:
           enabled: false
+        draftTesting:
+          enabled: false
         execution:
           enabled: false

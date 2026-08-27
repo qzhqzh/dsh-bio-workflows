@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { access, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -34,14 +35,43 @@ try {
     ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', cache, tarball],
     { cwd: consumer, encoding: 'utf8' },
   )
-  await access(join(consumer, 'node_modules', 'dsh-bio-workflows', 'lib', 'client.js'))
+  const installedRoot = join(consumer, 'node_modules', 'dsh-bio-workflows')
+  const fixtureRoot = join(installedRoot, 'fixtures', 'text-roundtrip', '1.0.0')
+  await access(join(installedRoot, 'lib', 'client.js'))
+  await access(join(installedRoot, 'requirements', 'miniwdl-1.15.0.txt'))
+  await access(join(installedRoot, 'runner', 'dsh_fixture_runner.py'))
+  const fixture = JSON.parse(await readFile(join(fixtureRoot, 'fixture.json'), 'utf8'))
+  const fixtureInput = await readFile(join(fixtureRoot, 'inputs', 'message.txt'))
+  assert.equal(fixtureInput.length, fixture.files[0].sizeBytes)
+  assert.equal(
+    `sha256:${createHash('sha256').update(fixtureInput).digest('hex')}`,
+    fixture.files[0].sha256,
+  )
 
   const smokeProgram = String.raw`
     import assert from 'node:assert/strict'
     import * as plugin from 'dsh-bio-workflows'
     import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
     import { createDraftStore } from 'dsh-bio-workflows/draft-store'
+    import {
+      DRAFT_TEST_EVIDENCE_SCHEMA_VERSION,
+      DRAFT_TEST_PLAN_SCHEMA_VERSION,
+      parseDraftTestConfig,
+    } from 'dsh-bio-workflows/draft-test-contract'
+    import {
+      DRAFT_TEST_RECORD_SCHEMA_VERSION,
+      DRAFT_TEST_REPORT_SCHEMA_VERSION,
+      createDraftTestManager,
+    } from 'dsh-bio-workflows/draft-test-manager'
     import { createDraftValidator } from 'dsh-bio-workflows/draft-validation'
+    import {
+      FIXTURE_ASSERTION_SCHEMA_VERSION,
+      evaluateFixtureAssertions,
+    } from 'dsh-bio-workflows/fixture-assertions'
+    import {
+      FIXTURE_BUNDLE_SCHEMA_VERSION,
+      loadFixtureBundle,
+    } from 'dsh-bio-workflows/fixture-bundle'
     import { createWorkflowGraph, WORKFLOW_GRAPH_SCHEMA_VERSION } from 'dsh-bio-workflows/workflow-graph'
     import {
       BIO_WORKFLOW_RESULT_SCHEMA_VERSION,
@@ -63,10 +93,16 @@ try {
     import missionSchema from 'dsh-bio-workflows/schema/mission.schema.json' with { type: 'json' }
     import failureEvidenceSchema from 'dsh-bio-workflows/schema/failure-evidence.schema.json' with { type: 'json' }
     import softwareTrialReportSchema from 'dsh-bio-workflows/schema/software-trial-report.schema.json' with { type: 'json' }
+    import draftTestEvidenceSchema from 'dsh-bio-workflows/schema/draft-test-evidence.schema.json' with { type: 'json' }
+    import draftTestPlanSchema from 'dsh-bio-workflows/schema/draft-test-plan.schema.json' with { type: 'json' }
+    import fixtureBundleSchema from 'dsh-bio-workflows/schema/fixture-bundle.schema.json' with { type: 'json' }
 
     assert.equal(typeof createWorkflowCatalog, 'function')
     assert.equal(typeof createDraftStore, 'function')
+    assert.equal(typeof createDraftTestManager, 'function')
     assert.equal(typeof createDraftValidator, 'function')
+    assert.equal(typeof evaluateFixtureAssertions, 'function')
+    assert.equal(typeof loadFixtureBundle, 'function')
     assert.equal(typeof createMissionStore, 'function')
     assert.equal(typeof createWorkflowGraph, 'function')
     assert.equal(typeof createExecutionManager, 'function')
@@ -84,6 +120,13 @@ try {
     assert.equal(missionSchema.properties.schemaVersion.const, MISSION_SCHEMA_VERSION)
     assert.equal(failureEvidenceSchema.properties.schemaVersion.const, '1')
     assert.equal(softwareTrialReportSchema.properties.success.const, false)
+    assert.equal(draftTestEvidenceSchema.properties.schemaVersion.const, DRAFT_TEST_EVIDENCE_SCHEMA_VERSION)
+    assert.equal(draftTestPlanSchema.properties.schemaVersion.const, DRAFT_TEST_PLAN_SCHEMA_VERSION)
+    assert.equal(fixtureBundleSchema.properties.schemaVersion.const, FIXTURE_BUNDLE_SCHEMA_VERSION)
+    assert.equal(DRAFT_TEST_RECORD_SCHEMA_VERSION, '1')
+    assert.equal(DRAFT_TEST_REPORT_SCHEMA_VERSION, '1')
+    assert.equal(FIXTURE_ASSERTION_SCHEMA_VERSION, '1')
+    assert.equal(parseDraftTestConfig().enabled, false)
     assert.equal(typeof metadata.exports['./client'], 'string')
 
     const registered = []
@@ -118,7 +161,10 @@ try {
     })
     assert.deepEqual(
       registered
-        .filter((tool) => !tool.name.startsWith('bio_workflows_mission_'))
+        .filter((tool) => (
+          !tool.name.startsWith('bio_workflows_mission_')
+          && !tool.name.startsWith('bio_workflows_draft_test_')
+        ))
         .map((tool) => {
           let parameters = tool.parameters
           if (['bio_workflows_draft_create', 'bio_workflows_draft_update', 'bio_workflows_draft_validate'].includes(tool.name)) {
@@ -536,6 +582,10 @@ try {
     assert.deepEqual(
       registered.filter((tool) => tool.name.startsWith('bio_workflows_mission_')).map((tool) => tool.name),
       ['bio_workflows_mission_prepare', 'bio_workflows_mission_start', 'bio_workflows_mission_get', 'bio_workflows_mission_cancel', 'bio_workflows_mission_report'],
+    )
+    assert.deepEqual(
+      registered.filter((tool) => tool.name.startsWith('bio_workflows_draft_test_')).map((tool) => tool.name),
+      ['bio_workflows_draft_test_prepare', 'bio_workflows_draft_test_start', 'bio_workflows_draft_test_get', 'bio_workflows_draft_test_cancel', 'bio_workflows_draft_test_report'],
     )
     assert.equal(registered.find((tool) => tool.name === 'bio_workflows_draft_create').parameters.properties.missionId.type, 'string')
     const preflight = registered.find((tool) => tool.name === 'bio_workflows_preflight')

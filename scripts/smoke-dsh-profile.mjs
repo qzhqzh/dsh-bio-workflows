@@ -52,6 +52,35 @@ try {
     'lib',
     'client.js',
   ))
+  await access(join(
+    dshHome,
+    'profiles',
+    'headless',
+    'node_modules',
+    'dsh-bio-workflows',
+    'fixtures',
+    'text-roundtrip',
+    '1.0.0',
+    'fixture.json',
+  ))
+  await access(join(
+    dshHome,
+    'profiles',
+    'headless',
+    'node_modules',
+    'dsh-bio-workflows',
+    'requirements',
+    'miniwdl-1.15.0.txt',
+  ))
+  await access(join(
+    dshHome,
+    'profiles',
+    'headless',
+    'node_modules',
+    'dsh-bio-workflows',
+    'runner',
+    'dsh_fixture_runner.py',
+  ))
   assert.equal(installedPlugin.name, 'dsh-bio-workflows')
   assert.equal(typeof installedPlugin.apply, 'function')
   const registered = []
@@ -74,7 +103,10 @@ try {
   })
   assert.deepEqual(
     registered
-      .filter((tool) => !tool.name.startsWith('bio_workflows_mission_'))
+      .filter((tool) => (
+        !tool.name.startsWith('bio_workflows_mission_')
+        && !tool.name.startsWith('bio_workflows_draft_test_')
+      ))
       .map((tool) => {
         let parameters = tool.parameters
         if (['bio_workflows_draft_create', 'bio_workflows_draft_update', 'bio_workflows_draft_validate'].includes(tool.name)) {
@@ -493,6 +525,10 @@ try {
     registered.filter((tool) => tool.name.startsWith('bio_workflows_mission_')).map((tool) => tool.name),
     ['bio_workflows_mission_prepare', 'bio_workflows_mission_start', 'bio_workflows_mission_get', 'bio_workflows_mission_cancel', 'bio_workflows_mission_report'],
   )
+  assert.deepEqual(
+    registered.filter((tool) => tool.name.startsWith('bio_workflows_draft_test_')).map((tool) => tool.name),
+    ['bio_workflows_draft_test_prepare', 'bio_workflows_draft_test_start', 'bio_workflows_draft_test_get', 'bio_workflows_draft_test_cancel', 'bio_workflows_draft_test_report'],
+  )
   assert.equal(registered.find((tool) => tool.name === 'bio_workflows_draft_create').parameters.properties.missionId.type, 'string')
   const guarded = await waterfall(
     'tools/execute',
@@ -538,6 +574,7 @@ try {
   assert.match(config, /engines: \{\}/)
   assert.match(config, /writeEnabled: false/)
   assert.match(config, /autonomy:/)
+  assert.match(config, /draftTesting:/)
   assert.match(config, /execution:/)
   assert.match(config, /enabled: false/)
   process.stdout.write(`DSH ${version} profile smoke passed: ${packResult[0].filename}\n`)

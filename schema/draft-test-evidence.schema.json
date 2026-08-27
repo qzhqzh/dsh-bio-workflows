@@ -1,0 +1,614 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.12.0/schema/draft-test-evidence.schema.json",
+  "title": "dsh-bio-workflows Draft Test Evidence v1",
+  "description": "Bounded evidence from one separately authorized isolated WDL draft fixture test. Passing evidence does not install, promote, allowlist, or production-run the draft.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "testId",
+    "planDigest",
+    "status",
+    "startedAt",
+    "finishedAt",
+    "identities",
+    "budgets",
+    "isolation",
+    "exit",
+    "logs",
+    "artifacts",
+    "assertionEvidence",
+    "resources",
+    "failure",
+    "passed",
+    "capabilities",
+    "evidenceDigest"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "testId": {
+      "type": "string",
+      "pattern": "^test-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "planDigest": { "$ref": "#/$defs/digest" },
+    "status": { "enum": ["completed", "failed", "cancelled", "interrupted"] },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "finishedAt": { "type": "string", "format": "date-time" },
+    "identities": { "$ref": "#/$defs/identities" },
+    "budgets": { "$ref": "./draft-test-plan.schema.json#/$defs/budgets" },
+    "isolation": { "$ref": "#/$defs/isolationEvidence" },
+    "exit": { "$ref": "#/$defs/exit" },
+    "logs": { "$ref": "#/$defs/logs" },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 1024,
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "assertionEvidence": { "$ref": "#/$defs/assertionEvidence" },
+    "resources": { "$ref": "#/$defs/resources" },
+    "failure": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/failure" }
+      ]
+    },
+    "passed": { "type": "boolean" },
+    "capabilities": { "$ref": "#/$defs/capabilities" },
+    "evidenceDigest": { "$ref": "#/$defs/digest" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "passed": { "const": true } },
+        "required": ["passed"]
+      },
+      "then": {
+        "properties": {
+          "status": { "const": "completed" },
+          "failure": { "type": "null" },
+          "isolation": {
+            "allOf": [
+              { "$ref": "#/$defs/isolationEvidence" },
+              { "properties": { "verified": { "const": true } } }
+            ]
+          },
+          "exit": {
+            "allOf": [
+              { "$ref": "#/$defs/exit" },
+              {
+                "properties": {
+                  "exitCode": { "const": 0 },
+                  "signal": { "type": "null" },
+                  "timedOut": { "const": false },
+                  "cancelled": { "const": false },
+                  "ambiguous": { "const": false }
+                }
+              }
+            ]
+          },
+          "assertionEvidence": {
+            "allOf": [
+              { "$ref": "#/$defs/assertionEvidence" },
+              { "properties": { "passed": { "const": true } } }
+            ]
+          },
+          "resources": {
+            "allOf": [
+              { "$ref": "#/$defs/resources" },
+              { "properties": { "cleanupVerified": { "const": true } } }
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": { "failure": { "$ref": "#/$defs/failure" } }
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "identities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId",
+        "draftId",
+        "revision",
+        "contentDigest",
+        "validationDigest",
+        "fixtureDigest",
+        "runnerDigest",
+        "isolationPolicyDigest",
+        "containerImages"
+      ],
+      "properties": {
+        "missionId": {
+          "type": "string",
+          "pattern": "^mission-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "draftId": {
+          "type": "string",
+          "pattern": "^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "revision": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "contentDigest": { "$ref": "#/$defs/digest" },
+        "validationDigest": { "$ref": "#/$defs/digest" },
+        "fixtureDigest": { "$ref": "#/$defs/digest" },
+        "runnerDigest": { "$ref": "#/$defs/digest" },
+        "isolationPolicyDigest": { "$ref": "#/$defs/digest" },
+        "containerImages": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 512,
+            "pattern": "^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "expected", "observed"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "status": { "enum": ["passed", "failed"] },
+        "expected": { "type": ["string", "number", "boolean", "null"] },
+        "observed": { "type": ["string", "number", "boolean", "null"] }
+      }
+    },
+    "containerFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task",
+        "image",
+        "imageId",
+        "containerConfigDigest",
+        "containerControls",
+        "containerControlsDigest",
+        "outputManifestDigest"
+      ],
+      "properties": {
+        "task": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "image": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^[^\\s\"'\\\\]+@sha256:[a-f0-9]{64}$"
+        },
+        "imageId": { "$ref": "#/$defs/digest" },
+        "containerConfigDigest": { "$ref": "#/$defs/digest" },
+        "containerControls": { "$ref": "#/$defs/containerControls" },
+        "containerControlsDigest": { "$ref": "#/$defs/digest" },
+        "outputManifestDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "mountControl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "destination", "rw", "propagation"],
+      "properties": {
+        "type": { "enum": ["bind", "volume"] },
+        "destination": {
+          "type": "string",
+          "minLength": 27,
+          "maxLength": 4096,
+          "pattern": "^/mnt/miniwdl_task_container(?:/[A-Za-z0-9_./:+@=-]+)?$"
+        },
+        "rw": { "type": "boolean" },
+        "propagation": { "enum": ["", "rprivate"] }
+      }
+    },
+    "ulimit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "soft", "hard"],
+      "properties": {
+        "name": { "enum": ["fsize", "nofile"] },
+        "soft": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "hard": { "type": "integer", "minimum": 1, "maximum": 67108864 }
+      }
+    },
+    "containerControls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "networkMode",
+        "readonlyRootfs",
+        "capDrop",
+        "securityOpt",
+        "pidsLimit",
+        "nanoCpus",
+        "memory",
+        "memorySwap",
+        "ipcMode",
+        "pidMode",
+        "cgroupnsMode",
+        "devices",
+        "deviceRequests",
+        "supplementaryGroups",
+        "logDriver",
+        "apparmorProfile",
+        "environment",
+        "tmpfs",
+        "ulimits",
+        "mounts",
+        "outputStorageDigest"
+      ],
+      "properties": {
+        "networkMode": { "const": "none" },
+        "readonlyRootfs": { "const": true },
+        "capDrop": {
+          "type": "array",
+          "prefixItems": [{ "const": "ALL" }],
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "securityOpt": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "apparmor=docker-default" },
+            { "const": "no-new-privileges=true" },
+            { "const": "seccomp=builtin" }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "pidsLimit": { "type": "integer", "minimum": 8, "maximum": 512 },
+        "nanoCpus": { "type": "integer", "minimum": 1000000000, "maximum": 4000000000 },
+        "memory": { "type": "integer", "minimum": 67108864, "maximum": 4294967296 },
+        "memorySwap": { "type": "integer", "minimum": 67108864, "maximum": 4294967296 },
+        "ipcMode": { "const": "none" },
+        "pidMode": { "enum": ["", null] },
+        "cgroupnsMode": { "const": "private" },
+        "devices": { "const": 0 },
+        "deviceRequests": { "const": 0 },
+        "supplementaryGroups": { "const": 0 },
+        "logDriver": { "const": "none" },
+        "apparmorProfile": { "const": "docker-default" },
+        "environment": {
+          "type": "object",
+          "minProperties": 5,
+          "maxProperties": 133,
+          "required": ["HOME", "TMPDIR", "LANG", "LC_ALL", "PATH"],
+          "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$" },
+          "properties": {
+            "HOME": { "const": "/tmp/home" },
+            "TMPDIR": { "const": "/tmp" },
+            "LANG": { "const": "C.UTF-8" },
+            "LC_ALL": { "const": "C.UTF-8" },
+            "PATH": { "const": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" }
+          },
+          "additionalProperties": { "const": "" }
+        },
+        "tmpfs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["/tmp"],
+          "properties": {
+            "/tmp": {
+              "type": "string",
+              "maxLength": 256,
+              "pattern": "^rw,nosuid,nodev,noexec,size=[0-9]+,uid=[0-9]+,gid=[0-9]+,mode=0700$"
+            }
+          }
+        },
+        "ulimits": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "allOf": [
+                { "$ref": "#/$defs/ulimit" },
+                { "properties": { "name": { "const": "fsize" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/ulimit" },
+                { "properties": { "name": { "const": "nofile" }, "soft": { "const": 256 }, "hard": { "const": 256 } } }
+              ]
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "mounts": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 130,
+          "items": { "$ref": "#/$defs/mountControl" }
+        },
+        "outputStorageDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "isolationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verified", "probeDigest", "probes", "containers", "controller"],
+      "properties": {
+        "verified": { "type": "boolean" },
+        "probeDigest": { "$ref": "#/$defs/digest" },
+        "probes": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/$defs/probe" } },
+        "containers": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/containerFact" } },
+        "controller": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/controllerEvidence" }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "verified": { "const": true } },
+            "required": ["verified"]
+          },
+          "then": { "properties": { "controller": { "$ref": "#/$defs/controllerEvidence" } } }
+        }
+      ]
+    },
+    "limitPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["soft", "hard"],
+      "properties": {
+        "soft": { "type": "integer", "minimum": 1, "maximum": 4294967296 },
+        "hard": { "type": "integer", "minimum": 1, "maximum": 4294967296 }
+      }
+    },
+    "controllerEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["environment", "limits", "network", "processBaseline", "dockerBroker", "runtimeEnvironmentDigest", "wrapperDigest", "controllerGuardDigest"],
+      "properties": {
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["keys", "nonEmptyKeys", "credentialLikeKeys", "environmentDigest"],
+          "properties": {
+            "keys": { "const": ["HOME", "LANG", "LC_ALL", "TMPDIR"] },
+            "nonEmptyKeys": { "const": ["HOME", "LANG", "LC_ALL", "TMPDIR"] },
+            "credentialLikeKeys": { "const": [] },
+            "environmentDigest": { "$ref": "#/$defs/digest" }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["addressSpace", "residentMemory", "cpuSeconds", "processes", "openFiles", "fileBytes"],
+          "properties": {
+            "addressSpace": { "$ref": "#/$defs/limitPair" },
+            "residentMemory": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["maximumBytes", "enforcement", "intervalMs"],
+              "properties": {
+                "maximumBytes": { "type": "integer", "minimum": 67108864, "maximum": 4294967296 },
+                "enforcement": { "const": "rlimit_as_hard_with_proc_rss_watchdog" },
+                "intervalMs": { "const": 5 }
+              }
+            },
+            "cpuSeconds": { "$ref": "#/$defs/limitPair" },
+            "processes": { "$ref": "#/$defs/limitPair" },
+            "openFiles": { "$ref": "#/$defs/limitPair" },
+            "fileBytes": { "$ref": "#/$defs/limitPair" }
+          }
+        },
+        "network": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["policy", "architecture", "filterDigest", "kernelEnforced", "threadSynchronized", "outboundDenied", "nameResolutionDenied", "hostCanaryConnections"],
+          "properties": {
+            "policy": { "const": "seccomp_deny_non_unix_sockets_before_wdl_load" },
+            "architecture": { "enum": ["x86_64", "aarch64"] },
+            "filterDigest": { "$ref": "#/$defs/digest" },
+            "kernelEnforced": { "const": true },
+            "threadSynchronized": { "const": true },
+            "outboundDenied": { "const": true },
+            "nameResolutionDenied": { "const": true },
+            "hostCanaryConnections": { "const": 1 }
+          }
+        },
+        "processBaseline": { "type": "integer", "minimum": 1 },
+        "dockerBroker": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["networkFilterDigest", "kernelEnforced", "threadSynchronized", "limits", "processBaseline"],
+          "properties": {
+            "networkFilterDigest": { "$ref": "#/$defs/digest" },
+            "kernelEnforced": { "const": true },
+            "threadSynchronized": { "const": true },
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["addressSpace", "cpuSeconds", "processes", "openFiles", "fileBytes"],
+              "properties": {
+                "addressSpace": { "$ref": "#/$defs/limitPair" },
+                "cpuSeconds": { "$ref": "#/$defs/limitPair" },
+                "processes": { "$ref": "#/$defs/limitPair" },
+                "openFiles": { "$ref": "#/$defs/limitPair" },
+                "fileBytes": { "$ref": "#/$defs/limitPair" }
+              }
+            },
+            "processBaseline": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "runtimeEnvironmentDigest": { "$ref": "#/$defs/digest" },
+        "wrapperDigest": { "$ref": "#/$defs/digest" },
+        "controllerGuardDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "exit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exitCode", "signal", "timedOut", "cancelled", "ambiguous"],
+      "properties": {
+        "exitCode": { "type": ["integer", "null"] },
+        "signal": { "type": ["string", "null"], "maxLength": 64 },
+        "timedOut": { "type": "boolean" },
+        "cancelled": { "type": "boolean" },
+        "ambiguous": { "type": "boolean" }
+      }
+    },
+    "stream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["captured", "capturedBytes", "observedBytes", "sha256", "truncated"],
+      "properties": {
+        "captured": { "type": "string", "maxLength": 4194304 },
+        "capturedBytes": { "type": "integer", "minimum": 0, "maximum": 4194304 },
+        "observedBytes": { "type": "integer", "minimum": 0, "maximum": 268435456 },
+        "sha256": { "$ref": "#/$defs/digest" },
+        "truncated": { "type": "boolean" }
+      }
+    },
+    "logs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stdout", "stderr"],
+      "properties": {
+        "stdout": { "$ref": "#/$defs/stream" },
+        "stderr": { "$ref": "#/$defs/stream" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["output", "ordinal", "relativePath", "sizeBytes", "sha256"],
+      "properties": {
+        "output": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "ordinal": { "type": "integer", "minimum": 0, "maximum": 1023 },
+        "relativePath": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "sizeBytes": { "type": "integer", "minimum": 0, "maximum": 67108864 },
+        "sha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "assertionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "output", "status", "code", "message"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "kind": { "enum": ["value_equals", "file_digest"] },
+        "output": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "status": { "enum": ["passed", "failed"] },
+        "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "index": { "type": "integer", "minimum": 0, "maximum": 1023 },
+        "expectedDigest": { "$ref": "#/$defs/digest" },
+        "actualDigest": { "$ref": "#/$defs/digest" },
+        "expected": { "$ref": "#/$defs/fileObservation" },
+        "actual": { "$ref": "#/$defs/fileObservation" }
+      },
+      "maxProperties": 12,
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "value_equals" } }, "required": ["kind"] },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["index"] },
+                { "required": ["expected"] },
+                { "required": ["actual"] }
+              ]
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "required": ["expectedDigest"] },
+                { "required": ["actualDigest"] }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "fileObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sizeBytes", "sha256"],
+      "properties": {
+        "sizeBytes": { "type": "integer", "minimum": 0, "maximum": 16777216 },
+        "sha256": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/digest" }
+          ]
+        }
+      }
+    },
+    "assertionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "passed", "assertions", "executableAssertions"],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "passed": { "type": "boolean" },
+        "assertions": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/assertionResult" } },
+        "executableAssertions": { "const": false }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "failureFingerprint", "automaticRetry"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "failureFingerprint": { "$ref": "#/$defs/digest" },
+        "automaticRetry": { "const": false }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cleanupVerified", "cleanupMode", "containersRemaining", "volumesRemaining", "removedContainers", "removedVolumes", "controllerTerminationVerified", "controllerTerminationMode", "cleanupDigest"],
+      "properties": {
+        "cleanupVerified": { "type": "boolean" },
+        "cleanupMode": { "const": "exact_labels_and_absence_probe" },
+        "containersRemaining": { "type": ["integer", "null"], "minimum": 0, "maximum": 256 },
+        "volumesRemaining": { "type": ["integer", "null"], "minimum": 0, "maximum": 256 },
+        "removedContainers": { "type": "integer", "minimum": 0, "maximum": 256 },
+        "removedVolumes": { "type": "integer", "minimum": 0, "maximum": 256 },
+        "controllerTerminationVerified": { "type": "boolean" },
+        "controllerTerminationMode": {
+          "enum": ["live_handle_exit_verified", "exact_identity_already_absent", "exact_identity_terminated", "exact_identity_killed", "no_controller_started", "controller_termination_unverified"]
+        },
+        "failureCode": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "cleanupDigest": { "$ref": "#/$defs/digest" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "cleanupVerified": { "const": true } } },
+          "then": {
+            "properties": { "containersRemaining": { "const": 0 }, "volumesRemaining": { "const": 0 }, "controllerTerminationVerified": { "const": true } },
+            "not": { "required": ["failureCode"] }
+          },
+          "else": {
+            "required": ["failureCode"],
+            "properties": { "containersRemaining": { "type": "null" }, "volumesRemaining": { "type": "null" } }
+          }
+        }
+      ]
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["isolatedDraftTest", "productionExecution", "workflowPromotion", "productionAllowlistMutation"],
+      "properties": {
+        "isolatedDraftTest": { "const": true },
+        "productionExecution": { "const": false },
+        "workflowPromotion": { "const": false },
+        "productionAllowlistMutation": { "const": false }
+      }
+    }
+  }
+}

@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+- Add a default-off, separately approved isolated fixture-test lifecycle for
+  exact ready Mission revisions: `draft_test_prepare`, `start`, `get`, `cancel`,
+  and `report`. The approval binds the draft/validation, declarative fixture,
+  exact local images, runner and isolation identities, assertions, and hard
+  resource/output budgets.
+- Publish Fixture Bundle v1, Draft Test Plan v1, and Draft Test Evidence v1;
+  add immutable fixture snapshotting, deterministic value/file assertions,
+  owner-session fencing, restart interruption, bounded logs/artifacts, stable
+  failure evidence, and replay-safe Workflow Center/tool presentations.
+- Add the independent miniwdl `dsh_fixture_docker` backend with fixed Docker
+  argv, no pulls, network `none`, read-only root, non-root uid/gid, dropped
+  capabilities, seccomp/AppArmor/no-new-privileges, fixed scrubbed environment,
+  CPU/memory/PID/time/ulimit/tmpfs/output limits, inspected container controls,
+  kernel-enforced controller non-Unix-socket denial, and 17 deterministic
+  controller/container egress/host-service/credential denial probes.
+- Bind the hash-locked miniwdl dependency closure and controller seccomp-filter
+  identity into each plan; start with Python `-I -S` without startup hooks,
+  reject remote/traversal/symlink imports and relative file coercions, enforce
+  hard controller and bounded Docker-broker resource budgets, and prove
+  exact-label Docker cleanup only after exact controller-group termination.
+- Add unit, integration, adversarial, package/profile/UI checks and a real Linux
+  miniwdl 1.15.0/Docker acceptance covering success, timeout, cancellation,
+  overflow, controller memory exhaustion, remote-import zero-connect and local
+  import-escape denial, owner isolation, real DSH/controller restart recovery,
+  and residual-resource cleanup.
+- Keep the published `0.11.x` Mission grant authoring-only and keep install,
+  promotion, production allowlisting/execution, and
+  `Software Trial Report v1.success` false.
+
 ## 0.11.0 - 2026-08-27
 
 - Add default-off, owner-session/runtime-scoped autonomous authoring Missions.

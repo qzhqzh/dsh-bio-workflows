@@ -13,6 +13,10 @@ one engine and one verified workflow at a time.
 > software containers from Missions: isolated draft testing and production
 > execution remain explicitly unavailable.
 
+> The next, unreleased development slice adds a default-off, separately
+> approved isolated fixture runner. It does not change the published `0.11.x`
+> Mission grant or its `Software Trial Report v1.success = false` boundary.
+
 ## Install
 
 Requirements:
@@ -39,7 +43,7 @@ Add the bundle to a DSH profile:
 dsh plugin --profile web add dsh-bio-workflows
 ```
 
-The bundle registers twenty-two tools. Every tool also provides replay-safe,
+The development bundle registers twenty-seven tools. Every tool also provides replay-safe,
 human-readable pending and completed card presentations:
 
 - `bio_workflows_info`: reports the installed package version and current
@@ -69,6 +73,19 @@ human-readable pending and completed card presentations:
 - `bio_workflows_mission_report`: returns a bounded `Software Trial Report v1`.
   In `0.11.0`, `success` is always false and a validated draft stops at
   `ready_for_isolated_test`.
+- `bio_workflows_draft_test_prepare`: computes a non-executing test plan bound
+  to one exact ready Mission, draft validation, immutable fixture, local
+  digest-pinned image, runner identity, isolation policy, assertions, and
+  resource/output budgets.
+- `bio_workflows_draft_test_start`: recomputes the live plan, requires its exact
+  `planDigest` and a separate DSH approval, then starts only the dedicated
+  default-off fixture backend.
+- `bio_workflows_draft_test_get`: reads one owner-session test and its bounded,
+  digest-bound isolation, log, artifact, assertion, and failure evidence.
+- `bio_workflows_draft_test_cancel`: stops one owner-session fixture test
+  without automatic retry or evidence deletion.
+- `bio_workflows_draft_test_report`: summarizes one exact isolated trial while
+  keeping install, promotion, allowlist, and production capabilities false.
 - `bio_workflows_draft_create`: creates revision 1 of a session-scoped,
   non-executable authoring draft after approval.
 - `bio_workflows_draft_get`: reads the exact head/revision file index or one
@@ -347,9 +364,9 @@ and
 [`Draft Validation Evidence v1`](https://unpkg.com/dsh-bio-workflows@0.11.0/schema/draft-validation-evidence.schema.json) and
 [`WorkflowGraph v1`](https://unpkg.com/dsh-bio-workflows@0.11.0/schema/workflow-graph.schema.json).
 Workflow graph extraction, the keyed native graph card, and the read-only
-Workflow Center are available in `0.10.0`. Canvas mutation, draft tests,
-promotion, and remote Store providers remain later, separately authorized
-stages.
+Workflow Center are available in `0.10.0`. The unreleased fixture-test slice is
+separately authorized and default-off. Canvas mutation, promotion, and remote
+Store providers remain later, separately authorized stages.
 
 Graph extraction currently reads only `main.wdl`. Any local or remote WDL
 `import` is reported explicitly and returns `complete: false`; imported task or
@@ -399,10 +416,42 @@ The safe conversation flow is:
 
 The Mission grant cannot call `bio_workflows_run`, install/promote a draft,
 expand the production allowlist, or execute the declared container image. The
-current miniwdl/Docker runner cannot yet prove both container egress denial and
-host-service isolation, so model-authored WDL never crosses that boundary in
-this release. See
+published `0.11.0` release therefore never crosses that boundary. The next
+development slice uses a dedicated, separately approved fixture backend with
+deterministic egress and host-service denial evidence; it does not extend or
+reuse the Mission grant. See
 [Autonomous software trial Missions](./docs/autonomous-software-trial-missions.md).
+
+## Isolated fixture testing (unreleased)
+
+Draft testing is disabled by default and independent from both Mission
+authoring and the production Docker Swarm adapter. Five owner-session tools
+implement `prepare -> start -> get/cancel -> report`; only `start` asks for a
+new approval bound to the exact `planDigest`.
+
+The dedicated miniwdl `dsh_fixture_docker` backend accepts only one locally
+present digest-pinned task image, fixed plugin-generated Docker argv, immutable
+read-only fixture snapshots, fixed scrubbed environment values, and bounded
+tmpfs output. Before start it inspects and binds network `none`, read-only root,
+non-root uid/gid, dropped capabilities, `no-new-privileges`, builtin seccomp,
+AppArmor, CPU/memory/PID/ulimit/tmpfs limits, devices, mounts, and environment.
+Before WDL loading, Python `-I -S` verifies the dependency closure without
+executing `.pth` or customization hooks, and a digest-bound, thread-synchronized
+kernel seccomp filter permits only Unix socket creation. A separately bounded
+Docker broker retains the fixed CLI under the same network filter, while remote,
+traversal, and symlink imports are rejected before task creation. Seventeen
+deterministic controller/container probes
+must prove egress, Docker gateway, live host loopback service, Docker socket,
+credential-path, and ambient-credential denial. The plan also binds the full
+miniwdl dependency environment and controller/broker hard limits. Startup
+recovery verifies and terminates the exact persisted controller process group
+before proving absence of exactly labeled Docker resources.
+
+A passing report remains test evidence only. It cannot install, promote,
+allowlist, or production-run the draft, and it does not change
+`Software Trial Report v1.success`. Configuration, threat model, contracts, and
+the real Docker acceptance command are documented in
+[Isolated fixture runner](./docs/isolated-fixture-runner.md).
 
 ## Opt-in miniwdl execution
 
@@ -521,8 +570,10 @@ Releases add independently reviewable layers:
     package — available in `0.10.0`
 11. Bounded owner-session autonomous WDL authoring and validation-repair
     Missions — available in `0.11.0`
-12. Next: a separately isolated draft-test runner, fixture/result assertions,
-    independent review/promotion, Git/TRS Store providers, and additional
+12. Separately approved isolated draft-test runner and fixture/result
+    assertions — implemented and locally accepted on the unreleased development
+    branch; remote CI and release review remain required
+13. Next: independent review/promotion, Git/TRS Store providers, and additional
     execution adapters
 
 Execution support remains explicit, auditable, and disabled by default.
@@ -539,9 +590,13 @@ npm run pack:check
 npm run smoke:pack
 npm run smoke:dsh
 npm run smoke:dsh-agent
+npm run accept:draft-fixture-runner
 ```
 
-The real result acceptance additionally requires safe absolute miniwdl and
+The isolated fixture-runner acceptance requires a private root, miniwdl 1.15.0,
+and two locally preloaded digest-pinned images; see
+[its runbook](./docs/isolated-fixture-runner.md#real-acceptance). The real
+production-result acceptance additionally requires safe absolute miniwdl and
 Docker executable paths plus access to an already-active local Swarm manager:
 
 ```bash
@@ -564,13 +619,17 @@ architecture boundary, completion assessment, and next milestones.
 校验基础设施不可用、预算耗尽、取消或运行时重启都会停止，且不会自动重试。
 Mission 只授权草稿写作与确定性校验，不授权容器试跑、promotion 或生产执行；
 即使 WDL 校验通过，报告也只会标记 `ready_for_isolated_test`，`success` 仍为 `false`。
-当前 runner 尚不能同时证明容器外网与宿主服务隔离，因此 AI 生成的 WDL 不会进入
-执行边界。原有 npm 包继续同时提供 Host 工具与响应式
+未发布开发分支已另设默认关闭的 fixture runner，并要求新的精确 `planDigest` 审批；它以
+控制器内核 seccomp、容器 `network none`、只读根文件系统、非 root 用户、固定环境、
+硬资源上限、独立 Docker broker 和 17 项探针证明
+外网及宿主服务不可达，不复用生产 runner 或白名单。试跑通过仍不会安装、promotion、
+allowlist 或生产执行，也不会把 Mission report 的 `success` 改为 `true`。原有 npm 包
+继续同时提供 Host 工具与响应式
 Workflow Center。Agent 可以创建 session 隔离的 WDL 草稿、按 revision/digest
 并发控制更新、逐文件读取、生成精确 revision 的非执行式 miniwdl 校验证据，并把
 确定性 `WorkflowGraph v1` 渲染为只读流程图；创建与更新各自需要 DSH 审批。界面
 只向当前 Agent 提交意图，不直接修改草稿或启动任务。自定义 WDL 仍不会自动进入
-搜索结果、安装区或执行白名单；画布编辑、草稿试跑与 promotion 尚未开放。
+搜索结果、安装区或执行白名单；画布编辑与 promotion 尚未开放。
 内置 `fastq-qc@1.1.0` 与 `1.2.0` 继续处于执行白名单，推荐使用 `1.2.0`；
 `bam-qc` 和旧版 `fastq-qc@1.0.0` 仍不可执行。执行前会检查真实输入文件、探测
 miniwdl/Docker 与已启用的 Swarm manager、生成 `planDigest`，并把审批绑定到精确

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1",
+  "id": "text-roundtrip",
+  "version": "1.0.0",
+  "name": "Text round trip",
+  "summary": "Copy one immutable text fixture and verify the exact output bytes.",
+  "files": [
+    {
+      "path": "inputs/message.txt",
+      "sizeBytes": 14,
+      "sha256": "sha256:dc3d4277c40a080b5f5f2cad371625fbb56d4eca7c0c31c587bc1185e75842ba",
+      "mediaType": "text/plain"
+    }
+  ],
+  "inputs": {
+    "roundtrip.source": {
+      "$fixture": "inputs/message.txt"
+    }
+  },
+  "assertions": [
+    {
+      "id": "copied-file",
+      "kind": "file_digest",
+      "output": "roundtrip.copy",
+      "sizeBytes": 14,
+      "sha256": "sha256:dc3d4277c40a080b5f5f2cad371625fbb56d4eca7c0c31c587bc1185e75842ba"
+    }
+  ]
+}

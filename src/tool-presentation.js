@@ -17,6 +17,11 @@ const TOOL_PRESENTATIONS = Object.freeze({
   bio_workflows_draft_update: { title: 'Update an AI WDL draft', kind: 'edit', fields: ['draftId', 'expectedRevision', 'expectedContentDigest', 'missionId'] },
   bio_workflows_draft_validate: { title: 'Validate an AI WDL draft', kind: 'read', fields: ['draftId', 'revision', 'missionId'] },
   bio_workflows_draft_graph: { title: 'Visualize an AI WDL draft', kind: 'read', fields: ['draftId', 'revision'] },
+  bio_workflows_draft_test_prepare: { title: 'Prepare an isolated draft test', kind: 'read', fields: ['missionId', 'fixtureId', 'fixtureVersion'] },
+  bio_workflows_draft_test_start: { title: 'Start an isolated draft test', kind: 'execute', fields: ['missionId', 'fixtureId', 'fixtureVersion', 'expectedPlanDigest'] },
+  bio_workflows_draft_test_get: { title: 'Inspect an isolated draft test', kind: 'read', fields: ['testId'] },
+  bio_workflows_draft_test_cancel: { title: 'Cancel an isolated draft test', kind: 'edit', fields: ['testId'] },
+  bio_workflows_draft_test_report: { title: 'Report an isolated draft test', kind: 'read', fields: ['testId'] },
   bio_workflows_plan: { title: 'Plan a bio-workflow run', kind: 'execute', fields: ['id', 'version'] },
   bio_workflows_run: { title: 'Start a bio-workflow run', kind: 'execute', fields: ['id', 'version', 'expectedPlanDigest'] },
   bio_workflows_run_get: { title: 'Inspect a bio-workflow run', kind: 'read', fields: ['runId'] },
@@ -93,6 +98,19 @@ function summaryLines(name, payload) {
   } else if (name === 'bio_workflows_draft_graph') {
     lines.push(`${payload.workflow?.name ?? 'WDL workflow'} · revision ${payload.revision ?? 'unknown'}`)
     lines.push(`${payload.nodes?.length ?? 0} nodes · ${payload.edges?.length ?? 0} edges · ${payload.complete === false ? 'partial graph' : 'complete graph'}`)
+  } else if (name === 'bio_workflows_draft_test_prepare') {
+    lines.push(`Plan ${payload.planDigest ?? 'unavailable'}`)
+    lines.push(`Fixture ${payload.plan?.fixture?.id ?? 'unknown'}@${payload.plan?.fixture?.version ?? 'unknown'} · isolated only`)
+  } else if (name === 'bio_workflows_draft_test_report') {
+    lines.push(`${payload.report?.testId ?? 'Isolated draft test'} · ${payload.report?.outcome ?? 'unknown'}`)
+    lines.push(payload.report?.passed === true ? 'Fixture assertions passed' : 'No passing isolated result')
+  } else if (
+    name === 'bio_workflows_draft_test_start'
+    || name === 'bio_workflows_draft_test_get'
+    || name === 'bio_workflows_draft_test_cancel'
+  ) {
+    lines.push(`${payload.testId ?? payload.test?.testId ?? 'Isolated draft test'} · ${payload.status ?? payload.test?.status ?? 'unknown'}`)
+    lines.push('No production or promotion authority')
   } else if (name === 'bio_workflows_run_get' || name === 'bio_workflows_run') {
     lines.push(`${payload.runId ?? payload.run?.runId ?? 'Workflow run'} · ${payload.status ?? payload.run?.status ?? 'submitted'}`)
   } else if (name === 'bio_workflows_draft_create' || name === 'bio_workflows_draft_update' || name === 'bio_workflows_draft_get') {

@@ -1,0 +1,445 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.12.0/schema/draft-test-plan.schema.json",
+  "title": "dsh-bio-workflows Draft Test Plan v1",
+  "description": "An approval plan binding one exact ready Mission draft to one immutable fixture, runner identity, isolation policy, assertion set, and resource budget.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "mission",
+    "draft",
+    "fixture",
+    "runner",
+    "isolation",
+    "budgets",
+    "authorization"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "mission": { "$ref": "#/$defs/mission" },
+    "draft": { "$ref": "#/$defs/draft" },
+    "fixture": { "$ref": "#/$defs/fixture" },
+    "runner": { "$ref": "#/$defs/runner" },
+    "isolation": { "$ref": "#/$defs/isolation" },
+    "budgets": { "$ref": "#/$defs/budgets" },
+    "authorization": { "$ref": "#/$defs/authorization" }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "missionId": {
+      "type": "string",
+      "pattern": "^mission-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "draftId": {
+      "type": "string",
+      "pattern": "^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "pinnedImage": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$"
+    },
+    "software": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "containerImage"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "containerImage": { "$ref": "#/$defs/pinnedImage" }
+      }
+    },
+    "mission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["missionId", "missionPlanDigest", "software", "objective", "acceptanceCriteria"],
+      "properties": {
+        "missionId": { "$ref": "#/$defs/missionId" },
+        "missionPlanDigest": { "$ref": "#/$defs/digest" },
+        "software": { "$ref": "#/$defs/software" },
+        "objective": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "acceptanceCriteria": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+        }
+      }
+    },
+    "draft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["draftId", "revision", "contentDigest", "validationDigest"],
+      "properties": {
+        "draftId": { "$ref": "#/$defs/draftId" },
+        "revision": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "contentDigest": { "$ref": "#/$defs/digest" },
+        "validationDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "fixtureFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sizeBytes", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "sizeBytes": { "type": "integer", "minimum": 0, "maximum": 16777216 },
+        "sha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "assertion": {
+      "oneOf": [
+        { "$ref": "./fixture-bundle.schema.json#/$defs/valueAssertion" },
+        { "$ref": "./fixture-bundle.schema.json#/$defs/fileAssertion" }
+      ]
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "fixtureDigest",
+        "totalFileBytes",
+        "files",
+        "inputsDigest",
+        "assertionsDigest",
+        "assertions"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fixtureDigest": { "$ref": "#/$defs/digest" },
+        "totalFileBytes": { "type": "integer", "minimum": 0, "maximum": 67108864 },
+        "files": { "type": "array", "minItems": 1, "maxItems": 128, "items": { "$ref": "#/$defs/fixtureFile" } },
+        "inputsDigest": { "$ref": "#/$defs/digest" },
+        "assertionsDigest": { "$ref": "#/$defs/digest" },
+        "assertions": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/$defs/assertion" } }
+      }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "runnerDigest"],
+      "properties": {
+        "identity": { "$ref": "#/$defs/runnerIdentity" },
+        "runnerDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "decimalIdentity": {
+      "type": "string",
+      "pattern": "^[0-9]{1,40}$"
+    },
+    "executableIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["launchPathDigest", "canonicalPathDigest", "launchDevice", "launchInode", "launchMode", "launchSizeBytes", "launchMtimeNs", "launchCtimeNs", "sha256", "sizeBytes", "device", "inode", "uid", "mode", "mtimeNs", "ctimeNs"],
+      "properties": {
+        "launchPathDigest": { "$ref": "#/$defs/digest" },
+        "canonicalPathDigest": { "$ref": "#/$defs/digest" },
+        "launchDevice": { "$ref": "#/$defs/decimalIdentity" },
+        "launchInode": { "$ref": "#/$defs/decimalIdentity" },
+        "launchMode": { "type": "string", "pattern": "^[0-7]{3,4}$" },
+        "launchSizeBytes": { "type": "integer", "minimum": 1, "maximum": 268435456 },
+        "launchMtimeNs": { "$ref": "#/$defs/decimalIdentity" },
+        "launchCtimeNs": { "$ref": "#/$defs/decimalIdentity" },
+        "sha256": { "$ref": "#/$defs/digest" },
+        "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 268435456 },
+        "device": { "$ref": "#/$defs/decimalIdentity" },
+        "inode": { "$ref": "#/$defs/decimalIdentity" },
+        "uid": { "$ref": "#/$defs/decimalIdentity" },
+        "mode": { "type": "string", "pattern": "^[0-7]{3}$" },
+        "mtimeNs": { "$ref": "#/$defs/decimalIdentity" },
+        "ctimeNs": { "$ref": "#/$defs/decimalIdentity" }
+      }
+    },
+    "pythonDistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "fileCount", "sizeBytes", "digest"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 128 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fileCount": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 268435456 },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "controllerNetwork": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "architecture", "auditArchitecture", "socketSyscall", "seccompSyscall", "allowedSocketDomain", "deniedAction", "noNewPrivileges", "threadSynchronization", "filterDigest"],
+      "properties": {
+        "policy": { "const": "seccomp_deny_non_unix_sockets_before_wdl_load" },
+        "architecture": { "enum": ["x86_64", "aarch64"] },
+        "auditArchitecture": { "enum": ["0xc000003e", "0xc00000b7"] },
+        "socketSyscall": { "enum": [41, 198] },
+        "seccompSyscall": { "enum": [317, 277] },
+        "allowedSocketDomain": { "const": "AF_UNIX" },
+        "deniedAction": { "const": "errno:EPERM" },
+        "noNewPrivileges": { "const": true },
+        "threadSynchronization": { "const": "SECCOMP_FILTER_FLAG_TSYNC" },
+        "filterDigest": { "$ref": "#/$defs/digest" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "architecture": { "const": "x86_64" },
+            "auditArchitecture": { "const": "0xc000003e" },
+            "socketSyscall": { "const": 41 },
+            "seccompSyscall": { "const": 317 }
+          }
+        },
+        {
+          "properties": {
+            "architecture": { "const": "aarch64" },
+            "auditArchitecture": { "const": "0xc00000b7" },
+            "socketSyscall": { "const": 198 },
+            "seccompSyscall": { "const": 277 }
+          }
+        }
+      ]
+    },
+    "runnerIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "policyVersion", "miniwdlVersion", "pythonVersion", "controller", "pythonEnvironment", "executables", "docker", "taskImage", "supportImage", "supportContainerLimits", "storage"],
+      "properties": {
+        "backend": { "const": "dsh_fixture_docker" },
+        "policyVersion": { "const": "1" },
+        "miniwdlVersion": { "const": "1.15.0" },
+        "pythonVersion": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "controller": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["uid", "gid", "network", "environment", "limits", "dockerBroker"],
+          "properties": {
+            "uid": { "type": "integer", "minimum": 1 },
+            "gid": { "type": "integer", "minimum": 0 },
+            "network": { "$ref": "#/$defs/controllerNetwork" },
+            "environment": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["policy", "allowedKeys", "nonEmptyKeys", "credentialLikeKeys", "environmentDigest"],
+              "properties": {
+                "policy": { "const": "exact_allowlist" },
+                "allowedKeys": { "const": ["HOME", "LANG", "LC_ALL", "TMPDIR"] },
+                "nonEmptyKeys": { "const": ["HOME", "LANG", "LC_ALL", "TMPDIR"] },
+                "credentialLikeKeys": { "const": [] },
+                "environmentDigest": { "$ref": "#/$defs/digest" }
+              }
+            },
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["residentMemoryBytes", "virtualAddressSpaceBytes", "cpuSeconds", "additionalProcesses", "openFiles", "fileBytes", "wallTimeMs"],
+              "properties": {
+                "residentMemoryBytes": { "type": "integer", "minimum": 67108864, "maximum": 4294967296 },
+                "virtualAddressSpaceBytes": { "type": "integer", "minimum": 67108864, "maximum": 4294967296 },
+                "cpuSeconds": { "type": "integer", "minimum": 1, "maximum": 1800 },
+                "additionalProcesses": { "type": "integer", "minimum": 8, "maximum": 512 },
+                "openFiles": { "const": 256 },
+                "fileBytes": { "type": "integer", "minimum": 4096, "maximum": 268435456 },
+                "wallTimeMs": { "type": "integer", "minimum": 10000, "maximum": 1800000 }
+              }
+            },
+            "dockerBroker": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["networkFilterDigest", "kernelEnforced", "threadSynchronized", "limits"],
+              "properties": {
+                "networkFilterDigest": { "$ref": "#/$defs/digest" },
+                "kernelEnforced": { "const": true },
+                "threadSynchronized": { "const": true },
+                "limits": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["virtualAddressSpaceBytes", "cpuSeconds", "additionalProcesses", "openFiles", "fileBytes"],
+                  "properties": {
+                    "virtualAddressSpaceBytes": { "const": 4294967296 },
+                    "cpuSeconds": { "type": "integer", "minimum": 1, "maximum": 1800 },
+                    "additionalProcesses": { "const": 128 },
+                    "openFiles": { "const": 256 },
+                    "fileBytes": { "type": "integer", "minimum": 4096, "maximum": 268435456 }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "pythonEnvironment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["startupPolicy", "distributions", "environmentDigest"],
+          "properties": {
+            "startupPolicy": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["mode", "ignoreEnvironment", "noUserSite", "pthFilesExecuted", "sitecustomizeImported", "usercustomizeImported", "sitePackagesPathDigest"],
+              "properties": {
+                "mode": { "const": "python_isolated_no_site" },
+                "ignoreEnvironment": { "const": true },
+                "noUserSite": { "const": true },
+                "pthFilesExecuted": { "const": false },
+                "sitecustomizeImported": { "const": false },
+                "usercustomizeImported": { "const": false },
+                "sitePackagesPathDigest": { "$ref": "#/$defs/digest" }
+              }
+            },
+            "distributions": { "type": "array", "minItems": 1, "maxItems": 128, "items": { "$ref": "#/$defs/pythonDistribution" } },
+            "environmentDigest": { "$ref": "#/$defs/digest" }
+          }
+        },
+        "executables": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["python", "docker", "wrapper"],
+          "properties": {
+            "python": { "$ref": "#/$defs/executableIdentity" },
+            "docker": { "$ref": "#/$defs/executableIdentity" },
+            "wrapper": { "$ref": "#/$defs/executableIdentity" }
+          }
+        },
+        "docker": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["engineId", "serverVersion", "cgroupVersion", "securityOptions"],
+          "properties": {
+            "engineId": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "serverVersion": { "type": "string", "minLength": 1, "maxLength": 64 },
+            "cgroupVersion": { "const": "2" },
+            "securityOptions": { "type": "array", "minItems": 2, "maxItems": 32, "uniqueItems": true, "items": { "type": "string", "maxLength": 256 }, "allOf": [{ "contains": { "const": "name=apparmor" } }, { "contains": { "const": "name=seccomp,profile=builtin" } }] }
+          }
+        },
+        "taskImage": { "$ref": "#/$defs/imageIdentity" },
+        "supportImage": { "$ref": "#/$defs/imageIdentity" },
+        "supportContainerLimits": {
+          "type": "object", "additionalProperties": false,
+          "required": ["cpu", "memoryBytesMaximum", "pidsMaximum"],
+          "properties": { "cpu": { "const": 1 }, "memoryBytesMaximum": { "const": 134217728 }, "pidsMaximum": { "const": 16 } }
+        },
+        "storage": {
+          "type": "object", "additionalProperties": false,
+          "required": ["runsRoot", "fixtureSourceIdentityDigest"],
+          "properties": {
+            "runsRoot": {
+              "type": "object", "additionalProperties": false,
+              "required": ["device", "inode", "uid", "mode"],
+              "properties": { "device": { "$ref": "#/$defs/decimalIdentity" }, "inode": { "$ref": "#/$defs/decimalIdentity" }, "uid": { "$ref": "#/$defs/decimalIdentity" }, "mode": { "type": "string", "pattern": "^[0-7]{3}$" } }
+            },
+            "fixtureSourceIdentityDigest": { "$ref": "#/$defs/digest" }
+          }
+        }
+      }
+    },
+    "imageIdentity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reference", "imageId"],
+      "properties": { "reference": { "$ref": "#/$defs/pinnedImage" }, "imageId": { "$ref": "#/$defs/digest" } }
+    },
+    "isolationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "backend",
+        "network",
+        "rootFilesystem",
+        "writableStorage",
+        "taskUser",
+        "capabilities",
+        "noNewPrivileges",
+        "seccomp",
+        "mandatoryAccessControl",
+        "ipc",
+        "devices",
+        "dockerSocket",
+        "hostPaths",
+        "ambientEnvironment",
+        "registryPulls",
+        "remoteDownloads",
+        "callCache",
+        "taskRetries",
+        "productionRunnerReuse"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "backend": { "const": "dsh_fixture_docker" },
+        "network": { "const": "none" },
+        "rootFilesystem": { "const": "read_only" },
+        "writableStorage": { "const": "bounded_tmpfs_volume" },
+        "taskUser": { "const": "invoking_non_root_uid_gid" },
+        "capabilities": { "const": "none" },
+        "noNewPrivileges": { "const": true },
+        "seccomp": { "const": "builtin" },
+        "mandatoryAccessControl": { "const": "required" },
+        "ipc": { "const": "none" },
+        "devices": { "const": "none" },
+        "dockerSocket": { "const": "absent" },
+        "hostPaths": { "const": "fixture_snapshot_and_command_read_only_only" },
+        "ambientEnvironment": { "const": "removed" },
+        "registryPulls": { "const": false },
+        "remoteDownloads": { "const": false },
+        "callCache": { "const": false },
+        "taskRetries": { "const": false },
+        "productionRunnerReuse": { "const": false }
+      }
+    },
+    "isolation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "isolationPolicyDigest"],
+      "properties": {
+        "policy": { "$ref": "#/$defs/isolationPolicy" },
+        "isolationPolicyDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cpu",
+        "memoryBytes",
+        "pids",
+        "wallTimeMs",
+        "taskTimeMs",
+        "logBytes",
+        "artifactCount",
+        "artifactBytes",
+        "totalOutputBytes",
+        "fixtureBytes",
+        "taskCount"
+      ],
+      "properties": {
+        "cpu": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "memoryBytes": { "type": "integer", "minimum": 67108864, "maximum": 4294967296 },
+        "pids": { "type": "integer", "minimum": 8, "maximum": 512 },
+        "wallTimeMs": { "type": "integer", "minimum": 10000, "maximum": 1800000 },
+        "taskTimeMs": { "type": "integer", "minimum": 5000, "maximum": 600000 },
+        "logBytes": { "type": "integer", "minimum": 4096, "maximum": 4194304 },
+        "artifactCount": { "type": "integer", "minimum": 1, "maximum": 1024 },
+        "artifactBytes": { "type": "integer", "minimum": 4096, "maximum": 67108864 },
+        "totalOutputBytes": { "type": "integer", "minimum": 4096, "maximum": 268435456 },
+        "fixtureBytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "taskCount": { "type": "integer", "minimum": 1, "maximum": 64 }
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "binding", "productionExecution", "workflowPromotion", "productionAllowlistMutation"],
+      "properties": {
+        "required": { "const": true },
+        "binding": { "const": "planDigest" },
+        "productionExecution": { "const": false },
+        "workflowPromotion": { "const": false },
+        "productionAllowlistMutation": { "const": false }
+      }
+    }
+  }
+}
