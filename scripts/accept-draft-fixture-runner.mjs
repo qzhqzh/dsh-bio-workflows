@@ -334,7 +334,7 @@ task_count = ${budgets.taskCount}
 `, { mode: 0o400, flag: 'wx' })
   const wrapper = join(packageRoot, 'runner', 'dsh_fixture_runner.py')
   const outcome = await runBoundedChild(pythonExecutable, [
-    '-I', '-S', wrapper, 'run', '--input', inputsPath, '--dir', `${engineRoot}/.`, '--cfg', configPath,
+    '-B', '-I', '-S', wrapper, 'run', '--input', inputsPath, '--dir', `${engineRoot}/.`, '--cfg', configPath,
     '--error-json', '--log-json', '--no-color', '--no-cache', '--no-outside-imports', '--as-me', entrypoint,
   ], {
     cwd: wdlRoot,

@@ -434,6 +434,7 @@ function validatePythonEnvironment(value, label) {
   requireDigest(value.environmentDigest, `${label}.environmentDigest`)
   requireClosedObject(value.startupPolicy, [
     'mode',
+    'dontWriteBytecode',
     'ignoreEnvironment',
     'noUserSite',
     'pthFilesExecuted',
@@ -443,6 +444,7 @@ function validatePythonEnvironment(value, label) {
   ], `${label}.startupPolicy`)
   if (
     value.startupPolicy.mode !== 'python_isolated_no_site'
+    || value.startupPolicy.dontWriteBytecode !== true
     || value.startupPolicy.ignoreEnvironment !== true
     || value.startupPolicy.noUserSite !== true
     || value.startupPolicy.pthFilesExecuted !== false

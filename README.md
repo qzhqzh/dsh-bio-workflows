@@ -435,8 +435,8 @@ read-only fixture snapshots, fixed scrubbed environment values, and bounded
 tmpfs output. Before start it inspects and binds network `none`, read-only root,
 non-root uid/gid, dropped capabilities, `no-new-privileges`, builtin seccomp,
 AppArmor, CPU/memory/PID/ulimit/tmpfs limits, devices, mounts, and environment.
-Before WDL loading, Python `-I -S` verifies the dependency closure without
-executing `.pth` or customization hooks, and a digest-bound, thread-synchronized
+Before WDL loading, Python `-B -I -S` disables bytecode writes and verifies the
+dependency closure without executing `.pth` or customization hooks, while a digest-bound, thread-synchronized
 kernel seccomp filter permits only Unix socket creation. A separately bounded
 Docker broker retains the fixed CLI under the same network filter, while remote,
 traversal, and symlink imports are rejected before task creation. Seventeen

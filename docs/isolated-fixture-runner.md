@@ -53,7 +53,7 @@ names, versions, bounded file counts/bytes, per-distribution digests, and one
 aggregate environment digest. CI creates that environment from
 `requirements/miniwdl-1.15.0.txt` with `pip --require-hashes`. Runtime drift in
 the wrapper or any dependency fails before WDL loading. The controller starts
-with Python `-I -S`, discovers only the exact interpreter environment, hashes
+with Python `-B -I -S`, disables bytecode writes, discovers only the exact interpreter environment, hashes
 the dependency closure before adding its site-packages directory, and never
 executes `.pth`, `sitecustomize`, or `usercustomize` startup code.
 

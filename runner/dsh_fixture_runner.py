@@ -166,12 +166,13 @@ def requirement_name(value: str) -> Optional[str]:
 
 def isolated_site_packages() -> Tuple[str, str]:
     if not (
-        sys.flags.isolated == 1
+        sys.flags.dont_write_bytecode == 1
+        and sys.flags.isolated == 1
         and sys.flags.no_site == 1
         and sys.flags.ignore_environment == 1
         and sys.flags.no_user_site == 1
     ):
-        raise RunnerError("isolated fixture runner requires Python -I -S startup")
+        raise RunnerError("isolated fixture runner requires Python -B -I -S startup")
     executable = os.path.abspath(sys.executable)
     environment_root = os.path.dirname(os.path.dirname(executable))
     candidate = os.path.join(
@@ -271,6 +272,7 @@ def python_environment_identity(site_packages: Optional[str] = None) -> Dict[str
     distributions.sort(key=lambda item: item["name"])
     startup_policy = {
         "mode": "python_isolated_no_site",
+        "dontWriteBytecode": True,
         "ignoreEnvironment": True,
         "noUserSite": True,
         "pthFilesExecuted": False,
@@ -2072,8 +2074,9 @@ def bootstrap_verified_miniwdl() -> Tuple[Dict[str, Any], Dict[str, Any]]:
         stop_docker_broker()
         raise
     try:
-        # Python -S prevents .pth, sitecustomize, and usercustomize execution. Only the verified
-        # environment directory is appended after its complete miniwdl dependency closure is hashed.
+        # Python -B -I -S prevents bytecode writes plus .pth, sitecustomize, and usercustomize
+        # execution. Only the verified environment directory is appended after its complete
+        # miniwdl dependency closure is hashed.
         sys.path.append(site_packages)
         _SITE_PACKAGES = site_packages
         WDL = importlib.import_module("WDL")
