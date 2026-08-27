@@ -26,6 +26,14 @@ function options() {
       ownerScope: 'session',
       validator: { configured: true, subprocessAvailable: true, expectedVersion: '1.15.0' },
     }),
+    autonomy: {
+      configured: true,
+      enabled: true,
+      ownerScope: 'session',
+      schemaVersion: '1',
+      capabilities: { boundedDraftAuthoring: true, isolatedDraftTest: false },
+      limits: { maxActions: 32 },
+    },
   }
 }
 
@@ -43,14 +51,17 @@ test('Workflow Center bootstrap exposes bounded public catalog facts but no owne
   const value = await createWorkflowCenterBootstrap(options())
 
   assert.equal(value.schemaVersion, '1')
-  assert.equal(value.package.version, '0.10.0')
+  assert.equal(value.package.version, '0.11.0')
   assert.equal(value.workflows.length, 4)
   assert.equal(value.workflows.every((workflow) => workflow.source === 'builtin'), true)
   assert.equal(value.workflows.find((workflow) => workflow.id === 'fastq-qc' && workflow.version === '1.2.0').executionSupported, true)
   assert.equal(value.workflows.find((workflow) => workflow.id === 'bam-qc').executionSupported, false)
   assert.equal(value.readiness.miniwdlValidator, true)
+  assert.equal(value.readiness.autonomousMissionAuthoring, true)
+  assert.equal(value.readiness.isolatedSoftwareTrial, false)
   assert.equal(value.readiness.executionEnabled, false)
   assert.equal(value.privacy.ownerScopedDraftsViaAgent, true)
+  assert.equal(value.privacy.ownerScopedMissionsViaAgent, true)
   assert.equal(value.privacy.ownerScopedRunsViaAgent, true)
   const serialized = JSON.stringify(value)
   assert.doesNotMatch(serialized, /ownerSession|draftId|runId|runsRoot|inputRoots/)

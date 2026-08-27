@@ -345,6 +345,47 @@ test('container-like metadata strings are ignored while runtime expressions rema
     )
     assert.equal(result.validation.valid, true)
     assert.equal(result.validation.diagnostics.some((item) => item.code.startsWith('container_')), false)
+    assert.deepEqual(result.validation.containerImages, [pinned])
+    assert.deepEqual(result.validation.containerPolicy, {
+      taskCount: 1,
+      tasksWithSingleContainer: 1,
+      complete: true,
+    })
+  })
+})
+
+test('container identity evidence is bounded and fails closed above 128 distinct images', async () => {
+  await withFixture({}, async ({ created, store, validator }) => {
+    const digest = 'a'.repeat(64)
+    const tasks = Array.from({ length: 129 }, (_, index) => (
+      `task t${index} { command <<< true >>> runtime { docker: "example.invalid/tool-${index}@sha256:${digest}" } }`
+    ))
+    const updated = await store.update({
+      draftId: created.draftId,
+      expectedRevision: 1,
+      expectedContentDigest: created.contentDigest,
+      replacements: [{
+        path: 'main.wdl',
+        role: 'workflow',
+        content: `version 1.0\n${tasks.join('\n')}\nworkflow bounded {}\n`,
+      }],
+    }, { ownerSession: OWNER })
+    const result = await validator.validate(
+      { draftId: created.draftId, revision: updated.revision },
+      { ownerSession: OWNER },
+    )
+    assert.equal(result.validation.valid, false)
+    assert.equal(result.validation.truncated, true)
+    assert.equal(result.validation.containerImages.length, 128)
+    assert.deepEqual(result.validation.containerPolicy, {
+      taskCount: 129,
+      tasksWithSingleContainer: 129,
+      complete: false,
+    })
+    assert.equal(
+      result.validation.diagnostics.some((item) => item.code === 'container_image_limit'),
+      true,
+    )
   })
 })
 

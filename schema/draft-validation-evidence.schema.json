@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/dsh-bio-workflows@0.10.0/schema/draft-validation-evidence.schema.json",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.11.0/schema/draft-validation-evidence.schema.json",
   "title": "Draft Validation Evidence v1",
   "type": "object",
   "additionalProperties": false,
@@ -38,6 +38,26 @@
       "type": "array",
       "maxItems": 16,
       "items": { "$ref": "#/$defs/check" }
+    },
+    "containerImages": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 512,
+        "pattern": "^[^\\s\"'\\\\]+@sha256:[a-f0-9]{64}$"
+      }
+    },
+    "containerPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskCount", "tasksWithSingleContainer", "complete"],
+      "properties": {
+        "taskCount": { "type": "integer", "minimum": 0 },
+        "tasksWithSingleContainer": { "type": "integer", "minimum": 0 },
+        "complete": { "type": "boolean" }
+      }
     },
     "diagnostics": {
       "type": "array",

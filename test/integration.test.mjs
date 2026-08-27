@@ -11,6 +11,7 @@ import { createWorkflowCatalog } from 'dsh-bio-workflows/catalog'
 import { createDraftStore } from 'dsh-bio-workflows/draft-store'
 import { createDraftValidator } from 'dsh-bio-workflows/draft-validation'
 import { MANIFEST_SCHEMA_VERSION } from 'dsh-bio-workflows/manifest'
+import { MISSION_SCHEMA_VERSION, createMissionStore } from 'dsh-bio-workflows/mission-store'
 import metadata from 'dsh-bio-workflows/package.json' with { type: 'json' }
 import { preflightWorkflow } from 'dsh-bio-workflows/preflight'
 import { createWorkflowStore } from 'dsh-bio-workflows/store'
@@ -20,6 +21,9 @@ import bundleSchema from 'dsh-bio-workflows/schema/wdl-bundle.schema.json' with 
 import draftValidationSchema from 'dsh-bio-workflows/schema/draft-validation-evidence.schema.json' with { type: 'json' }
 import draftRevisionSchema from 'dsh-bio-workflows/schema/wdl-draft-revision.schema.json' with { type: 'json' }
 import workflowGraphSchema from 'dsh-bio-workflows/schema/workflow-graph.schema.json' with { type: 'json' }
+import missionSchema from 'dsh-bio-workflows/schema/mission.schema.json' with { type: 'json' }
+import failureEvidenceSchema from 'dsh-bio-workflows/schema/failure-evidence.schema.json' with { type: 'json' }
+import softwareTrialReportSchema from 'dsh-bio-workflows/schema/software-trial-report.schema.json' with { type: 'json' }
 import { WORKFLOW_GRAPH_SCHEMA_VERSION } from 'dsh-bio-workflows/workflow-graph'
 
 import { makeManifest } from './fixtures.mjs'
@@ -27,11 +31,12 @@ import { makeManifest } from './fixtures.mjs'
 test('public self-references and the dependency-free root DSH apply entry work', async () => {
   assert.equal(plugin.name, 'dsh-bio-workflows')
   assert.equal(metadata.name, plugin.name)
-  assert.equal(metadata.version, '0.10.0')
+  assert.equal(metadata.version, '0.11.0')
   assert.deepEqual(plugin.inject, ['tools'])
   assert.equal(typeof createWorkflowCatalog, 'function')
   assert.equal(typeof createDraftStore, 'function')
   assert.equal(typeof createDraftValidator, 'function')
+  assert.equal(typeof createMissionStore, 'function')
   assert.equal(typeof preflightWorkflow, 'function')
   assert.equal(typeof createWorkflowStore, 'function')
   assert.equal(schema.properties.schemaVersion.const, MANIFEST_SCHEMA_VERSION)
@@ -39,6 +44,9 @@ test('public self-references and the dependency-free root DSH apply entry work',
   assert.equal(draftRevisionSchema.properties.schemaVersion.const, '1')
   assert.equal(draftValidationSchema.properties.schemaVersion.const, '1')
   assert.equal(workflowGraphSchema.properties.schemaVersion.const, WORKFLOW_GRAPH_SCHEMA_VERSION)
+  assert.equal(missionSchema.properties.schemaVersion.const, MISSION_SCHEMA_VERSION)
+  assert.equal(failureEvidenceSchema.properties.schemaVersion.const, '1')
+  assert.equal(softwareTrialReportSchema.properties.success.const, false)
 
   const registered = []
   const listeners = new Map()
@@ -65,12 +73,33 @@ test('public self-references and the dependency-free root DSH apply entry work',
     },
   })
 
-  assert.deepEqual(
-    registered.map((tool) => ({
+  const missionToolNames = new Set([
+    'bio_workflows_mission_prepare',
+    'bio_workflows_mission_start',
+    'bio_workflows_mission_get',
+    'bio_workflows_mission_cancel',
+    'bio_workflows_mission_report',
+  ])
+  const legacyRegistration = registered
+    .filter((tool) => !missionToolNames.has(tool.name))
+    .map((tool) => {
+      let parameters = tool.parameters
+      if ([
+        'bio_workflows_draft_create',
+        'bio_workflows_draft_update',
+        'bio_workflows_draft_validate',
+      ].includes(tool.name)) {
+        const { missionId: _missionId, ...properties } = parameters.properties
+        parameters = { ...parameters, properties }
+      }
+      return {
       name: tool.name,
-      parameters: tool.parameters,
+      parameters,
       output: tool.output.schema,
-    })),
+      }
+    })
+  assert.deepEqual(
+    legacyRegistration,
     [
       {
         name: 'bio_workflows_info',
@@ -477,6 +506,24 @@ test('public self-references and the dependency-free root DSH apply entry work',
       },
     ],
   )
+  const missionTools = registered.filter((tool) => missionToolNames.has(tool.name))
+  assert.deepEqual(missionTools.map((tool) => tool.name), [...missionToolNames])
+  assert.deepEqual(
+    missionTools[0].parameters.required,
+    ['software', 'objective', 'acceptanceCriteria'],
+  )
+  assert.deepEqual(
+    missionTools[0].parameters.properties.software.required,
+    ['name', 'version', 'containerImage'],
+  )
+  assert.equal(missionTools[1].parameters.required.includes('expectedPlanDigest'), true)
+  for (const name of [
+    'bio_workflows_draft_create',
+    'bio_workflows_draft_update',
+    'bio_workflows_draft_validate',
+  ]) {
+    assert.equal(registered.find((tool) => tool.name === name).parameters.properties.missionId.type, 'string')
+  }
   assert.equal(registered.every((registeredTool) => (
     typeof registeredTool.presentCall === 'function'
     && typeof registeredTool.presentResult === 'function'
@@ -773,6 +820,143 @@ test('the real DSH ToolRuntime keeps revisioned drafts session-scoped and approv
     assert.equal(graph.contentDigest, updated.contentDigest)
     assert.equal(graph.workflow.name, 'rna_qc')
     assert.equal(graph.executionAuthorized, false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('the real DSH ToolRuntime grants one bounded Mission approval and stops repeated validation failures', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-runtime-mission-'))
+  try {
+    const ctx = new Context()
+    const approvalRequests = []
+    ctx.provide('systemPrompt', { tools: () => () => {} })
+    ctx.provide('approval', {
+      request: async (request) => {
+        approvalRequests.push(request)
+        return 'allowed-once'
+      },
+    })
+    const runtime = new ToolRuntime(ctx, { mode: 'native' })
+    plugin.apply(ctx, {
+      store: { root, writeEnabled: true },
+      autonomy: { enabled: true, maxSameFailureFingerprint: 3 },
+    })
+    const signal = new AbortController().signal
+    const agent = { id: 'mission-session', session: { id: 'mission-session' } }
+    const request = {
+      software: {
+        name: 'FastQC',
+        version: '0.12.1',
+        containerImage: `quay.io/biocontainers/fastqc@sha256:${'f'.repeat(64)}`,
+      },
+      objective: 'Author a bounded FastQC WDL wrapper.',
+      acceptanceCriteria: ['The exact WDL draft passes deterministic validation.'],
+    }
+
+    const preparedResult = await runtime.execute({
+      callId: 'mission-prepare',
+      name: 'bio_workflows_mission_prepare',
+      arguments: request,
+      agent,
+      signal,
+    })
+    assert.equal(preparedResult.isError, false)
+    const prepared = JSON.parse(preparedResult.value)
+    assert.equal(prepared.plan.capabilities.isolatedDraftTest, false)
+
+    const startedResult = await runtime.execute({
+      callId: 'mission-start',
+      name: 'bio_workflows_mission_start',
+      arguments: { ...request, expectedPlanDigest: prepared.planDigest },
+      agent,
+      signal,
+    })
+    assert.equal(startedResult.isError, false)
+    const mission = JSON.parse(startedResult.value)
+    assert.equal(approvalRequests.length, 1)
+    assert.match(approvalRequests[0].reason, new RegExp(prepared.planDigest))
+    assert.match(approvalRequests[0].reason, /production execution remain disabled/)
+
+    const createdResult = await runtime.execute({
+      callId: 'mission-draft-create',
+      name: 'bio_workflows_draft_create',
+      arguments: {
+        id: 'fastqc-mission',
+        name: 'FastQC Mission',
+        summary: 'Mission-bound integration draft.',
+        missionId: mission.missionId,
+      },
+      agent,
+      signal,
+    })
+    assert.equal(createdResult.isError, false)
+    const created = JSON.parse(createdResult.value)
+    assert.equal(created.missionRecorded, true)
+    assert.equal(approvalRequests.length, 1)
+
+    const updatedResult = await runtime.execute({
+      callId: 'mission-draft-update',
+      name: 'bio_workflows_draft_update',
+      arguments: {
+        draftId: created.draftId,
+        expectedRevision: created.revision,
+        expectedContentDigest: created.contentDigest,
+        replacements: [{
+          path: 'main.wdl',
+          role: 'workflow',
+          content: 'version 1.0\nimport "https://example.invalid/untrusted.wdl"\nworkflow fastqc_mission {}\n',
+        }],
+        missionId: mission.missionId,
+      },
+      agent,
+      signal,
+    })
+    assert.equal(updatedResult.isError, false)
+    const updated = JSON.parse(updatedResult.value)
+    assert.equal(updated.revision, 2)
+    assert.equal(approvalRequests.length, 1)
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const validationResult = await runtime.execute({
+        callId: `mission-draft-validate-${attempt}`,
+        name: 'bio_workflows_draft_validate',
+        arguments: {
+          draftId: created.draftId,
+          revision: updated.revision,
+          missionId: mission.missionId,
+        },
+        agent,
+        signal,
+      })
+      assert.equal(validationResult.isError, false)
+      const validation = JSON.parse(validationResult.value)
+      assert.equal(validation.validation.valid, false)
+      assert.equal(validation.mission.budget.used.validationFailures, attempt)
+    }
+    assert.equal(approvalRequests.length, 1)
+
+    const reportResult = await runtime.execute({
+      callId: 'mission-report',
+      name: 'bio_workflows_mission_report',
+      arguments: { missionId: mission.missionId },
+      agent,
+      signal,
+    })
+    const report = JSON.parse(reportResult.value).report
+    assert.equal(report.outcome, 'exhausted')
+    assert.equal(report.success, false)
+    assert.equal(report.stop.code, 'repeated_failure')
+    assert.equal(report.readiness.isolatedTestCompleted, false)
+
+    const foreign = await runtime.execute({
+      callId: 'mission-foreign-get',
+      name: 'bio_workflows_mission_get',
+      arguments: { missionId: mission.missionId },
+      agent: { id: 'foreign-mission-session', session: { id: 'foreign-mission-session' } },
+      signal,
+    })
+    assert.equal(JSON.parse(foreign.value).error.code, 'mission_not_found')
   } finally {
     await rm(root, { recursive: true, force: true })
   }

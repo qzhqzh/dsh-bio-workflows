@@ -1,5 +1,5 @@
 export const PACKAGE_NAME = 'dsh-bio-workflows'
-export const PACKAGE_VERSION = '0.10.0'
+export const PACKAGE_VERSION = '0.11.0'
 export const TOOL_NAME = 'bio_workflows_info'
 
 export function getPackageInfo(
@@ -8,6 +8,7 @@ export function getPackageInfo(
   store = {},
   execution = {},
   authoring = {},
+  autonomy = {},
 ) {
   const executionEnabled = execution.enabled === true
   const executionReady = executionEnabled
@@ -44,6 +45,14 @@ export function getPackageInfo(
         policyVersion: authoring.validator?.policyVersion ?? null,
       },
     },
+    autonomy: {
+      configured: autonomy.configured === true,
+      enabled: autonomy.enabled === true,
+      ownerScope: autonomy.ownerScope ?? 'session',
+      schemaVersion: autonomy.schemaVersion ?? null,
+      capabilities: { ...(autonomy.capabilities ?? {}) },
+      limits: { ...(autonomy.limits ?? {}) },
+    },
     capabilities: {
       workflowCatalog: true,
       manifestValidation: true,
@@ -56,6 +65,11 @@ export function getPackageInfo(
       draftCompareAndSwap: true,
       deterministicDraftValidation: authoring.validator?.subprocessAvailable === true,
       deterministicWorkflowGraph: true,
+      boundedAutonomousDraftAuthoring: autonomy.enabled === true,
+      autonomousWdlValidationRepair: autonomy.enabled === true
+        && authoring.validator?.subprocessAvailable === true,
+      isolatedSoftwareTrial: false,
+      autonomousProductionExecution: false,
       nativeWorkflowCenter: true,
       liveExecutionPlanning: executionEnabled && execution.subprocessAvailable === true,
       workflowExecution: executionReady,
@@ -77,6 +91,7 @@ export function createInfoTool(
   store = {},
   execution = {},
   authoring = {},
+  autonomy = {},
 ) {
   return defineTool({
     name: TOOL_NAME,
@@ -98,6 +113,7 @@ export function createInfoTool(
           store,
           executionSummary,
           authoringSummary,
+          autonomy,
         ),
         null,
         2,
@@ -114,6 +130,7 @@ export function registerInfoTool(
   store = {},
   execution = {},
   authoring = {},
+  autonomy = {},
 ) {
   const tool = createInfoTool(
     defineTool,
@@ -122,6 +139,7 @@ export function registerInfoTool(
     store,
     execution,
     authoring,
+    autonomy,
   )
   ctx.tools.register(tool)
   return tool

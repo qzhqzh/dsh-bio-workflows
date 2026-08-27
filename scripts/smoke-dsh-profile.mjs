@@ -73,11 +73,16 @@ try {
     on: (event, listener) => listeners.set(event, [...(listeners.get(event) ?? []), listener]),
   })
   assert.deepEqual(
-    registered.map((tool) => ({
-      name: tool.name,
-      parameters: tool.parameters,
-      output: tool.output.schema,
-    })),
+    registered
+      .filter((tool) => !tool.name.startsWith('bio_workflows_mission_'))
+      .map((tool) => {
+        let parameters = tool.parameters
+        if (['bio_workflows_draft_create', 'bio_workflows_draft_update', 'bio_workflows_draft_validate'].includes(tool.name)) {
+          const { missionId: _missionId, ...properties } = parameters.properties
+          parameters = { ...parameters, properties }
+        }
+        return { name: tool.name, parameters, output: tool.output.schema }
+      }),
     [
       {
         name: 'bio_workflows_info',
@@ -484,6 +489,11 @@ try {
       },
     ],
   )
+  assert.deepEqual(
+    registered.filter((tool) => tool.name.startsWith('bio_workflows_mission_')).map((tool) => tool.name),
+    ['bio_workflows_mission_prepare', 'bio_workflows_mission_start', 'bio_workflows_mission_get', 'bio_workflows_mission_cancel', 'bio_workflows_mission_report'],
+  )
+  assert.equal(registered.find((tool) => tool.name === 'bio_workflows_draft_create').parameters.properties.missionId.type, 'string')
   const guarded = await waterfall(
     'tools/execute',
     { name: 'bio_workflows_get', arguments: {} },
@@ -527,6 +537,7 @@ try {
   assert.match(config, /manifests: \[\]/)
   assert.match(config, /engines: \{\}/)
   assert.match(config, /writeEnabled: false/)
+  assert.match(config, /autonomy:/)
   assert.match(config, /execution:/)
   assert.match(config, /enabled: false/)
   process.stdout.write(`DSH ${version} profile smoke passed: ${packResult[0].filename}\n`)

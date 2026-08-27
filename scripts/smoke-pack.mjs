@@ -49,6 +49,7 @@ try {
       validateBioWorkflowResultSemantics,
     } from 'dsh-bio-workflows/execution'
     import { MANIFEST_SCHEMA_VERSION } from 'dsh-bio-workflows/manifest'
+    import { MISSION_SCHEMA_VERSION, createMissionStore } from 'dsh-bio-workflows/mission-store'
     import metadata from 'dsh-bio-workflows/package.json' with { type: 'json' }
     import { preflightWorkflow } from 'dsh-bio-workflows/preflight'
     import { createWorkflowStore } from 'dsh-bio-workflows/store'
@@ -59,23 +60,30 @@ try {
     import draftRevisionSchema from 'dsh-bio-workflows/schema/wdl-draft-revision.schema.json' with { type: 'json' }
     import workflowGraphSchema from 'dsh-bio-workflows/schema/workflow-graph.schema.json' with { type: 'json' }
     import resultSchema from 'dsh-bio-workflows/schema/bio-workflow-result.schema.json' with { type: 'json' }
+    import missionSchema from 'dsh-bio-workflows/schema/mission.schema.json' with { type: 'json' }
+    import failureEvidenceSchema from 'dsh-bio-workflows/schema/failure-evidence.schema.json' with { type: 'json' }
+    import softwareTrialReportSchema from 'dsh-bio-workflows/schema/software-trial-report.schema.json' with { type: 'json' }
 
     assert.equal(typeof createWorkflowCatalog, 'function')
     assert.equal(typeof createDraftStore, 'function')
     assert.equal(typeof createDraftValidator, 'function')
+    assert.equal(typeof createMissionStore, 'function')
     assert.equal(typeof createWorkflowGraph, 'function')
     assert.equal(typeof createExecutionManager, 'function')
     assert.equal(typeof validateBioWorkflowResultSemantics, 'function')
     assert.equal(typeof preflightWorkflow, 'function')
     assert.equal(typeof createWorkflowStore, 'function')
     assert.equal(metadata.name, plugin.name)
-    assert.equal(metadata.version, '0.10.0')
+    assert.equal(metadata.version, '0.11.0')
     assert.equal(schema.properties.schemaVersion.const, MANIFEST_SCHEMA_VERSION)
     assert.equal(bundleSchema.properties.bundleVersion.const, WDL_BUNDLE_SCHEMA_VERSION)
     assert.equal(resultSchema.properties.schemaVersion.const, BIO_WORKFLOW_RESULT_SCHEMA_VERSION)
     assert.equal(draftRevisionSchema.properties.schemaVersion.const, '1')
     assert.equal(draftValidationSchema.properties.schemaVersion.const, '1')
     assert.equal(workflowGraphSchema.properties.schemaVersion.const, WORKFLOW_GRAPH_SCHEMA_VERSION)
+    assert.equal(missionSchema.properties.schemaVersion.const, MISSION_SCHEMA_VERSION)
+    assert.equal(failureEvidenceSchema.properties.schemaVersion.const, '1')
+    assert.equal(softwareTrialReportSchema.properties.success.const, false)
     assert.equal(typeof metadata.exports['./client'], 'string')
 
     const registered = []
@@ -109,11 +117,16 @@ try {
       environment: { engines: { nextflow: { available: true, version: '24.04' } } },
     })
     assert.deepEqual(
-      registered.map((tool) => ({
-        name: tool.name,
-        parameters: tool.parameters,
-        output: tool.output.schema,
-      })),
+      registered
+        .filter((tool) => !tool.name.startsWith('bio_workflows_mission_'))
+        .map((tool) => {
+          let parameters = tool.parameters
+          if (['bio_workflows_draft_create', 'bio_workflows_draft_update', 'bio_workflows_draft_validate'].includes(tool.name)) {
+            const { missionId: _missionId, ...properties } = parameters.properties
+            parameters = { ...parameters, properties }
+          }
+          return { name: tool.name, parameters, output: tool.output.schema }
+        }),
       [
         {
           name: 'bio_workflows_info',
@@ -520,6 +533,11 @@ try {
         },
       ],
     )
+    assert.deepEqual(
+      registered.filter((tool) => tool.name.startsWith('bio_workflows_mission_')).map((tool) => tool.name),
+      ['bio_workflows_mission_prepare', 'bio_workflows_mission_start', 'bio_workflows_mission_get', 'bio_workflows_mission_cancel', 'bio_workflows_mission_report'],
+    )
+    assert.equal(registered.find((tool) => tool.name === 'bio_workflows_draft_create').parameters.properties.missionId.type, 'string')
     const preflight = registered.find((tool) => tool.name === 'bio_workflows_preflight')
     const result = JSON.parse(await preflight.execute(
       { id: 'fastq-qc', inputs: { reads: ['sample.fastq.gz'] } },

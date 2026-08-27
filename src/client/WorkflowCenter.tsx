@@ -27,12 +27,16 @@ const AREAS: Array<{ id: Area; label: string; icon: typeof WorkflowIcon }> = [
 
 const EMPTY_BOOTSTRAP: WorkflowCenterBootstrap = {
   schemaVersion: '1',
-  package: { name: 'dsh-bio-workflows', version: '0.10.0' },
+  package: { name: 'dsh-bio-workflows', version: '0.11.0' },
   workflows: [],
   diagnostics: [],
   capabilities: {},
   readiness: {},
-  privacy: { ownerScopedDraftsViaAgent: true, ownerScopedRunsViaAgent: true },
+  privacy: {
+    ownerScopedDraftsViaAgent: true,
+    ownerScopedMissionsViaAgent: true,
+    ownerScopedRunsViaAgent: true,
+  },
 }
 
 const FOCUSABLE_SELECTOR = [
@@ -208,7 +212,7 @@ function WorkflowsArea({ workflows, selected, onSelect, ask, busy }: {
             {!selected.executionSupported && (
               <div className="dsh-bio-trust-note">
                 <WarningIcon />
-                <div><strong>Not execution-allowlisted</strong><p>This bundle can be inspected and validated, but 0.10.0 will not plan or run it.</p></div>
+                <div><strong>Not execution-allowlisted</strong><p>This bundle can be inspected and validated, but 0.11.0 will not plan or run it.</p></div>
               </div>
             )}
             <div className="dsh-bio-actions">
@@ -309,6 +313,8 @@ const READINESS_COPY: Record<string, [string, string]> = {
   draftAuthoringConfigured: ['Draft authoring', 'Owner-scoped revision store is configured.'],
   draftWritesEnabled: ['Draft writes', 'Revisioned draft create and update mutations are enabled.'],
   miniwdlValidator: ['miniwdl validator bridge', 'DSH subprocess is available; validation still verifies the pinned executable.'],
+  autonomousMissionAuthoring: ['Autonomous authoring Missions', 'One approval grants a bounded owner-session draft repair loop.'],
+  isolatedSoftwareTrial: ['Isolated software trials', 'Off until container and host isolation can be enforced and evidenced.'],
   workflowGraph: ['WorkflowGraph v1', 'Deterministic read-only WDL graph extraction is available.'],
   executionConfigured: ['Execution adapter', 'Input roots, runs root, and work directory are configured.'],
   executionEnabled: ['Workflow execution', 'Opt-in miniwdl execution is enabled.'],

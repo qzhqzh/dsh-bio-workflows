@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.11.0/schema/failure-evidence.schema.json",
+  "title": "Autonomous WDL Authoring Failure Evidence v1",
+  "$comment": "failureFingerprint is stable across equivalent bounded diagnostics; evidenceDigest also binds the exact draft revision and normalized evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "failureClass",
+    "draft",
+    "diagnostics",
+    "failureFingerprint",
+    "evidenceDigest",
+    "occurrence",
+    "observedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "failureClass": { "enum": ["wdl_validation", "validation_infrastructure"] },
+    "draft": { "$ref": "#/$defs/draft" },
+    "diagnostics": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/diagnostic" }
+    },
+    "failureFingerprint": { "$ref": "#/$defs/digest" },
+    "evidenceDigest": { "$ref": "#/$defs/digest" },
+    "occurrence": { "type": "integer", "minimum": 1, "maximum": 16 },
+    "observedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "draft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["draftId", "revision", "contentDigest"],
+      "properties": {
+        "draftId": {
+          "type": "string",
+          "pattern": "^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "revision": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "contentDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "code", "severity"],
+      "properties": {
+        "path": { "type": "string", "maxLength": 512 },
+        "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "severity": { "enum": ["error", "warning"] }
+      }
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  }
+}

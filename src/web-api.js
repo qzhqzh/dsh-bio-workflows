@@ -50,12 +50,14 @@ function sameOrigin(request) {
 export async function createWorkflowCenterBootstrap(options) {
   const execution = options.execution()
   const authoring = options.authoring()
+  const autonomy = options.autonomy ?? {}
   const info = getPackageInfo(
     options.workflowCount,
     options.declaredEngineCount,
     options.store.summary,
     execution,
     authoring,
+    autonomy,
   )
   const catalog = await options.store.search({})
   const supportedWorkflows = new Set(
@@ -82,6 +84,8 @@ export async function createWorkflowCenterBootstrap(options) {
       draftAuthoringConfigured: info.authoring.configured,
       draftWritesEnabled: info.authoring.writesEnabled,
       miniwdlValidator: info.authoring.validator.subprocessAvailable,
+      autonomousMissionAuthoring: info.autonomy.enabled,
+      isolatedSoftwareTrial: false,
       executionConfigured: info.execution.configured,
       executionEnabled: info.execution.enabled,
       jobsAvailable: info.execution.jobsAvailable,
@@ -90,6 +94,7 @@ export async function createWorkflowCenterBootstrap(options) {
     },
     privacy: {
       ownerScopedDraftsViaAgent: true,
+      ownerScopedMissionsViaAgent: true,
       ownerScopedRunsViaAgent: true,
     },
   }

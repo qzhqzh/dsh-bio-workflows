@@ -9,6 +9,8 @@ import {
   registerExecutionApprovalGate,
 } from './src/execution-tools.js'
 import { PACKAGE_NAME, registerInfoTool } from './src/info.js'
+import { createMissionStore } from './src/mission-store.js'
+import { createMissionTools, registerMissionApprovalGate } from './src/mission-tools.js'
 import { createGraphTools } from './src/graph-tools.js'
 import { parsePreflightEnvironment } from './src/preflight.js'
 import { registerPreflightTool } from './src/preflight-tool.js'
@@ -35,7 +37,9 @@ export function apply(ctx, config = {}) {
     config: config?.authoring ?? {},
     getSubprocess: () => optionalService(ctx, 'subprocess'),
   })
-  const draftTools = createDraftTools(defineTool, draftStore, draftValidator)
+  const missionStore = createMissionStore(config?.store ?? {}, config?.autonomy ?? {})
+  const missionTools = createMissionTools(defineTool, missionStore)
+  const draftTools = createDraftTools(defineTool, draftStore, draftValidator, missionStore)
   const graphTools = createGraphTools(defineTool, draftStore)
   const execution = createExecutionManager({
     store,
@@ -53,20 +57,24 @@ export function apply(ctx, config = {}) {
       store.summary,
       () => execution.summary,
       () => ({ ...draftStore.summary, validator: draftValidator.summary() }),
+      missionStore.summary,
     ),
     ...registerCatalogTools(ctx, defineTool, catalog),
     registerPreflightTool(ctx, defineTool, catalog, environment),
     ...storeTools,
+    ...missionTools,
     ...draftTools,
     ...graphTools,
     ...executionTools,
   ]
   for (const tool of storeTools) ctx.tools.register(tool)
+  for (const tool of missionTools) ctx.tools.register(tool)
   for (const tool of draftTools) ctx.tools.register(tool)
   for (const tool of graphTools) ctx.tools.register(tool)
   for (const tool of executionTools) ctx.tools.register(tool)
   registerStoreApprovalGate(ctx, storeTools, store)
-  registerDraftApprovalGate(ctx, draftTools, draftStore)
+  registerMissionApprovalGate(ctx, missionTools, missionStore)
+  registerDraftApprovalGate(ctx, draftTools, draftStore, missionStore)
   registerExecutionApprovalGate(ctx, executionTools, execution)
   registerToolArgumentGuard(ctx, tools)
   registerWorkflowCenterApi(ctx, {
@@ -75,5 +83,6 @@ export function apply(ctx, config = {}) {
     store,
     execution: () => execution.summary,
     authoring: () => ({ ...draftStore.summary, validator: draftValidator.summary() }),
+    autonomy: missionStore.summary,
   })
 }

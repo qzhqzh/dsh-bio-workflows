@@ -20,10 +20,17 @@ function compileParameters(spec) {
   const required = []
 
   for (const [name, definition] of Object.entries(spec)) {
-    const { required: isRequired, ...schema } = definition
+    const {
+      required: requiredValue,
+      topLevelRequired = false,
+      ...schemaWithoutRequired
+    } = definition
+    const schema = Array.isArray(requiredValue)
+      ? { ...schemaWithoutRequired, required: requiredValue }
+      : schemaWithoutRequired
     assertSupportedSchema(schema, name)
     properties[name] = schema
-    if (isRequired === true) required.push(name)
+    if (requiredValue === true || topLevelRequired === true) required.push(name)
   }
 
   return {
