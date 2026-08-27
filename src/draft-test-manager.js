@@ -882,31 +882,37 @@ async function cleanupOwnedDockerResources({ subprocess, dockerExecutable, plan,
       }
       return ids.sort()
     }
+    const remove = async (kind, ids) => {
+      const command = kind === 'container'
+        ? [docker.path, 'container', 'rm', '--force', ...ids]
+        : [docker.path, 'volume', 'rm', ...ids]
+      try {
+        await runProbeCommand(
+          subprocess,
+          command,
+          dirname(WRAPPER_PATH),
+          environment,
+          controller.signal,
+          'resource_cleanup',
+        )
+        return true
+      } catch (error) {
+        if (
+          !(error instanceof DraftTestOperationError)
+          || error.code !== 'resource_cleanup_probe_failed'
+        ) throw error
+        return false
+      }
+    }
     const removedContainers = new Set()
     const removedVolumes = new Set()
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const containers = await list('container')
-      if (containers.length > 0) {
-        await runProbeCommand(
-          subprocess,
-          [docker.path, 'container', 'rm', '--force', ...containers],
-          dirname(WRAPPER_PATH),
-          environment,
-          controller.signal,
-          'resource_cleanup',
-        )
+      if (containers.length > 0 && await remove('container', containers)) {
         containers.forEach((id) => removedContainers.add(id))
       }
       const volumes = await list('volume')
-      if (volumes.length > 0) {
-        await runProbeCommand(
-          subprocess,
-          [docker.path, 'volume', 'rm', ...volumes],
-          dirname(WRAPPER_PATH),
-          environment,
-          controller.signal,
-          'resource_cleanup',
-        )
+      if (volumes.length > 0 && await remove('volume', volumes)) {
         volumes.forEach((name) => removedVolumes.add(name))
       }
       if ((await list('container')).length === 0 && (await list('volume')).length === 0) {
@@ -920,6 +926,7 @@ async function cleanupOwnedDockerResources({ subprocess, dockerExecutable, plan,
         }
         return { ...basis, cleanupDigest: computeDraftTestDigest(basis, 'resource-cleanup') }
       }
+      if (attempt < 2) await delay(RECOVERY_POLL_MS)
     }
     throw new DraftTestOperationError(
       'resource_cleanup_unverified',
