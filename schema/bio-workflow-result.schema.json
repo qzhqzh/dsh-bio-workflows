@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/dsh-bio-workflows@0.11.0/schema/bio-workflow-result.schema.json",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.12.0/schema/bio-workflow-result.schema.json",
   "title": "BioWorkflowResult v1",
   "$comment": "Use validateBioWorkflowResultSemantics from dsh-bio-workflows/execution for cross-group aggregate limits and FastQC count/reference consistency.",
   "type": "object",

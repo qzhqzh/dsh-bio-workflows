@@ -20,7 +20,7 @@ release (`b150a551b8`). This document defines no new execution authority.
 | Visualization | `WorkflowGraph v1` is parsed from exact WDL source. The model may explain it but cannot create authoritative graph edges. |
 | First native UI | Ship a browser Client face in the same npm package: a keyed `tool.call.toolview` renderer plus a responsive Workflow Center. A correlated Conversation Node is deferred. |
 | Execution | Draft validation and graph generation cannot run WDL tasks. Test, promotion, and production execution remain separate approvals. |
-| Implemented slices | `0.8.0` create/get/update/validate; `0.8.1` replay-safe presentations; `0.9.0` graph; `0.10.0` Workflow Center; `0.11.0` bounded owner-session Mission authoring and validation repair; post-`0.11.0` branch: packaged Skill and default-off, separately approved isolated fixture test. No graph editor, promotion, or new production execution allowlist. |
+| Implemented slices | `0.8.0` create/get/update/validate; `0.8.1` replay-safe presentations; `0.9.0` graph; `0.10.0` Workflow Center; `0.11.0` bounded owner-session Mission authoring and validation repair; `0.12.0` packaged Skill and default-off, separately approved isolated fixture test. No graph editor, promotion, or new production execution allowlist. |
 
 ## Product boundary
 
@@ -153,11 +153,11 @@ decision.
 | `bio_workflows_draft_update` | Apply explicit file replacements/deletions under revision-and-digest CAS, then atomically commit one immutable revision. | Store writes enabled + `tools/pre-execute` ask |
 | `bio_workflows_draft_validate` | Validate one exact revision without running WDL tasks and return bound evidence. | None |
 | `bio_workflows_draft_graph` | Produce `WorkflowGraph v1` for one exact revision. | None; implemented in `0.9.0` |
-| `bio_workflows_draft_test_prepare` | Build an exact non-executing plan for one ready Mission revision and immutable fixture. | None; post-`0.11.0` branch |
-| `bio_workflows_draft_test_start` | Run only the approved fixture in the dedicated bounded backend using the exact live plan digest. | Separate ask; post-`0.11.0` branch |
-| `bio_workflows_draft_test_get` | Read one owner-session test and bounded evidence. | None; post-`0.11.0` branch |
+| `bio_workflows_draft_test_prepare` | Build an exact non-executing plan for one ready Mission revision and immutable fixture. | None; `0.12.0` |
+| `bio_workflows_draft_test_start` | Run only the approved fixture in the dedicated bounded backend using the exact live plan digest. | Separate ask; `0.12.0` |
+| `bio_workflows_draft_test_get` | Read one owner-session test and bounded evidence. | None; `0.12.0` |
 | `bio_workflows_draft_test_cancel` | Stop one active owner-session test without retry. | None; owner-fenced mutation |
-| `bio_workflows_draft_test_report` | Return the bounded trial report with all production/promotion capabilities false. | None; post-`0.11.0` branch |
+| `bio_workflows_draft_test_report` | Return the bounded trial report with all production/promotion capabilities false. | None; `0.12.0` |
 | `bio_workflows_draft_promote` | Recheck current evidence and materialize one immutable promoted bundle digest. | Separate ask; deferred |
 
 Mutation tools accept structured data, never a model-authored host command,
@@ -265,8 +265,8 @@ it must not assign an update to the latest visually open card.
 
 - Use WDL 1.0 initially; new language versions require explicit compatibility
   gates and fixtures.
-- Keep remote imports disabled until a revision-pinned Git or TRS provider is
-  designed.
+- Keep remote imports disabled even for revision-pinned Git/TRS snapshots;
+  providers must expose a complete local, digest-verified import closure.
 - Require digest-pinned containers before test or promotion.
 - Never expose arbitrary shell, environment variables, network options,
   engine flags, host paths, or execution commands in authoring arguments.
@@ -297,13 +297,14 @@ it must not assign an update to the latest visually open card.
    card.
 6. **Packaged Skill — complete:** register `bio-wdl-authoring` through the
    optional DSH `ctx.skills` service with revision/CAS and authority guidance.
-7. **Post-`0.11.0` branch — implemented and locally accepted:** dedicated bounded
+7. **`0.12.0` — implemented and accepted:** dedicated bounded
    draft-test sandbox, declarative fixtures, independent approval, denial
    probes, resource/output limits, owner lifecycle, and real Docker acceptance.
 8. Add independent review evidence and immutable promotion with another independent
    approval.
-9. Add Git/TRS discovery and richer Store UI only after trust tiers are
-   enforced.
+9. **Read-only provider discovery — complete in `0.12.0`:** exact
+   Git/TRS revision markers and provider-scoped bundle digests; richer Store UI
+   remains separate and grants no execution authority.
 
 The `0.7.0` result and execution MVP is already complete. The sequence above
 keeps AI-generated assets outside its production allowlist while making the

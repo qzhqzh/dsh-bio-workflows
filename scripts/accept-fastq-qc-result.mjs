@@ -128,6 +128,18 @@ try {
       runsRoot,
       inputRoots: [inputRoot],
       runner: { executable: miniwdlExecutable, dockerExecutable },
+      policy: {
+        inputChecksum: 'sha256',
+        networkIsolation: { mode: 'ephemeral_internal' },
+        budgets: {
+          maxInputSnapshotBytes: 1024 * 1024,
+          maxRunStorageBytes: 2 * 1024 * 1024 * 1024,
+          maxResultArtifactBytes: 32 * 1024 * 1024,
+          maxTotalResultArtifactBytes: 64 * 1024 * 1024,
+          maxJobOutputBytes: 256 * 1024,
+          maxSpillBytes: 16 * 1024 * 1024,
+        },
+      },
     },
     getSubprocess: () => ctx.get('subprocess'),
     getJobs: () => jobs,
@@ -140,6 +152,10 @@ try {
   }
   const planned = await manager.plan(request, { agent: owner })
   assert.equal(planned.ok, true, JSON.stringify(planned.error))
+  assert.equal(planned.plan.inputSnapshotPolicy.preApprovalIntegrity, 'sha256')
+  assert.equal(planned.plan.runner.securityPolicy.networkIsolation.mode, 'ephemeral_internal_overlay')
+  assert.equal(planned.plan.limitations.includes('input_content_not_hashed'), false)
+  assert.equal(planned.plan.limitations.includes('container_network_isolation_not_enforced'), false)
   const started = await manager.run({
     ...request,
     expectedPlanDigest: planned.planDigest,
@@ -157,6 +173,9 @@ try {
   assert.equal(observed.run.status, 'completed')
   assert.equal(observed.run.result.schemaVersion, '1')
   assert.equal(observed.run.result.summaries.fastqc.reportCount, 1)
+  assert.equal(observed.run.networkIsolation.network.internal, true)
+  assert.equal(observed.run.networkIsolation.cleanup, 'removed')
+  assert.equal(observed.run.storageBudget.violation, null)
 
   const artifactAssertions = []
   for (const group of observed.run.result.artifacts) {
@@ -212,8 +231,15 @@ try {
     },
     input: {
       description: 'One synthetic, non-sensitive 12-base FASTQ read compressed with gzip.',
+      preApprovalContentSha256: planned.plan.inputFileFacts[0].contentSha256,
       snapshotBytes: observed.run.inputSnapshots[0].size,
       snapshotSha256: observed.run.inputSnapshots[0].sha256,
+    },
+    executionPolicy: {
+      inputChecksum: planned.plan.inputSnapshotPolicy.preApprovalIntegrity,
+      networkIsolation: observed.run.networkIsolation,
+      budgets: planned.plan.budgets,
+      storageBudget: observed.run.storageBudget,
     },
     resultPolicy: {
       ...BIO_WORKFLOW_RESULT_LIMITS,
@@ -229,6 +255,9 @@ try {
     },
     assertions: [
       'exact bundle and plan digests matched before launch',
+      'pre-approval input SHA-256 matched the post-approval run-owned snapshot',
+      'the exact ephemeral internal Swarm network was verified and removed',
+      'the plan-bound run storage budget remained within its monitored limit',
       'miniwdl 1.15.0 and Docker Swarm completed the pinned FastQC container',
       'all declared output files remained confined to the run engine directory',
       'every recorded artifact SHA-256 matched an independent post-run calculation',

@@ -1,9 +1,9 @@
 {
   "schemaVersion": "1",
-  "recordedAt": "2026-08-26T09:33:14.662Z",
-  "purpose": "Model-driven DSH Agent-loop and owner-disposal lifecycle acceptance",
+  "recordedAt": "2026-08-27T17:45:16.619Z",
+  "purpose": "Model-driven DSH draft-authoring, execution, approval, and owner-disposal lifecycle acceptance",
   "candidate": {
-    "package": "dsh-bio-workflows@0.7.0",
+    "package": "dsh-bio-workflows@0.12.0",
     "dsh": "0.1.1-rc.2"
   },
   "runtime": {
@@ -24,11 +24,26 @@
   "workflow": {
     "key": "fastq-qc@1.2.0",
     "bundleDigest": "sha256:6dac1d1a37672462a1e4539fccf967f6a1204a9667c94799f36351d8d92e564e",
-    "planDigest": "sha256:324ec21fed5cb6feb73638252b029ccd8834bbfb050b2d206fac5fb49ca96f3d"
+    "planDigest": "sha256:d4fe379fb5ddc7893e1a8db439356a8d98a2685b8582a898ad80d8c8f20e909f"
+  },
+  "authoring": {
+    "draftId": "draft-e3bade2d-bd99-4807-b741-575c4797620b",
+    "revision": 2,
+    "contentDigest": "sha256:f51de268edb077a40ac333e678ad3f696ccc435e52fd2871a8668e17358c9cea",
+    "validationDigest": "sha256:a77adf33867f4ad3c15a12bbf8b7d3698aad692036af5593202a87dd0fd13367",
+    "valid": true,
+    "executionAuthorized": false,
+    "graphDigest": "sha256:3ab5f8c129e6ab4cebda0c4b17f9ab31959e07ef909eddb8410786310e68e8e2",
+    "graphNodes": 2
   },
   "model": {
-    "requests": 4,
+    "requests": 9,
     "toolCalls": [
+      "bio_workflows_draft_create",
+      "bio_workflows_draft_get",
+      "bio_workflows_draft_update",
+      "bio_workflows_draft_validate",
+      "bio_workflows_draft_graph",
       "bio_workflows_search",
       "bio_workflows_plan",
       "bio_workflows_run"
@@ -36,10 +51,11 @@
     "terminalResponse": "stop"
   },
   "approval": {
-    "requests": 1,
-    "askedEvents": 1,
-    "decidedEvents": 1,
+    "requests": 3,
+    "askedEvents": 3,
+    "decidedEvents": 3,
     "outcome": "allowed-once",
+    "mutationRequests": 2,
     "auditIdsMatched": true
   },
   "owner": {
@@ -58,7 +74,7 @@
     "reconciliationStatus": "active"
   },
   "run": {
-    "id": "run-f080cb6d-e86f-44da-9fae-c019f52368ef",
+    "id": "run-69a04fb2-1aa8-450b-bea6-a015d972e81f",
     "statusAfterDispose": "killed",
     "exit": {
       "exitCode": 143,
@@ -69,10 +85,15 @@
     "terminalProvenancePersisted": true
   },
   "sourceSha256": {
-    "scripts/smoke-dsh-agent-loop.mjs": "398cf3dbd1cd403fccf59e0dd72b7661f852d48a4af55914cb17467038f28a51",
-    "src/execution.js": "7329362bb07966ee2290b4fb559dbc88a46f33dd57b41d51e03939c96049fa0b",
-    "src/execution-tools.js": "0ec7fdfbfbf35dc921cdac62109e6674331d17f59270f76d4082366b96a13c5b",
-    "index.js": "52680f7abea5da4f8f9d1a92d3bc30e1c5e2b24e1e5366637b30fe3e5521b537",
+    "scripts/smoke-dsh-agent-loop.mjs": "68f52913d554996738de0a4cd0d722bbcdfbfbd8d7daf268b2bff6524b107b61",
+    "src/draft-store.js": "4dd4cca9409120a593c58286af26981ee48b746d476d3afaee5058a02086d11f",
+    "src/draft-tools.js": "43cbf068131c991fd37ad3c5bdca884755eea5c41733ad78bb0d66ae321da420",
+    "src/draft-validation.js": "71868e466319e5c7f33831d4386f79e751aab53d08bc5dfed3ab3c6d5c11c02d",
+    "src/execution.js": "efd6da1f0ee1fe561558fd1ce4cf7fc2200c8ddcd8b6be1a062e9ae445fc3375",
+    "src/execution-tools.js": "70a4faa747ed25f537de72b61e45df7741205f1a1968e1350e4124ef1a0dccc0",
+    "src/graph-tools.js": "316d01ea7391fad234fb81a1f0553a2b9e3cc2ff2749cc91ef32bf8ae8d30c10",
+    "src/workflow-graph.js": "5cccb2e533239f2db2bf56ed2b3cc308a116a01225aea15570f4b4a54d290ac9",
+    "index.js": "7660fa4456dcbc30b382801c7d69d567b8047d9b656637a38f4072ac42f9804f",
     "workflows/fastq-qc/1.2.0/main.wdl": "0ccef9731dc4a5ff9e40f79103b715b2863989c0c78dfe046d3e5abd25254a5e",
     "workflows/fastq-qc/1.2.0/workflow.json": "9c8e49209e1d4bec57ca6ce99848246cb76eef6d0075fd9480fd04eb1b9b5d5b"
   }

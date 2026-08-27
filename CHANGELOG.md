@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.12.0 - 2026-08-27
+
+- Add optional plan-bound production policies for pre-approval input SHA-256,
+  per-run ephemeral internal Swarm overlays, configurable input/result/log/run
+  storage budgets, and explicit owner-scoped retention cleanup. Cleanup remains
+  disabled by default and requires its own exact-plan DSH approval.
+- Add revision-pinned, provider-scoped read-only Git/TRS snapshot discovery
+  with bounded exact markers. Providers never fetch, receive credentials,
+  write their roots, authorize execution, or expand the production allowlist.
 - Package and register the on-demand `bio-wdl-authoring` Agent Skill when the
   optional DSH `ctx.skills` service is present. It guides exact revision/CAS
   authoring, deterministic validation repair, graph review, and separately

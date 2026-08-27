@@ -42,6 +42,7 @@ test('store config is strict and writes remain disabled by default', async () =>
   assert.deepEqual(parseWorkflowStoreConfig(), {
     root: null,
     writeEnabled: false,
+    providers: [],
   })
   assert.throws(
     () => parseWorkflowStoreConfig({ writeEnabled: true }),
@@ -52,12 +53,22 @@ test('store config is strict and writes remain disabled by default', async () =>
     WorkflowStoreConfigValidationError,
   )
   assert.throws(
+    () => parseWorkflowStoreConfig({ root: 42 }),
+    WorkflowStoreConfigValidationError,
+  )
+  assert.throws(
     () => parseWorkflowStoreConfig({ root: '/tmp/store', extra: true }),
     WorkflowStoreConfigValidationError,
   )
   assert.throws(
     () => parseWorkflowStoreConfig({ root: `/${'a'.repeat(4096)}` }),
     WorkflowStoreConfigValidationError,
+  )
+  assert.throws(
+    () => parseWorkflowStoreConfig({
+      providers: [{ id: 'git-main', kind: 'git', root: '/srv/provider', revision: 'short' }],
+    }),
+    /40-character Git commit id/,
   )
 
   const store = createWorkflowStore()
@@ -66,6 +77,99 @@ test('store config is strict and writes remain disabled by default', async () =>
 
   assert.equal(install.error.code, 'store_writes_disabled')
   assert.equal(scaffold.error.code, 'store_writes_disabled')
+})
+
+test('revision-pinned Git and TRS snapshots are read-only discovery sources', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-workflow-provider-store-'))
+  const gitRoot = await mkdtemp(join(tmpdir(), 'dsh-workflow-provider-git-'))
+  const trsRoot = await mkdtemp(join(tmpdir(), 'dsh-workflow-provider-trs-'))
+  const gitRevision = 'a'.repeat(40)
+  try {
+    await mkdir(join(gitRoot, 'fastq-qc'), { recursive: true })
+    await cp(
+      new URL('../workflows/fastq-qc/1.2.0/', import.meta.url),
+      join(gitRoot, 'fastq-qc', '1.2.0'),
+      { recursive: true },
+    )
+    await writeFile(join(gitRoot, '.dsh-provider.json'), `${JSON.stringify({
+      schemaVersion: '1',
+      id: 'git-main',
+      kind: 'git',
+      revision: gitRevision,
+      readOnly: true,
+    })}\n`)
+    await mkdir(join(trsRoot, 'bam-qc'), { recursive: true })
+    await cp(
+      new URL('../workflows/bam-qc/1.0.0/', import.meta.url),
+      join(trsRoot, 'bam-qc', '1.0.0'),
+      { recursive: true },
+    )
+    await writeFile(join(trsRoot, '.dsh-provider.json'), `${JSON.stringify({
+      schemaVersion: '1',
+      id: 'dockstore',
+      kind: 'trs',
+      revision: 'bam-qc-1.0.0',
+      readOnly: true,
+    })}\n`)
+    const store = createWorkflowStore({
+      root,
+      writeEnabled: true,
+      providers: [
+        { id: 'git-main', kind: 'git', root: gitRoot, revision: gitRevision },
+        { id: 'dockstore', kind: 'trs', root: trsRoot, revision: 'bam-qc-1.0.0' },
+      ],
+    })
+
+    const git = await store.search({ source: 'git', provider: 'git-main' })
+    const trs = await store.search({ source: 'trs', provider: 'dockstore' })
+    assert.equal(git.count, 1)
+    assert.equal(git.workflows[0].trust, 'revision_pinned_read_only')
+    assert.deepEqual(git.workflows[0].provider, {
+      id: 'git-main',
+      kind: 'git',
+      revision: gitRevision,
+      readOnly: true,
+    })
+    assert.equal(trs.count, 1)
+    assert.equal(trs.workflows[0].id, 'bam-qc')
+    await assert.rejects(
+      store.resolve({ id: 'fastq-qc', version: '1.2.0', source: 'git' }),
+      /provider is required/,
+    )
+    const validated = await store.validate({
+      id: 'fastq-qc',
+      version: '1.2.0',
+      source: 'git',
+      provider: 'git-main',
+    })
+    assert.equal(validated.ok, true)
+    assert.equal(validated.provider.revision, gitRevision)
+    const installed = await store.install({
+      id: 'fastq-qc',
+      version: '1.2.0',
+      source: 'git',
+      provider: 'git-main',
+      expectedDigest: git.workflows[0].digest,
+    })
+    assert.equal(installed.ok, true)
+    assert.equal(installed.executionAuthorized, false)
+    await access(join(root, 'installed', 'fastq-qc', '1.2.0', 'main.wdl'))
+
+    await writeFile(join(trsRoot, '.dsh-provider.json'), `${JSON.stringify({
+      schemaVersion: '1',
+      id: 'dockstore',
+      kind: 'trs',
+      revision: 'changed',
+      readOnly: true,
+    })}\n`)
+    const rejected = await store.search({ source: 'trs', provider: 'dockstore' })
+    assert.equal(rejected.count, 0)
+    assert.equal(rejected.diagnostics.some((item) => item.code === 'provider_marker_invalid'), true)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(gitRoot, { recursive: true, force: true })
+    await rm(trsRoot, { recursive: true, force: true })
+  }
 })
 
 test('opt-in stores install immutable bundles and scaffold local WDL drafts', async () => {

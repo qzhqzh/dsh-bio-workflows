@@ -1,19 +1,19 @@
 {
   "schemaVersion": "1",
-  "recordedAt": "2026-08-26T09:32:49.474Z",
+  "recordedAt": "2026-08-27T17:44:47.528Z",
   "scope": "real-bioworkflow-result-acceptance",
-  "packageVersion": "0.7.0",
+  "packageVersion": "0.12.0",
   "adapterSources": {
-    "index.js": "52680f7abea5da4f8f9d1a92d3bc30e1c5e2b24e1e5366637b30fe3e5521b537",
-    "src/execution.js": "7329362bb07966ee2290b4fb559dbc88a46f33dd57b41d51e03939c96049fa0b",
-    "src/execution-tools.js": "0ec7fdfbfbf35dc921cdac62109e6674331d17f59270f76d4082366b96a13c5b",
-    "src/workflow-store.js": "cf5c3e3a17ba630bde839649eb0b34dc5de4747f1bce1bf23b6d59b80c7741b9"
+    "index.js": "7660fa4456dcbc30b382801c7d69d567b8047d9b656637a38f4072ac42f9804f",
+    "src/execution.js": "efd6da1f0ee1fe561558fd1ce4cf7fc2200c8ddcd8b6be1a062e9ae445fc3375",
+    "src/execution-tools.js": "70a4faa747ed25f537de72b61e45df7741205f1a1968e1350e4124ef1a0dccc0",
+    "src/workflow-store.js": "8bf2d5ddc9d8a1d1966e0a0b4eb398e93f8344a631009cd5683dc60eec6c1700"
   },
   "workflow": {
     "id": "fastq-qc",
     "version": "1.2.0",
     "bundleDigest": "sha256:6dac1d1a37672462a1e4539fccf967f6a1204a9667c94799f36351d8d92e564e",
-    "planDigest": "sha256:34d2399b9f178f278dfca7e417d2842a011aab1a2060d5d2988f92396b725884"
+    "planDigest": "sha256:048628029b7a1ef549ab1cca33983b4bf8f9c01ed483c7dec33b8fee51104904"
   },
   "runner": {
     "name": "miniwdl",
@@ -44,8 +44,46 @@
   },
   "input": {
     "description": "One synthetic, non-sensitive 12-base FASTQ read compressed with gzip.",
+    "preApprovalContentSha256": "sha256:9bb412d8028e72ae21b4e50c8045a5a17487717b56283dafdc856b2c525251d8",
     "snapshotBytes": "43",
     "snapshotSha256": "9bb412d8028e72ae21b4e50c8045a5a17487717b56283dafdc856b2c525251d8"
+  },
+  "executionPolicy": {
+    "inputChecksum": "sha256",
+    "networkIsolation": {
+      "mode": "ephemeral_internal",
+      "network": {
+        "id": "usgb7smd9uudmpmile1ebclkh",
+        "name": "dsh-bio-run-3e533f60-c92a-4b75-9f9c-ba60bbaf52f8",
+        "driver": "overlay",
+        "scope": "swarm",
+        "internal": true,
+        "attachable": false,
+        "ingress": false,
+        "labels": {
+          "dsh.bio-workflows.managed": "true",
+          "dsh.bio-workflows.run-id": "run-3e533f60-c92a-4b75-9f9c-ba60bbaf52f8"
+        },
+        "servicesAtAdmission": 0
+      },
+      "cleanup": "removed"
+    },
+    "budgets": {
+      "maxInputSnapshotBytes": "1048576",
+      "maxRunStorageBytes": "2147483648",
+      "runStorageEnforcement": "periodic_allocated_bytes_scan",
+      "runStorageScanIntervalMs": 1000,
+      "maxResultArtifactBytes": "33554432",
+      "maxTotalResultArtifactBytes": "67108864",
+      "maxJobOutputBytes": 262144,
+      "maxSpillBytesPerStream": 16777216
+    },
+    "storageBudget": {
+      "violation": null,
+      "maximumObservedBytes": "1646727",
+      "enforcement": "periodic_allocated_bytes_scan",
+      "intervalMs": 1000
+    }
   },
   "resultPolicy": {
     "maxArtifacts": 1024,
@@ -68,15 +106,15 @@
         "outputId": "html_reports",
         "ordinal": 0,
         "sizeBytes": "377991",
-        "sha256": "sha256:af44263f5c399a5d31c43eafab897089194065a0c58faacddfe832fcc6838ff9",
-        "directSha256": "sha256:af44263f5c399a5d31c43eafab897089194065a0c58faacddfe832fcc6838ff9"
+        "sha256": "sha256:9d5c56bab54ce07cb95f98e2d5244486d83fbc27ab5c6ec7579abe686f3e6682",
+        "directSha256": "sha256:9d5c56bab54ce07cb95f98e2d5244486d83fbc27ab5c6ec7579abe686f3e6682"
       },
       {
         "outputId": "zip_reports",
         "ordinal": 0,
         "sizeBytes": "288628",
-        "sha256": "sha256:e5754ce8901f9a90b38df42c9324e0dd321928ced4d7b76f586e7b48a1d9d7a2",
-        "directSha256": "sha256:e5754ce8901f9a90b38df42c9324e0dd321928ced4d7b76f586e7b48a1d9d7a2"
+        "sha256": "sha256:b678481894dca1932e89aa486843ddba9753e0ddd331082fb1c70c4785b21aec",
+        "directSha256": "sha256:b678481894dca1932e89aa486843ddba9753e0ddd331082fb1c70c4785b21aec"
       },
       {
         "outputId": "summary_reports",
@@ -157,6 +195,9 @@
   },
   "assertions": [
     "exact bundle and plan digests matched before launch",
+    "pre-approval input SHA-256 matched the post-approval run-owned snapshot",
+    "the exact ephemeral internal Swarm network was verified and removed",
+    "the plan-bound run storage budget remained within its monitored limit",
     "miniwdl 1.15.0 and Docker Swarm completed the pinned FastQC container",
     "all declared output files remained confined to the run engine directory",
     "every recorded artifact SHA-256 matched an independent post-run calculation",

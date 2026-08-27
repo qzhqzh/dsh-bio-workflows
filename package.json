@@ -1,6 +1,6 @@
 {
   "name": "dsh-bio-workflows",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Bioinformatics WDL catalog, bounded autonomous AI authoring, trusted planning, and opt-in miniwdl execution for DeepSeek Harness.",
   "type": "module",
   "main": "./index.js",

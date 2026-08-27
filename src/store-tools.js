@@ -8,7 +8,7 @@ export const STORE_SCAFFOLD_TOOL_NAME = 'bio_workflows_scaffold'
 const IDENTIFIER_PATTERN = '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
 const SEMVER_PATTERN = '^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$'
 const BUNDLE_DIGEST_PATTERN = '^sha256:[a-f0-9]{64}$'
-const STORE_SOURCES = ['builtin', 'installed', 'draft']
+const STORE_SOURCES = ['builtin', 'installed', 'draft', 'git', 'trs']
 
 function textOutput() {
   return {
@@ -25,12 +25,13 @@ export function createStoreTools(defineTool, store) {
   const search = defineTool({
     name: STORE_SEARCH_TOOL_NAME,
     description:
-      'Search built-in and configured local WDL workflow bundles. This tool never downloads or executes a workflow.',
+      'Search built-in, local, and configured revision-pinned read-only Git/TRS snapshot bundles. This tool never downloads or executes a workflow.',
     parameters: {
       query: { type: 'string', description: 'Optional case-insensitive text query.' },
       language: { type: 'string', description: 'Optional exact language filter; currently wdl.' },
       tag: { type: 'string', description: 'Optional exact tag filter.' },
-      source: { type: 'string', description: 'Optional source filter: builtin, installed, or draft.' },
+      source: { type: 'string', description: 'Optional source filter: builtin, installed, draft, git, or trs.' },
+      provider: { type: 'string', pattern: IDENTIFIER_PATTERN, description: 'Optional exact read-only Git/TRS provider id.' },
     },
     output: textOutput(),
     isConcurrencySafe: () => false,
@@ -45,6 +46,7 @@ export function createStoreTools(defineTool, store) {
       id: { type: 'string', required: true, description: 'Exact workflow bundle id.' },
       version: { type: 'string', description: 'Optional exact semantic version; latest is selected when omitted.' },
       source: { type: 'string', description: 'Optional source; defaults to builtin.' },
+      provider: { type: 'string', pattern: IDENTIFIER_PATTERN, description: 'Required exact provider id when source is git or trs.' },
     },
     output: textOutput(),
     isConcurrencySafe: () => false,
@@ -65,6 +67,7 @@ export function createStoreTools(defineTool, store) {
         description: 'Exact sha256 bundle digest returned by search.',
       },
       source: { type: 'string', enum: STORE_SOURCES, description: 'Optional source; defaults to builtin.' },
+      provider: { type: 'string', pattern: IDENTIFIER_PATTERN, description: 'Required exact provider id when source is git or trs.' },
     },
     output: textOutput(),
     isConcurrencySafe: () => false,
@@ -119,7 +122,7 @@ export function registerStoreApprovalGate(ctx, tools, store) {
       }
       return {
         kind: 'ask',
-        reason: `Install ${prepared.id}@${prepared.version} from ${prepared.source} with digest ${prepared.digest} into the configured workflow store`,
+        reason: `Install ${prepared.id}@${prepared.version} from ${prepared.source}${prepared.provider === undefined ? '' : ` provider ${prepared.provider.id}@${prepared.provider.revision}`} with digest ${prepared.digest} into the configured workflow store`,
       }
     }
     const prepared = store.prepareScaffold(exec.arguments)

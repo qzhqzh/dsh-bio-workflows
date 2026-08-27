@@ -104,7 +104,7 @@ with container addresses and the network gateway remains available. Therefore
 `0.11.0` does not treat an internal bridge as both egress and host-service
 isolation, and model-authored WDL never enters the existing runner.
 
-The post-`0.11.0` development slice now implements that separate boundary as a
+The `0.12.0` release implements that separate boundary as a
 default-off miniwdl `dsh_fixture_docker` backend. It uses deterministic
 fixtures, read-only snapshots, a scrubbed fixed environment, hard resource and
 output limits, network `none`, container-configuration inspection, and
@@ -112,9 +112,9 @@ positive/negative egress and host-service probes. It requires a new approval
 bound to a Draft Test Plan digest and does not inherit the Mission grant or
 reuse the production adapter. See [Isolated fixture runner](./isolated-fixture-runner.md).
 
-This implementation status does not retroactively change the published
-`0.11.x` contract. A separate release and acceptance review are required before
-operators should enable it.
+This implementation does not retroactively change the published `0.11.x`
+contract or extend the Mission grant. Operators must still explicitly enable
+the runner and approve each exact Draft Test Plan before starting it.
 
 ## Public contracts
 

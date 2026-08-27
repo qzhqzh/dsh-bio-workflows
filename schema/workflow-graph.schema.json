@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/dsh-bio-workflows@0.11.0/schema/workflow-graph.schema.json",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.12.0/schema/workflow-graph.schema.json",
   "title": "WorkflowGraph v1",
   "type": "object",
   "additionalProperties": false,

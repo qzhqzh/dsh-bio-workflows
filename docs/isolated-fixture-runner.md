@@ -1,9 +1,8 @@
 # Isolated fixture runner
 
-Status: implemented on the post-`0.11.0` development branch for
-[issue #18](https://github.com/qzhqzh/dsh-bio-workflows/issues/18), disabled by
-default, and not yet released. The published `0.11.x` Mission contract remains
-authoring-only.
+Status: released in `0.12.0` for
+[issue #18](https://github.com/qzhqzh/dsh-bio-workflows/issues/18) and disabled
+by default. The Mission contract remains authoring-only.
 
 ## Authority boundary
 
@@ -229,7 +228,7 @@ npm run accept:draft-fixture-runner
 ```
 
 The latest local acceptance is retained as a
-[source-bound evidence record](./evidence/dsh-bio-workflows-0.11.0-unreleased-fixture-runner.json).
+[source-bound evidence record](./evidence/dsh-bio-workflows-0.12.0-fixture-runner.json).
 
 CI preloads both exact images outside the runner and executes this suite on a
 fresh Linux host. Any residual `dshbio-*` container or volume fails acceptance.

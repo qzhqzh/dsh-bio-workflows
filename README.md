@@ -7,15 +7,12 @@ Bioinformatics workflow catalog, WDL asset store, and preflight foundation for
 surface for multiple workflow definitions, while execution adapters are added
 one engine and one verified workflow at a time.
 
-> `0.11.0` adds owner-session **Missions** for bounded autonomous WDL authoring
-> and validation repair. One digest-bound approval can cover a fixed action,
-> update, failure, fingerprint, and wall-time budget. This release does not run
-> software containers from Missions: isolated draft testing and production
-> execution remain explicitly unavailable.
-
-> The next, unreleased development slice adds a default-off, separately
-> approved isolated fixture runner. It does not change the published `0.11.x`
-> Mission grant or its `Software Trial Report v1.success = false` boundary.
+> `0.12.0` adds the packaged `bio-wdl-authoring` Agent Skill, a default-off and
+> separately approved isolated fixture runner, revision-pinned read-only Git/TRS
+> discovery, and optional plan-bound production integrity, network, budget, and
+> retention policies. The Mission grant remains authoring-only: fixture success
+> does not install, promote, allowlist, or production-run a draft, and
+> `Software Trial Report v1.success` remains `false`.
 
 ## Install
 
@@ -71,7 +68,7 @@ human-readable pending and completed card presentations:
 - `bio_workflows_mission_cancel`: stops the Mission without deleting evidence
   or retrying an in-flight operation.
 - `bio_workflows_mission_report`: returns a bounded `Software Trial Report v1`.
-  In `0.11.0`, `success` is always false and a validated draft stops at
+  In `0.12.0`, `success` is always false and a validated draft stops at
   `ready_for_isolated_test`.
 - `bio_workflows_draft_test_prepare`: computes a non-executing test plan bound
   to one exact ready Mission, draft validation, immutable fixture, local
@@ -112,6 +109,10 @@ human-readable pending and completed card presentations:
   summaries with exact status filtering and fixed cursor pagination. After a
   runtime restart it records definitively orphaned non-terminal runs as
   `interrupted`; it never retries them or signals a stale PID.
+- `bio_workflows_run_cleanup_plan`: previews the exact old terminal run
+  directories selected by the configured owner-scoped retention policy.
+- `bio_workflows_run_cleanup`: replans, requires the exact cleanup digest and
+  DSH approval, then deletes only unchanged terminal candidates.
 
 ## Workflow Center
 
@@ -182,7 +183,7 @@ Workflow ids are unique within one catalog. Invalid manifests and duplicate ids
 fail at plugin startup instead of producing a partially valid catalog.
 
 The versioned contract is published as
-[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.11.0/schema/workflow-manifest.schema.json).
+[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.12.0/schema/workflow-manifest.schema.json).
 The zero-dependency runtime API is also available through package subpaths:
 
 ```js
@@ -257,10 +258,10 @@ imports, path traversal, symlinked bundle files, undeclared files, and digest
 mismatches fail closed. File, bundle, discovery, aggregate-byte, and diagnostic
 limits keep malformed local stores from producing unbounded reads or output.
 The descriptor contract is published as
-[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.11.0/schema/wdl-bundle.schema.json).
+[JSON Schema](https://unpkg.com/dsh-bio-workflows@0.12.0/schema/wdl-bundle.schema.json).
 
 The normalized result contract is published separately as
-[`BioWorkflowResult v1`](https://unpkg.com/dsh-bio-workflows@0.11.0/schema/bio-workflow-result.schema.json).
+[`BioWorkflowResult v1`](https://unpkg.com/dsh-bio-workflows@0.12.0/schema/bio-workflow-result.schema.json).
 It is additive to `run.json`: historical `0.5.x` and `0.6.x` records without a
 `result` field remain readable. A complete
 [example result](./docs/examples/bio-workflow-result-v1.json) ships with the
@@ -279,6 +280,36 @@ configure an absolute, dedicated root:
       root: /absolute/path/to/dsh-workflow-store
       writeEnabled: true
 ```
+
+The Store can also discover externally synchronized Git and TRS snapshots
+without network access or credentials. Each provider is an absolute read-only
+source root, pinned to a full Git commit or exact TRS version. Its root must
+contain a matching `.dsh-provider.json`; bundles remain non-executable and an
+install still requires the exact bundle digest:
+
+```yaml
+store:
+  root: /srv/dsh-bio/store
+  writeEnabled: true
+  providers:
+    - id: workflow-git
+      kind: git
+      root: /srv/dsh-bio/providers/workflow-git
+      revision: 0123456789abcdef0123456789abcdef01234567
+    - id: dockstore
+      kind: trs
+      root: /srv/dsh-bio/providers/dockstore
+      revision: release-2026-08-27
+```
+
+```json
+{"schemaVersion":"1","id":"workflow-git","kind":"git","revision":"0123456789abcdef0123456789abcdef01234567","readOnly":true}
+```
+
+Provider roots use the same `<id>/<version>` bundle layout as the built-in
+Store. The plugin never fetches, updates, or writes them; synchronization and
+revision checkout remain an operator responsibility. See
+[Revision-pinned read-only providers](./docs/read-only-providers.md).
 
 Revisioned authoring refuses to use the configured root unless it is owned by
 the DSH process user and is not writable by group or other users (normally mode
@@ -366,14 +397,14 @@ Configure the validator independently of the default-off write switch:
 ```
 
 The serialized contracts are published as
-[`WDL Draft Revision v1`](https://unpkg.com/dsh-bio-workflows@0.11.0/schema/wdl-draft-revision.schema.json)
+[`WDL Draft Revision v1`](https://unpkg.com/dsh-bio-workflows@0.12.0/schema/wdl-draft-revision.schema.json)
 and
-[`Draft Validation Evidence v1`](https://unpkg.com/dsh-bio-workflows@0.11.0/schema/draft-validation-evidence.schema.json) and
-[`WorkflowGraph v1`](https://unpkg.com/dsh-bio-workflows@0.11.0/schema/workflow-graph.schema.json).
+[`Draft Validation Evidence v1`](https://unpkg.com/dsh-bio-workflows@0.12.0/schema/draft-validation-evidence.schema.json) and
+[`WorkflowGraph v1`](https://unpkg.com/dsh-bio-workflows@0.12.0/schema/workflow-graph.schema.json).
 Workflow graph extraction, the keyed native graph card, and the read-only
-Workflow Center are available in `0.10.0`. The unreleased fixture-test slice is
-separately authorized and default-off. Canvas mutation, promotion, and remote
-Store providers remain later, separately authorized stages.
+Workflow Center are available in `0.10.0`. The `0.12.0` fixture-test lifecycle
+is separately authorized and default-off. Canvas mutation and promotion remain
+later, separately authorized stages.
 
 Graph extraction currently reads only `main.wdl`. Any local or remote WDL
 `import` is reported explicitly and returns `complete: false`; imported task or
@@ -423,13 +454,13 @@ The safe conversation flow is:
 
 The Mission grant cannot call `bio_workflows_run`, install/promote a draft,
 expand the production allowlist, or execute the declared container image. The
-published `0.11.0` release therefore never crosses that boundary. The next
-development slice uses a dedicated, separately approved fixture backend with
+published `0.11.0` release never crossed that boundary, and the `0.12.0`
+fixture backend remains a dedicated, separately approved transition with
 deterministic egress and host-service denial evidence; it does not extend or
 reuse the Mission grant. See
 [Autonomous software trial Missions](./docs/autonomous-software-trial-missions.md).
 
-## Isolated fixture testing (unreleased)
+## Isolated fixture testing (`0.12.0`)
 
 Draft testing is disabled by default and independent from both Mission
 authoring and the production Docker Swarm adapter. Five owner-session tools
@@ -484,6 +515,22 @@ entry replacement. Violations fail with `runs_root_unsafe`,
       runner:
         executable: /usr/local/bin/miniwdl
         dockerExecutable: /usr/bin/docker
+      policy:
+        inputChecksum: sha256
+        networkIsolation:
+          mode: ephemeral_internal
+        budgets:
+          maxInputSnapshotBytes: 1099511627776
+          maxRunStorageBytes: 2199023255552
+          maxResultArtifactBytes: 17179869184
+          maxTotalResultArtifactBytes: 68719476736
+          maxJobOutputBytes: 262144
+          maxSpillBytes: 16777216
+        retention:
+          enabled: true
+          minimumAgeDays: 30
+          retainLatest: 100
+          maxDeletesPerCall: 50
 ```
 
 The executable allowlist contains `fastq-qc@1.1.0` and `fastq-qc@1.2.0`; use
@@ -536,12 +583,26 @@ limited to 8 MiB and 16384 module lines. The host never extracts the ZIP report.
 Provenance has a separate 32 MiB read/write limit and remains readable after
 input mounts are removed.
 
-Current security limits are explicit in every plan: approval binds large
-biological inputs by canonical path and filesystem identity/metadata rather
-than precomputing full content hashes; the post-approval run-owned snapshot is
-hashed for provenance. The adapter blocks privileged/runtime-selected Docker
-networks but does not enforce complete container egress isolation. Use only the
-shipped digest-pinned workflow and container assets on an isolated host.
+The policy block is optional and backward compatible. `inputChecksum: sha256`
+streams each regular input before approval, binds the digest into `planDigest`,
+and rechecks it while making the run-owned snapshot. `ephemeral_internal`
+creates one labeled, non-attachable internal Swarm overlay after approval,
+injects it as the fixed miniwdl task-runtime default, verifies its Docker
+identity and isolation flags, and removes it after the runner exits. This is a
+production egress control for the trusted built-in allowlist; it is not the
+fixture runner's stronger host-service-denial evidence and grants no authority
+to AI-authored drafts.
+
+All byte budgets are plan-bound and may only reduce the package maxima. Input
+snapshots and result artifacts fail closed at their configured limits; job
+capture/spill uses the configured bounds. Total run storage is checked from
+allocated filesystem blocks at one-second intervals and once after exit; the
+plan explicitly identifies this as monitor enforcement rather than a hard
+filesystem quota. Retention is disabled by default and never runs
+automatically. Cleanup requires a preview, exact digest, owner fencing,
+unchanged terminal provenance, and a separate DSH approval.
+See [Production execution policies](./docs/execution-policies.md) for the
+configuration contract, threat boundary, and cleanup runbook.
 
 ## Preflight boundary
 
@@ -577,13 +638,13 @@ Releases add independently reviewable layers:
     package — available in `0.10.0`
 11. Bounded owner-session autonomous WDL authoring and validation-repair
     Missions — available in `0.11.0`
-12. Packaged on-demand `bio-wdl-authoring` Agent Skill — implemented on the
-    unreleased development branch
+12. Packaged on-demand `bio-wdl-authoring` Agent Skill — available in `0.12.0`
 13. Separately approved isolated draft-test runner and fixture/result
-    assertions — implemented and locally accepted on the unreleased development
-    branch; remote CI and release review remain required
-14. Next: independent review/promotion, Git/TRS Store providers, and additional
-    execution adapters
+    assertions — available in `0.12.0`
+14. Revision-pinned read-only Git/TRS snapshots plus optional execution
+    integrity, egress, budget, and retention policies — available in `0.12.0`
+15. Next: independent review/promotion only under a future explicit trust
+    boundary; additional production adapters remain intentionally deferred
 
 Execution support remains explicit, auditable, and disabled by default.
 
@@ -622,13 +683,15 @@ architecture boundary, completion assessment, and next milestones.
 
 ## 中文说明
 
-`0.11.0` 在现有生信工作流入口上增加了有界自主 Mission：用户批准一次绑定精确
+`0.12.0` 在 `0.11.0` 有界自主 Mission 基础上，增加了按需加载的
+`bio-wdl-authoring` Agent Skill、默认关闭且单独审批的隔离 fixture runner、
+只读 Git/TRS 快照发现，以及可选的生产执行完整性、网络、预算与保留策略。用户批准一次绑定精确
 `planDigest` 的计划后，同一 session 的 Agent 可以在动作数、更新次数、失败次数、
 重复错误指纹和总时长预算内，持续创建、修改和校验 WDL。相同错误默认重复三次、
 校验基础设施不可用、预算耗尽、取消或运行时重启都会停止，且不会自动重试。
 Mission 只授权草稿写作与确定性校验，不授权容器试跑、promotion 或生产执行；
 即使 WDL 校验通过，报告也只会标记 `ready_for_isolated_test`，`success` 仍为 `false`。
-未发布开发分支已另设默认关闭的 fixture runner，并要求新的精确 `planDigest` 审批；它以
+隔离 fixture runner 要求新的精确 `planDigest` 审批；它以
 控制器内核 seccomp、容器 `network none`、只读根文件系统、非 root 用户、固定环境、
 硬资源上限、独立 Docker broker 和 17 项探针证明
 外网及宿主服务不可达，不复用生产 runner 或白名单。试跑通过仍不会安装、promotion、

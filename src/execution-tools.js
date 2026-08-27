@@ -4,6 +4,8 @@ export const EXECUTION_PLAN_TOOL_NAME = 'bio_workflows_plan'
 export const EXECUTION_RUN_TOOL_NAME = 'bio_workflows_run'
 export const EXECUTION_RUN_GET_TOOL_NAME = 'bio_workflows_run_get'
 export const EXECUTION_RUN_LIST_TOOL_NAME = 'bio_workflows_run_list'
+export const EXECUTION_RUN_CLEANUP_PLAN_TOOL_NAME = 'bio_workflows_run_cleanup_plan'
+export const EXECUTION_RUN_CLEANUP_TOOL_NAME = 'bio_workflows_run_cleanup'
 
 const IDENTIFIER_PATTERN = '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
 const SEMVER_PATTERN = '^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$'
@@ -131,16 +133,68 @@ export function createExecutionTools(defineTool, execution) {
     })),
   })
 
-  return [plan, run, getRun, listRuns]
+  const cleanupPlan = defineTool({
+    name: EXECUTION_RUN_CLEANUP_PLAN_TOOL_NAME,
+    description:
+      'Preview the exact owner-scoped terminal run directories eligible under the configured retention policy. This does not delete data.',
+    parameters: {},
+    output: textOutput(),
+    isConcurrencySafe: () => false,
+    execute: async (_request, exec) => stringify(await execution.cleanupPlan({
+      signal: exec?.signal,
+      agent: exec?.agent,
+    })),
+  })
+
+  const cleanup = defineTool({
+    name: EXECUTION_RUN_CLEANUP_TOOL_NAME,
+    description:
+      'Delete only the owner-scoped terminal run directories in one approved, exact retention cleanup plan.',
+    parameters: {
+      expectedCleanupPlanDigest: {
+        type: 'string',
+        pattern: DIGEST_PATTERN,
+        required: true,
+        description: 'Exact cleanup plan digest returned by bio_workflows_run_cleanup_plan.',
+      },
+    },
+    output: textOutput(),
+    isConcurrencySafe: () => false,
+    execute: async (request, exec) => stringify(await execution.cleanupRuns(request, {
+      signal: exec?.signal,
+      agent: exec?.agent,
+    })),
+  })
+
+  return [plan, run, getRun, listRuns, cleanupPlan, cleanup]
 }
 
 export function registerExecutionApprovalGate(ctx, tools, execution) {
   const runTool = tools.find((tool) => tool.name === EXECUTION_RUN_TOOL_NAME)
+  const cleanupTool = tools.find((tool) => tool.name === EXECUTION_RUN_CLEANUP_TOOL_NAME)
 
   ctx.on('tools/pre-execute', async (exec, next) => {
     const tool = ctx.tools.get(exec.name, exec.agent)
-    if (tool !== runTool) return next()
+    if (tool !== runTool && tool !== cleanupTool) return next()
     if (validateToolArguments(tool, exec.arguments).length > 0) return next()
+
+    if (tool === cleanupTool) {
+      const prepared = await execution.prepareCleanup(exec.arguments, {
+        signal: exec.signal,
+        agent: exec.agent,
+      })
+      if (prepared.result === undefined) {
+        return {
+          kind: 'deny',
+          reason: `workflow run cleanup preparation failed: ${prepared.error.code}`,
+        }
+      }
+      const candidates = prepared.result.plan.candidates
+      return {
+        kind: 'ask',
+        reason: `Delete ${candidates.length} owner-scoped terminal workflow run director${candidates.length === 1 ? 'y' : 'ies'} under the configured retention policy, bound to cleanup plan ${prepared.result.cleanupPlanDigest}: ${candidates.map((item) => item.runId).join(', ')}`,
+      }
+    }
 
     const prepared = await execution.prepareRun(exec.arguments, {
       signal: exec.signal,

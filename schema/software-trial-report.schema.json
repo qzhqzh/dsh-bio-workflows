@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/dsh-bio-workflows@0.11.0/schema/software-trial-report.schema.json",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.12.0/schema/software-trial-report.schema.json",
   "title": "Bounded Software Trial Report v1",
-  "$comment": "In 0.11.0 this report covers autonomous WDL authoring and deterministic validation only. success remains false until a separately isolated runner produces executable trial evidence.",
+  "$comment": "In 0.12.0 this report covers autonomous WDL authoring and deterministic validation only. success remains false even when a separately authorized isolated fixture test produces passing evidence.",
   "type": "object",
   "additionalProperties": false,
   "required": [

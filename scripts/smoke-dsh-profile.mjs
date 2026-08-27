@@ -185,7 +185,12 @@ try {
             query: { type: 'string', description: 'Optional case-insensitive text query.' },
             language: { type: 'string', description: 'Optional exact language filter; currently wdl.' },
             tag: { type: 'string', description: 'Optional exact tag filter.' },
-            source: { type: 'string', description: 'Optional source filter: builtin, installed, or draft.' },
+            source: { type: 'string', description: 'Optional source filter: builtin, installed, draft, git, or trs.' },
+            provider: {
+              type: 'string',
+              pattern: '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$',
+              description: 'Optional exact read-only Git/TRS provider id.',
+            },
           },
         },
         output: { type: 'string' },
@@ -198,6 +203,11 @@ try {
             id: { type: 'string', description: 'Exact workflow bundle id.' },
             version: { type: 'string', description: 'Optional exact semantic version; latest is selected when omitted.' },
             source: { type: 'string', description: 'Optional source; defaults to builtin.' },
+            provider: {
+              type: 'string',
+              pattern: '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$',
+              description: 'Required exact provider id when source is git or trs.',
+            },
           },
           required: ['id'],
         },
@@ -225,8 +235,13 @@ try {
             },
             source: {
               type: 'string',
-              enum: ['builtin', 'installed', 'draft'],
+              enum: ['builtin', 'installed', 'draft', 'git', 'trs'],
               description: 'Optional source; defaults to builtin.',
+            },
+            provider: {
+              type: 'string',
+              pattern: '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$',
+              description: 'Required exact provider id when source is git or trs.',
             },
           },
           required: ['id', 'version', 'expectedDigest'],
@@ -533,6 +548,26 @@ try {
               description: 'Last runId returned by the previous page for the same owner and status filter.',
             },
           },
+        },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_run_cleanup_plan',
+        parameters: { type: 'object', properties: {} },
+        output: { type: 'string' },
+      },
+      {
+        name: 'bio_workflows_run_cleanup',
+        parameters: {
+          type: 'object',
+          properties: {
+            expectedCleanupPlanDigest: {
+              type: 'string',
+              pattern: '^sha256:[a-f0-9]{64}$',
+              description: 'Exact cleanup plan digest returned by bio_workflows_run_cleanup_plan.',
+            },
+          },
+          required: ['expectedCleanupPlanDigest'],
         },
         output: { type: 'string' },
       },

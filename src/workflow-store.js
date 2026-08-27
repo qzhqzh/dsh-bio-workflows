@@ -20,9 +20,10 @@ import {
   validateLoadedWdlBundle,
 } from './wdl-bundle.js'
 
-export const WORKFLOW_STORE_SOURCES = Object.freeze(['builtin', 'installed', 'draft'])
+export const WORKFLOW_STORE_SOURCES = Object.freeze(['builtin', 'installed', 'draft', 'git', 'trs'])
 
-const STORE_CONFIG_KEYS = new Set(['root', 'writeEnabled'])
+const STORE_CONFIG_KEYS = new Set(['root', 'writeEnabled', 'providers'])
+const PROVIDER_CONFIG_KEYS = new Set(['id', 'kind', 'root', 'revision'])
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/
 const SEMVER_PATTERN = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 const BUNDLE_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/
@@ -32,6 +33,10 @@ const MAX_DISCOVERY_ENTRIES = 4096
 const MAX_DIAGNOSTICS = 64
 const MAX_DIAGNOSTIC_ERRORS = 8
 const MAX_CONFIG_ROOT_LENGTH = 4096
+const MAX_PROVIDERS = 16
+const MAX_PROVIDER_MARKER_BYTES = 8 * 1024
+const GIT_REVISION_PATTERN = /^[a-f0-9]{40}$/
+const TRS_REVISION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+:-]{0,127}$/
 const BUILTIN_ROOT = fileURLToPath(new URL('../workflows/', import.meta.url))
 
 function throwIfAborted(signal) {
@@ -93,11 +98,94 @@ export function parseWorkflowStoreConfig(value = {}) {
   if (writeEnabled === true && value.root === undefined) {
     errors.push({ path: '$.root', code: 'required', message: 'is required when writes are enabled' })
   }
+  const providers = []
+  if (value.providers !== undefined && !Array.isArray(value.providers)) {
+    errors.push({ path: '$.providers', code: 'type', message: 'must be an array' })
+  } else {
+    if ((value.providers ?? []).length > MAX_PROVIDERS) {
+      errors.push({ path: '$.providers', code: 'max_items', message: `must contain at most ${MAX_PROVIDERS} providers` })
+    }
+    for (const [index, providerValue] of (value.providers ?? []).entries()) {
+      const path = `$.providers[${index}]`
+      if (!isPlainObject(providerValue)) {
+        errors.push({ path, code: 'type', message: 'must be an object' })
+        continue
+      }
+      for (const key of Object.keys(providerValue)) {
+        if (!PROVIDER_CONFIG_KEYS.has(key)) {
+          errors.push({ path: `${path}.${key}`, code: 'additional_property', message: `unsupported property: ${key}` })
+        }
+      }
+      const { id, kind, root, revision } = providerValue
+      if (typeof id !== 'string' || !IDENTIFIER_PATTERN.test(id)) {
+        errors.push({ path: `${path}.id`, code: 'format', message: 'must be a lowercase provider identifier' })
+      }
+      if (kind !== 'git' && kind !== 'trs') {
+        errors.push({ path: `${path}.kind`, code: 'enum', message: 'must be git or trs' })
+      }
+      if (typeof root !== 'string' || root.length === 0) {
+        errors.push({ path: `${path}.root`, code: 'type', message: 'must be a non-empty string' })
+      } else if (root.length > MAX_CONFIG_ROOT_LENGTH) {
+        errors.push({ path: `${path}.root`, code: 'max_length', message: `must contain at most ${MAX_CONFIG_ROOT_LENGTH} characters` })
+      } else if (!isAbsolute(root)) {
+        errors.push({ path: `${path}.root`, code: 'format', message: 'must be an absolute path' })
+      }
+      const revisionValid = kind === 'git'
+        ? typeof revision === 'string' && GIT_REVISION_PATTERN.test(revision)
+        : kind === 'trs' && typeof revision === 'string' && TRS_REVISION_PATTERN.test(revision)
+      if (!revisionValid) {
+        errors.push({
+          path: `${path}.revision`,
+          code: 'format',
+          message: kind === 'git'
+            ? 'must be a full lowercase 40-character Git commit id'
+            : 'must be an exact TRS version identifier',
+        })
+      }
+      if (
+        typeof id === 'string'
+        && IDENTIFIER_PATTERN.test(id)
+        && (kind === 'git' || kind === 'trs')
+        && typeof root === 'string'
+        && root.length > 0
+        && root.length <= MAX_CONFIG_ROOT_LENGTH
+        && isAbsolute(root)
+        && revisionValid
+      ) {
+        const normalizedRoot = resolve(root)
+        if (providers.some((provider) => provider.id === id)) {
+          errors.push({ path: `${path}.id`, code: 'duplicate', message: `duplicate provider id: ${id}` })
+        } else if (providers.some((provider) => pathsOverlap(provider.root, normalizedRoot))) {
+          errors.push({ path: `${path}.root`, code: 'overlap', message: 'provider roots must not overlap' })
+        } else {
+          providers.push({ id, kind, root: normalizedRoot, revision })
+        }
+      }
+    }
+  }
+  const normalizedRoot = typeof value.root === 'string'
+    && value.root.length > 0
+    && value.root.length <= MAX_CONFIG_ROOT_LENGTH
+    && isAbsolute(value.root)
+    ? resolve(value.root)
+    : null
+  if (normalizedRoot !== null) {
+    for (const [index, provider] of providers.entries()) {
+      if (pathsOverlap(normalizedRoot, provider.root)) {
+        errors.push({
+          path: `$.providers[${index}].root`,
+          code: 'overlap',
+          message: 'provider roots must not overlap the writable local store root',
+        })
+      }
+    }
+  }
   if (errors.length > 0) throw new WorkflowStoreConfigValidationError(errors)
 
   return deepFreeze({
-    root: value.root === undefined ? null : resolve(value.root),
+    root: normalizedRoot,
     writeEnabled,
+    providers,
   })
 }
 
@@ -143,6 +231,65 @@ async function safeDirectoryEntries(path, budget, containmentRoot) {
   } catch (error) {
     if (error?.code === 'ENOENT') return []
     throw error
+  }
+}
+
+async function readProviderMarker(provider, containmentRoot, budget) {
+  const markerPath = join(containmentRoot, '.dsh-provider.json')
+  let handle
+  try {
+    handle = await open(
+      markerPath,
+      constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0),
+    )
+    const initial = await handle.stat({ bigint: true })
+    if (!initial.isFile() || initial.size > BigInt(MAX_PROVIDER_MARKER_BYTES)) {
+      throw storePathError('PROVIDER_MARKER_INVALID', 'provider marker must be a bounded regular file')
+    }
+    const bytes = Number(initial.size)
+    if (bytes > budget.remainingBytes) {
+      throw storePathError('STORE_BYTE_LIMIT', 'workflow store read budget was exceeded')
+    }
+    const content = await handle.readFile({ encoding: 'utf8' })
+    const completed = await handle.stat({ bigint: true })
+    if (
+      completed.size !== initial.size
+      || completed.mtimeNs !== initial.mtimeNs
+      || completed.ctimeNs !== initial.ctimeNs
+      || completed.dev !== initial.dev
+      || completed.ino !== initial.ino
+    ) {
+      throw storePathError('PROVIDER_MARKER_INVALID', 'provider marker changed while being read')
+    }
+    budget.remainingBytes -= bytes
+    let marker
+    try {
+      marker = JSON.parse(content)
+    } catch {
+      throw storePathError('PROVIDER_MARKER_INVALID', 'provider marker must contain valid JSON')
+    }
+    if (
+      !isPlainObject(marker)
+      || Object.keys(marker).some((key) => !['schemaVersion', 'id', 'kind', 'revision', 'readOnly'].includes(key))
+      || marker.schemaVersion !== '1'
+      || marker.id !== provider.id
+      || marker.kind !== provider.kind
+      || marker.revision !== provider.revision
+      || marker.readOnly !== true
+    ) {
+      throw storePathError(
+        'PROVIDER_MARKER_INVALID',
+        'provider marker does not match the configured exact revision and read-only contract',
+      )
+    }
+    return {
+      id: provider.id,
+      kind: provider.kind,
+      revision: provider.revision,
+      readOnly: true,
+    }
+  } finally {
+    await handle?.close()
   }
 }
 
@@ -203,14 +350,17 @@ function summarizeEntry(entry, installedKeys) {
     engines: descriptor.wdl.engines.map((engine) => ({ ...engine })),
     tags: [...manifest.tags],
     source: entry.source,
-    trust: entry.source === 'builtin' ? 'builtin' : 'local',
+    ...(entry.provider === undefined ? {} : { provider: { ...entry.provider } }),
+    trust: entry.source === 'builtin'
+      ? 'builtin'
+      : entry.provider === undefined ? 'local' : 'revision_pinned_read_only',
     verification: { ...descriptor.verification, checks: [...descriptor.verification.checks] },
     digest,
     installed: installedKeys.has(`${manifest.id}@${manifest.version}`),
   }
 }
 
-async function loadEntries(root, source, containmentRoot, budget, signal) {
+async function loadEntries(root, source, containmentRoot, budget, signal, provider = undefined) {
   const entries = []
   const diagnostics = []
   if (budget.remainingBundles === 0 || budget.remainingBytes === 0) return { entries, diagnostics }
@@ -245,7 +395,7 @@ async function loadEntries(root, source, containmentRoot, budget, signal) {
           budget.remainingBytes -= bytes
         },
       })
-      entries.push({ source, directory, bundle })
+      entries.push({ source, directory, bundle, ...(provider === undefined ? {} : { provider }) })
       if (budget.remainingBundles === 0 || budget.remainingBytes === 0) break
     } catch (error) {
       if (error?.code === 'STORE_BYTE_LIMIT') {
@@ -295,6 +445,7 @@ function matchesSearch(entry, filters) {
   const descriptor = entry.bundle.descriptor
   const manifest = descriptor.manifest
   if (filters.source !== undefined && entry.source !== filters.source) return false
+  if (filters.provider !== undefined && entry.provider?.id !== filters.provider) return false
   if (filters.language !== undefined && filters.language !== 'wdl') return false
   if (filters.tag !== undefined && !manifest.tags.includes(filters.tag)) return false
   if (filters.query !== undefined) {
@@ -310,7 +461,7 @@ function matchesSearch(entry, filters) {
 function validateSearchFilters(filters) {
   if (!isPlainObject(filters)) throw new TypeError('workflow store filters must be an object')
   for (const key of Object.keys(filters)) {
-    if (!['query', 'language', 'tag', 'source'].includes(key)) {
+    if (!['query', 'language', 'tag', 'source', 'provider'].includes(key)) {
       throw new TypeError(`unsupported workflow store filter: ${key}`)
     }
     if (typeof filters[key] !== 'string') throw new TypeError(`${key} filter must be a string`)
@@ -318,11 +469,18 @@ function validateSearchFilters(filters) {
   if (filters.source !== undefined && !WORKFLOW_STORE_SOURCES.includes(filters.source)) {
     throw new TypeError(`source must be one of: ${WORKFLOW_STORE_SOURCES.join(', ')}`)
   }
+  if (filters.provider !== undefined && !IDENTIFIER_PATTERN.test(filters.provider)) {
+    throw new TypeError('provider filter must be a lowercase provider identifier')
+  }
 }
 
 function isContainedPath(root, target) {
   const remainder = relative(root, target)
   return remainder === '' || (!isAbsolute(remainder) && remainder !== '..' && !remainder.startsWith(`..${sep}`))
+}
+
+function pathsOverlap(left, right) {
+  return isContainedPath(left, right) || isContainedPath(right, left)
 }
 
 async function ensureDirectory(path) {
@@ -568,39 +726,68 @@ export function createWorkflowStore(configValue = {}) {
     }
     const builtinRoot = await inspectStoreDirectory(BUILTIN_ROOT)
     const builtin = await loadEntries(BUILTIN_ROOT, 'builtin', builtinRoot, budget, signal)
-    if (config.root === null) return builtin
-    let localRoot
-    try {
-      localRoot = await inspectStoreDirectory(config.root)
-    } catch (error) {
-      if (error?.code === 'ENOENT') return builtin
-      if (error?.code !== 'STORE_PATH_UNSAFE') throw error
-      const diagnostics = [...builtin.diagnostics]
-      appendDiagnostic(diagnostics, budget, {
-        source: 'local',
-        directory: config.root,
-        code: 'store_path_unsafe',
-      })
-      return {
-        entries: builtin.entries,
-        diagnostics,
+    const discoveredEntries = [...builtin.entries]
+    const diagnostics = [...builtin.diagnostics]
+    if (config.root !== null) {
+      let localRoot = null
+      try {
+        localRoot = await inspectStoreDirectory(config.root)
+      } catch (error) {
+        if (error?.code !== 'ENOENT' && error?.code !== 'STORE_PATH_UNSAFE') throw error
+        if (error?.code === 'STORE_PATH_UNSAFE') {
+          appendDiagnostic(diagnostics, budget, {
+            source: 'local',
+            directory: config.root,
+            code: 'store_path_unsafe',
+          })
+        }
+      }
+      if (localRoot !== null) {
+        const installed = await loadEntries(
+          join(localRoot, 'installed'),
+          'installed',
+          localRoot,
+          budget,
+          signal,
+        )
+        const draft = await loadEntries(join(localRoot, 'drafts'), 'draft', localRoot, budget, signal)
+        discoveredEntries.push(...installed.entries, ...draft.entries)
+        diagnostics.push(...installed.diagnostics, ...draft.diagnostics)
       }
     }
-    const installed = await loadEntries(
-      join(localRoot, 'installed'),
-      'installed',
-      localRoot,
-      budget,
-      signal,
-    )
-    const draft = await loadEntries(join(localRoot, 'drafts'), 'draft', localRoot, budget, signal)
-    return {
-      entries: [...builtin.entries, ...installed.entries, ...draft.entries],
-      diagnostics: [...builtin.diagnostics, ...installed.diagnostics, ...draft.diagnostics],
+    for (const provider of config.providers) {
+      throwIfAborted(signal)
+      try {
+        const providerRoot = await inspectStoreDirectory(provider.root)
+        const marker = await readProviderMarker(provider, providerRoot, budget)
+        const loaded = await loadEntries(
+          providerRoot,
+          provider.kind,
+          providerRoot,
+          budget,
+          signal,
+          marker,
+        )
+        discoveredEntries.push(...loaded.entries)
+        diagnostics.push(...loaded.diagnostics)
+      } catch (error) {
+        if (!['ENOENT', 'STORE_PATH_UNSAFE', 'PROVIDER_MARKER_INVALID', 'STORE_BYTE_LIMIT'].includes(error?.code)) {
+          throw error
+        }
+        appendDiagnostic(diagnostics, budget, {
+          source: provider.kind,
+          provider: provider.id,
+          directory: provider.root,
+          code: error.code === 'ENOENT'
+            ? 'provider_missing'
+            : String(error.code).toLocaleLowerCase('en'),
+        })
+      }
     }
+    return { entries: discoveredEntries, diagnostics }
   }
 
-  async function resolveEntry({ id, version, source = 'builtin' }, signal) {
+  async function resolveEntry({ id, version, source = 'builtin', provider }, signal) {
     throwIfAborted(signal)
     if (typeof id !== 'string' || !IDENTIFIER_PATTERN.test(id)) {
       throw new TypeError('id must be a lowercase workflow identifier')
@@ -611,10 +798,22 @@ export function createWorkflowStore(configValue = {}) {
     if (!WORKFLOW_STORE_SOURCES.includes(source)) {
       throw new TypeError(`source must be one of: ${WORKFLOW_STORE_SOURCES.join(', ')}`)
     }
+    if (source === 'git' || source === 'trs') {
+      if (typeof provider !== 'string' || !IDENTIFIER_PATTERN.test(provider)) {
+        throw new TypeError('provider is required for git and trs workflow sources')
+      }
+      const configured = config.providers.find((item) => item.id === provider)
+      if (configured === undefined || configured.kind !== source) {
+        throw new TypeError(`provider ${provider} is not configured for source ${source}`)
+      }
+    } else if (provider !== undefined) {
+      throw new TypeError('provider can be used only with git or trs workflow sources')
+    }
     const discovered = await entries(signal)
     const selected = discovered.entries
       .filter((entry) => (
         entry.source === source
+        && (provider === undefined || entry.provider?.id === provider)
         && entry.bundle.descriptor.manifest.id === id
         && (version === undefined || entry.bundle.descriptor.manifest.version === version)
       ))
@@ -653,6 +852,7 @@ export function createWorkflowStore(configValue = {}) {
       id: manifest.id,
       version: manifest.version,
       source: resolved.entry.source,
+      ...(resolved.entry.provider === undefined ? {} : { provider: { ...resolved.entry.provider } }),
       digest: actualDigest,
       executionAuthorized: false,
     }
@@ -676,6 +876,12 @@ export function createWorkflowStore(configValue = {}) {
       builtinWorkflowCount: 2,
       localStoreConfigured: config.root !== null,
       writesEnabled: config.writeEnabled,
+      providers: config.providers.map((provider) => ({
+        id: provider.id,
+        kind: provider.kind,
+        revision: provider.revision,
+        readOnly: true,
+      })),
     }),
     async search(filters = {}, operation = {}) {
       validateSearchFilters(filters)
@@ -720,6 +926,7 @@ export function createWorkflowStore(configValue = {}) {
       return {
         ok: true,
         source: resolved.entry.source,
+        ...(resolved.entry.provider === undefined ? {} : { provider: { ...resolved.entry.provider } }),
         validation: describeWdlBundleValidation(resolved.entry.bundle),
         diagnostics: resolved.diagnostics,
       }
@@ -734,6 +941,7 @@ export function createWorkflowStore(configValue = {}) {
       return {
         ok: true,
         source: resolved.entry.source,
+        ...(resolved.entry.provider === undefined ? {} : { provider: { ...resolved.entry.provider } }),
         directory: resolved.entry.directory,
         bundle: resolved.entry.bundle,
         diagnostics: resolved.diagnostics,
