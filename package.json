@@ -1,7 +1,7 @@
 {
   "name": "dsh-bio-workflows",
-  "version": "0.10.0",
-  "description": "Bioinformatics WDL catalog, revisioned AI authoring, trusted planning, and opt-in miniwdl execution for DeepSeek Harness.",
+  "version": "0.11.0",
+  "description": "Bioinformatics WDL catalog, bounded autonomous AI authoring, trusted planning, and opt-in miniwdl execution for DeepSeek Harness.",
   "type": "module",
   "main": "./index.js",
   "exports": {
@@ -10,6 +10,7 @@
     "./catalog": "./src/catalog.js",
     "./draft-store": "./src/draft-store.js",
     "./draft-validation": "./src/draft-validation.js",
+    "./mission-store": "./src/mission-store.js",
     "./workflow-graph": "./src/workflow-graph.js",
     "./execution": "./src/execution.js",
     "./manifest": "./src/manifest.js",
@@ -18,6 +19,9 @@
     "./wdl-bundle": "./src/wdl-bundle.js",
     "./schema/bio-workflow-result.schema.json": "./schema/bio-workflow-result.schema.json",
     "./schema/draft-validation-evidence.schema.json": "./schema/draft-validation-evidence.schema.json",
+    "./schema/failure-evidence.schema.json": "./schema/failure-evidence.schema.json",
+    "./schema/mission.schema.json": "./schema/mission.schema.json",
+    "./schema/software-trial-report.schema.json": "./schema/software-trial-report.schema.json",
     "./schema/workflow-manifest.schema.json": "./schema/workflow-manifest.schema.json",
     "./schema/wdl-bundle.schema.json": "./schema/wdl-bundle.schema.json",
     "./schema/wdl-draft-revision.schema.json": "./schema/wdl-draft-revision.schema.json",

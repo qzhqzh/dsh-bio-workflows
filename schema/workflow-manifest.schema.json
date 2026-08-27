@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/dsh-bio-workflows@0.10.0/schema/workflow-manifest.schema.json",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.11.0/schema/workflow-manifest.schema.json",
   "title": "dsh-bio-workflows manifest v1",
   "description": "Read-only catalog metadata. A valid manifest does not authorize or define workflow execution.",
   "type": "object",

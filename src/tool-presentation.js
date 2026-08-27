@@ -7,10 +7,15 @@ const TOOL_PRESENTATIONS = Object.freeze({
   bio_workflows_validate: { title: 'Validate a workflow bundle', kind: 'read', fields: ['id', 'version', 'source'] },
   bio_workflows_install: { title: 'Install a workflow bundle', kind: 'edit', fields: ['id', 'version', 'source'] },
   bio_workflows_scaffold: { title: 'Scaffold a WDL workflow', kind: 'edit', fields: ['id', 'version', 'name'] },
-  bio_workflows_draft_create: { title: 'Create an AI WDL draft', kind: 'edit', fields: ['id', 'version', 'name'] },
+  bio_workflows_mission_prepare: { title: 'Prepare an autonomous software trial', kind: 'read', fields: ['software', 'objective'] },
+  bio_workflows_mission_start: { title: 'Start an autonomous software trial', kind: 'execute', fields: ['software', 'expectedPlanDigest'] },
+  bio_workflows_mission_get: { title: 'Inspect an autonomous software trial', kind: 'read', fields: ['missionId'] },
+  bio_workflows_mission_cancel: { title: 'Cancel an autonomous software trial', kind: 'edit', fields: ['missionId'] },
+  bio_workflows_mission_report: { title: 'Report an autonomous software trial', kind: 'read', fields: ['missionId'] },
+  bio_workflows_draft_create: { title: 'Create an AI WDL draft', kind: 'edit', fields: ['id', 'version', 'name', 'missionId'] },
   bio_workflows_draft_get: { title: 'Read an AI WDL draft', kind: 'read', fields: ['draftId', 'revision', 'path'] },
-  bio_workflows_draft_update: { title: 'Update an AI WDL draft', kind: 'edit', fields: ['draftId', 'expectedRevision', 'expectedContentDigest'] },
-  bio_workflows_draft_validate: { title: 'Validate an AI WDL draft', kind: 'read', fields: ['draftId', 'revision'] },
+  bio_workflows_draft_update: { title: 'Update an AI WDL draft', kind: 'edit', fields: ['draftId', 'expectedRevision', 'expectedContentDigest', 'missionId'] },
+  bio_workflows_draft_validate: { title: 'Validate an AI WDL draft', kind: 'read', fields: ['draftId', 'revision', 'missionId'] },
   bio_workflows_draft_graph: { title: 'Visualize an AI WDL draft', kind: 'read', fields: ['draftId', 'revision'] },
   bio_workflows_plan: { title: 'Plan a bio-workflow run', kind: 'execute', fields: ['id', 'version'] },
   bio_workflows_run: { title: 'Start a bio-workflow run', kind: 'execute', fields: ['id', 'version', 'expectedPlanDigest'] },
@@ -72,6 +77,19 @@ function summaryLines(name, payload) {
     lines.push(`Version ${payload.version ?? 'unknown'} · ${payload.workflowCount ?? 0} configured workflows`)
     const enabled = Object.values(payload.capabilities ?? {}).filter(Boolean).length
     lines.push(`${enabled} capabilities available`)
+  } else if (name === 'bio_workflows_mission_prepare') {
+    lines.push(`Plan ${payload.planDigest ?? 'unavailable'}`)
+    lines.push('Draft authoring only · container execution disabled')
+  } else if (name === 'bio_workflows_mission_report') {
+    lines.push(`${payload.report?.missionId ?? 'Software trial'} · ${payload.report?.outcome ?? 'unknown'}`)
+    lines.push(payload.report?.success === true ? 'Trial passed' : 'No isolated trial success claimed')
+  } else if (
+    name === 'bio_workflows_mission_start'
+    || name === 'bio_workflows_mission_get'
+    || name === 'bio_workflows_mission_cancel'
+  ) {
+    lines.push(`${payload.missionId ?? 'Software trial'} · ${payload.status ?? 'unknown'}`)
+    lines.push(`${payload.phase ?? 'unknown phase'} · ${payload.budget?.remaining?.actions ?? 0} actions remaining`)
   } else if (name === 'bio_workflows_draft_graph') {
     lines.push(`${payload.workflow?.name ?? 'WDL workflow'} · revision ${payload.revision ?? 'unknown'}`)
     lines.push(`${payload.nodes?.length ?? 0} nodes · ${payload.edges?.length ?? 0} edges · ${payload.complete === false ? 'partial graph' : 'complete graph'}`)

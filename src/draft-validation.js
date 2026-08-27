@@ -29,6 +29,8 @@ const MAX_PATH_LENGTH = 4096
 const MAX_OUTPUT_BYTES = 128 * 1024
 const MAX_DIAGNOSTICS = 128
 const MAX_DIAGNOSTIC_TEXT = 1000
+const MAX_CONTAINER_IMAGES = 128
+const MAX_CONTAINER_IMAGE_LENGTH = 512
 const PROCESS_GRACE_MS = 5_000
 const VALIDATION_TIMEOUT_MS = 30_000
 
@@ -370,6 +372,29 @@ function runtimeDeclarations(tokens) {
   return declarations
 }
 
+function topLevelTaskRuntimeDeclarations(tokens) {
+  const tasks = []
+  let depth = 0
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]
+    if (
+      depth === 0
+      && token?.kind === 'identifier'
+      && token.value === 'task'
+      && tokens[index + 1]?.kind === 'identifier'
+      && tokens[index + 2]?.value === '{'
+    ) {
+      const blockEnd = matchingBrace(tokens, index + 2)
+      tasks.push(runtimeDeclarations(tokens.slice(index + 2, blockEnd + 1)))
+      index = blockEnd
+      continue
+    }
+    if (token.value === '{') depth += 1
+    else if (token.value === '}') depth = Math.max(0, depth - 1)
+  }
+  return tasks
+}
+
 function structuralValidation(resolved) {
   const { metadata, snapshot } = resolved
   const diagnostics = []
@@ -390,8 +415,8 @@ function structuralValidation(resolved) {
   let versionValid = true
   let importsSafe = true
   const wdlFiles = snapshot.files.filter((file) => file.path.endsWith('.wdl'))
-  for (const file of wdlFiles) {
-    const tokens = tokenizeWdl(file.content)
+  const tokenizedWdlFiles = wdlFiles.map((file) => ({ file, tokens: tokenizeWdl(file.content) }))
+  for (const { file, tokens } of tokenizedWdlFiles) {
     const version = declaredWdlVersion(file.content)
     if (version !== '1.0') {
       versionValid = false
@@ -442,29 +467,53 @@ function structuralValidation(resolved) {
   }
 
   let containersValid = true
-  for (const file of wdlFiles) {
-    for (const declaration of runtimeDeclarations(tokenizeWdl(file.content))) {
-      const literal = declaration.expression.length === 1
-        && declaration.expression[0].kind === 'string'
-        && declaration.expression[0].plain === true
-        ? declaration.expression[0].value
-        : null
-      if (literal === null) {
-        containersValid = false
-        addDiagnostic(diagnostic(
-          `$.files[${file.path}]`,
-          'container_reference_dynamic',
-          'container references must be literal digest-pinned images',
-        ))
-      } else if (!/^[^\s"'\\]+@sha256:[a-f0-9]{64}$/.test(literal)) {
-        containersValid = false
-        addDiagnostic(diagnostic(
-          `$.files[${file.path}]`,
-          'container_digest_unpinned',
-          `container image must be pinned by SHA-256 digest: ${literal}`,
-        ))
+  const containerImages = new Set()
+  let containerImagesTruncated = false
+  let taskCount = 0
+  let tasksWithSingleContainer = 0
+  for (const { file, tokens } of tokenizedWdlFiles) {
+    const taskDeclarations = topLevelTaskRuntimeDeclarations(tokens)
+    taskCount += taskDeclarations.length
+    for (const declarations of taskDeclarations) {
+      if (declarations.length === 1) tasksWithSingleContainer += 1
+      for (const declaration of declarations) {
+        const literal = declaration.expression.length === 1
+          && declaration.expression[0].kind === 'string'
+          && declaration.expression[0].plain === true
+          ? declaration.expression[0].value
+          : null
+        if (literal === null) {
+          containersValid = false
+          addDiagnostic(diagnostic(
+            `$.files[${file.path}]`,
+            'container_reference_dynamic',
+            'container references must be literal digest-pinned images',
+          ))
+        } else if (
+          literal.length > MAX_CONTAINER_IMAGE_LENGTH
+          || !/^[^\s"'\\]+@sha256:[a-f0-9]{64}$/.test(literal)
+        ) {
+          containersValid = false
+          addDiagnostic(diagnostic(
+            `$.files[${file.path}]`,
+            'container_digest_unpinned',
+            `container image must be a bounded SHA-256 digest-pinned reference: ${literal}`,
+          ))
+        } else if (!containerImages.has(literal)) {
+          if (containerImages.size < MAX_CONTAINER_IMAGES) containerImages.add(literal)
+          else containerImagesTruncated = true
+        }
       }
     }
+  }
+  if (containerImagesTruncated) {
+    containersValid = false
+    truncated = true
+    addDiagnostic(diagnostic(
+      '$.containerImages',
+      'container_image_limit',
+      `validation evidence supports at most ${MAX_CONTAINER_IMAGES} distinct container images`,
+    ))
   }
 
   let metadataValid = true
@@ -506,6 +555,12 @@ function structuralValidation(resolved) {
     checks,
     engineSafe: entrypointValid && importsSafe,
     structurallyValid: diagnostics.every((item) => item.severity !== 'error'),
+    containerImages: [...containerImages].sort(),
+    containerPolicy: {
+      taskCount,
+      tasksWithSingleContainer,
+      complete: taskCount > 0 && tasksWithSingleContainer === taskCount && containersValid,
+    },
     truncated,
   }
 }
@@ -774,6 +829,8 @@ export function createDraftValidator(options) {
           languageVersion: resolved.metadata.languageVersion,
           validator: null,
           checks,
+          containerImages: structural.containerImages,
+          containerPolicy: structural.containerPolicy,
           diagnostics,
           valid: false,
           truncated: structural.truncated,
@@ -787,6 +844,8 @@ export function createDraftValidator(options) {
           draftId: resolved.metadata.draftId,
           revision: resolved.snapshot.revision,
           contentDigest: resolved.snapshot.contentDigest,
+          containerImages: structural.containerImages,
+          containerPolicy: structural.containerPolicy,
           diagnostics: sortDiagnostics(structural.diagnostics),
         })
       }
@@ -870,6 +929,8 @@ export function createDraftValidator(options) {
             executable: identity,
           },
           checks,
+          containerImages: structural.containerImages,
+          containerPolicy: structural.containerPolicy,
           diagnostics: sortDiagnostics(diagnostics).slice(0, MAX_DIAGNOSTICS),
           valid: structural.structurallyValid && miniwdlPassed,
           truncated: structural.truncated || miniwdl.truncated || diagnostics.length > MAX_DIAGNOSTICS,
@@ -882,6 +943,8 @@ export function createDraftValidator(options) {
           draftId: resolved.metadata.draftId,
           revision: resolved.snapshot.revision,
           contentDigest: resolved.snapshot.contentDigest,
+          containerImages: structural.containerImages,
+          containerPolicy: structural.containerPolicy,
           reason: String(error?.message ?? error).slice(0, MAX_DIAGNOSTIC_TEXT),
           diagnostics: sortDiagnostics(structural.diagnostics),
         })

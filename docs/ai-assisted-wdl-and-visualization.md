@@ -20,7 +20,7 @@ release (`b150a551b8`). This document defines no new execution authority.
 | Visualization | `WorkflowGraph v1` is parsed from exact WDL source. The model may explain it but cannot create authoritative graph edges. |
 | First native UI | Ship a browser Client face in the same npm package: a keyed `tool.call.toolview` renderer plus a responsive Workflow Center. A correlated Conversation Node is deferred. |
 | Execution | Draft validation and graph generation cannot run WDL tasks. Test, promotion, and production execution remain separate approvals. |
-| Implemented slices | `0.8.0` create/get/update/validate; `0.8.1` replay-safe presentations; `0.9.0` graph; `0.10.0` Workflow Center. No graph editor, draft test, promotion, or new execution allowlist. |
+| Implemented slices | `0.8.0` create/get/update/validate; `0.8.1` replay-safe presentations; `0.9.0` graph; `0.10.0` Workflow Center; `0.11.0` bounded owner-session Mission authoring and validation repair. No graph editor, isolated draft test, promotion, or new execution allowlist. |
 
 ## Product boundary
 

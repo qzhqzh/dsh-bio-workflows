@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.11.0 - 2026-08-27
+
+- Add default-off, owner-session/runtime-scoped autonomous authoring Missions.
+  One DSH approval binds an exact software identity, digest-pinned container
+  reference, objective, acceptance criteria, allowed draft actions, action and
+  repair budgets, wall time, and immutable `planDigest`.
+- Add `mission_prepare`, `mission_start`, `mission_get`, `mission_cancel`, and
+  `mission_report` tools. Mission-bound draft create/update/validate calls
+  reserve durable budget after DSH policy guards and do not ask per action;
+  other draft mutations retain their existing one-shot approvals.
+- Persist private integrity-bound Mission records, bind exactly one draft with
+  revision/content-digest compare-and-swap, normalize validation diagnostics
+  into stable failure fingerprints, and stop on repeated failures, aggregate
+  limits, validator infrastructure failure, cancellation, wall time, or runtime
+  restart. Ambiguous action outcomes explicitly forbid same-call replay.
+- Publish `Mission v1`, `Failure Evidence v1`, and `Software Trial Report v1`
+  schemas and add native tool-card summaries plus Workflow Center readiness.
+- Keep the first slice authoring-only: model-authored WDL containers are not
+  pulled or run, successful validation reports only
+  `ready_for_isolated_test` and terminally revokes the Mission write grant,
+  production execution/promotion remain false, and the existing built-in
+  execution allowlist is unchanged. A separately proven container-and-host-
+  isolated draft runner is required for the next phase.
+
 ## 0.10.0 - 2026-08-26
 
 - Ship the Host and Web Client faces in the same `dsh-bio-workflows` npm

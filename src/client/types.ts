@@ -27,6 +27,7 @@ export interface WorkflowCenterBootstrap {
   readiness: Record<string, boolean>
   privacy: {
     ownerScopedDraftsViaAgent: true
+    ownerScopedMissionsViaAgent: true
     ownerScopedRunsViaAgent: true
   }
 }

@@ -2,12 +2,14 @@
 
 ## Executive assessment
 
-The `0.10.0` candidate completes the first usable AI-assisted WDL experience:
-session-scoped immutable drafts with dual compare-and-swap, exact-revision
-validation, deterministic `WorkflowGraph v1`, replay-safe tool cards, and a
-responsive Workflow Center. DeepSeek Harness retains model, conversation, and
-approval ownership; this plugin owns deterministic source, filesystem,
-validation, graph, and execution-policy boundaries.
+The `0.11.0` candidate adds a bounded autonomous repair loop to the usable
+AI-assisted WDL experience. One digest-bound approval creates an owner-session
+Mission whose durable budgets cover only draft create, compare-and-swap update,
+and exact-revision validation. Stable failure fingerprints, wall/action/failure
+limits, cancellation, infrastructure failure, and runtime restart stop the loop
+without automatic retry. DeepSeek Harness retains model, conversation, and
+approval ownership; this plugin owns deterministic source, Mission state,
+filesystem, validation, graph, and execution-policy boundaries.
 
 The `0.7.0` `BioWorkflowResult v1`, bounded output hashing, FastQC summary
 parsing, and opt-in execution MVP remain backward compatible. Built-in
@@ -66,11 +68,16 @@ flowchart LR
   R --> P
   A --> T[bio_workflows_run_list]
   T --> P
+  A --> AM[Mission prepare and exact planDigest]
+  AM --> AN[One owner-session bounded approval]
+  AN --> AX[Mission-bound draft create/update/validate]
+  AX --> Y
   A --> X[Draft create/get/update]
   X --> Y[Session owner + immutable revisions + dual CAS]
   Y --> Z[Exact revision structural validation]
   Z --> AA[Identity-pinned miniwdl check]
   AA -. no task run or execution authority .-> E
+  AN -. no container test, promotion, or production authority .-> E
   Y --> AB[Deterministic WorkflowGraph v1]
   AB --> AC[Keyed read-only graph card]
   AD[Workflow Center] --> A
@@ -91,6 +98,7 @@ model-authored command fragments or environment names to a host shell.
 | Manifest v1 and catalog | Implemented | Strict runtime validator, JSON Schema, deterministic list/get | Migration policy when v2 is needed |
 | WDL bundle and Store | Implemented foundation | Bounded reads, file SHA-256, local import closure, immutable opt-in installs | Git/TRS providers and visual Store UI |
 | AI-assisted draft authoring | Implemented 0.10 core | Session-derived ownership, opaque ids, immutable full snapshots, dual CAS, model-driven DSH Agent-loop and approval smoke, structural and validator tests | Agent Skill, collaboration, test and promotion |
+| Bounded autonomous WDL repair | Implemented 0.11 authoring slice | Exact plan digest, one owner-session grant, durable action/failure/wall budgets, stable fingerprints, repeated-failure circuit breaker, restart interruption, Mission/tool integration tests | Separately isolated fixture runner; no software-container success claim yet |
 | Deterministic workflow graph | Implemented | Exact owner/revision/digest binding, schema validation, stable nodes/edges/source ranges, partial-graph diagnostics, parser and tool tests | Additional WDL syntax coverage and source editor navigation |
 | Native Workflow Center | Implemented | Same-package Client build, official sidebar/overlay/tool slots, built-in-only bootstrap, exact execution-allowlist affordances, deep-validated graph replay, fail-closed current-Session Agent bridge, desktop/mobile and modal keyboard Playwright tests | Agent-mediated draft browsing, direct source editor, richer Store providers |
 | Starter workflows | Two families, four versions | All WDL 1.0 bundles pass pinned `miniwdl 1.15.0 check`; `fastq-qc@1.2.0` has a retained real result acceptance record | Promote and verify BAM separately |
@@ -103,14 +111,14 @@ model-authored command fragments or environment names to a host shell.
 
 ## Is the main functionality implemented?
 
-Yes for the intentionally bounded `0.10.0` experience: an Agent can create
-a private draft, inspect one exact revision/file, submit an approval-bound CAS
-patch, obtain deterministic non-executing validation evidence, and derive a
-revision-bound read-only graph. A user can discover workflows, initiate these
-actions, inspect runs, and diagnose setup from Workflow Center while every
-material action still passes through the current Agent and ordinary approval
-flow. Invalid WDL remains repairable, cross-session reads are silent, and no
-draft can enter the existing execution allowlist.
+Yes for the intentionally bounded `0.11.0` authoring experience: an Agent can
+prepare an exact Mission, cross one visible approval, create a private draft,
+inspect one exact revision/file, submit multiple Mission-budgeted CAS patches,
+validate each immutable revision, diagnose stable failure fingerprints, stop at
+configured thresholds, and produce a truthful report. Cross-session reads are
+silent, runtime restart never retries, and no draft can enter the existing
+execution allowlist. A valid draft is only `ready_for_isolated_test`; no
+software container was run and report success remains false.
 
 At the code-contract and real container-execution levels, the earlier execution
 MVP also remains complete for one deliberately narrow workflow. This is still
@@ -120,7 +128,8 @@ workflow execution are not implemented.
 
 The correct release description is therefore **AI-assisted revisioned WDL
 authoring, deterministic visualization, and miniwdl execution MVP / preview**,
-not a general-purpose production WDL runner or full WDL IDE.
+not a general-purpose autonomous software runner, production WDL runner, or
+full WDL IDE.
 
 ## Security and reproducibility invariants
 

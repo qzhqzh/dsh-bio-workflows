@@ -5,6 +5,12 @@ import test from 'node:test'
 import { validateBioWorkflowResultSemantics } from '../src/execution.js'
 import { DRAFT_LIMITS, DRAFT_SCHEMA_VERSION } from '../src/draft-store.js'
 import { DRAFT_VALIDATION_SCHEMA_VERSION } from '../src/draft-validation.js'
+import {
+  FAILURE_EVIDENCE_SCHEMA_VERSION,
+  MISSION_DEFAULT_LIMITS,
+  MISSION_SCHEMA_VERSION,
+  SOFTWARE_TRIAL_REPORT_SCHEMA_VERSION,
+} from '../src/mission-store.js'
 import { WORKFLOW_GRAPH_LIMITS, WORKFLOW_GRAPH_SCHEMA_VERSION } from '../src/workflow-graph.js'
 import {
   PACKAGE_NAME,
@@ -32,6 +38,7 @@ test('package metadata matches the runtime identity', () => {
   assert.equal(packageJson.exports['./catalog'], './src/catalog.js')
   assert.equal(packageJson.exports['./draft-store'], './src/draft-store.js')
   assert.equal(packageJson.exports['./draft-validation'], './src/draft-validation.js')
+  assert.equal(packageJson.exports['./mission-store'], './src/mission-store.js')
   assert.equal(packageJson.exports['./workflow-graph'], './src/workflow-graph.js')
   assert.equal(packageJson.exports['./client'], './lib/client.js')
   assert.equal(packageJson.exports['./execution'], './src/execution.js')
@@ -62,6 +69,18 @@ test('package metadata matches the runtime identity', () => {
   assert.equal(
     packageJson.exports['./schema/workflow-graph.schema.json'],
     './schema/workflow-graph.schema.json',
+  )
+  assert.equal(
+    packageJson.exports['./schema/mission.schema.json'],
+    './schema/mission.schema.json',
+  )
+  assert.equal(
+    packageJson.exports['./schema/failure-evidence.schema.json'],
+    './schema/failure-evidence.schema.json',
+  )
+  assert.equal(
+    packageJson.exports['./schema/software-trial-report.schema.json'],
+    './schema/software-trial-report.schema.json',
   )
   assert.ok(packageJson.files.includes('workflows/'))
   assert.ok(packageJson.files.includes('lib/'))
@@ -121,6 +140,9 @@ test('draft revision and validation evidence schemas match runtime contract vers
   assert.match(revisionSchema.$comment, /UTF-8 byte budgets/)
   assert.equal(validationSchema.properties.schemaVersion.const, DRAFT_VALIDATION_SCHEMA_VERSION)
   assert.equal(validationSchema.properties.diagnostics.maxItems, 128)
+  assert.equal(validationSchema.properties.containerImages.maxItems, 128)
+  assert.equal(validationSchema.properties.containerImages.uniqueItems, true)
+  assert.equal(validationSchema.properties.containerPolicy.additionalProperties, false)
   assert.equal(validationSchema.properties.executionAuthorized.const, false)
 })
 
@@ -136,6 +158,36 @@ test('WorkflowGraph v1 schema matches runtime limits and keeps layout non-author
   assert.equal(schema.properties.diagnostics.maxItems, WORKFLOW_GRAPH_LIMITS.maxDiagnostics)
   assert.equal(schema.properties.executionAuthorized.const, false)
   assert.equal(schema.properties.layout, undefined)
+})
+
+test('Mission, failure evidence, and software trial report schemas preserve the authoring-only boundary', async () => {
+  const mission = JSON.parse(await readFile(
+    new URL('../schema/mission.schema.json', import.meta.url),
+    'utf8',
+  ))
+  const failure = JSON.parse(await readFile(
+    new URL('../schema/failure-evidence.schema.json', import.meta.url),
+    'utf8',
+  ))
+  const report = JSON.parse(await readFile(
+    new URL('../schema/software-trial-report.schema.json', import.meta.url),
+    'utf8',
+  ))
+
+  assert.equal(mission.properties.schemaVersion.const, MISSION_SCHEMA_VERSION)
+  assert.equal(mission.properties.status.enum.includes('ready'), true)
+  assert.equal(
+    mission.$defs.policy.properties.maxActions.maximum,
+    64,
+  )
+  assert.equal(MISSION_DEFAULT_LIMITS.maxSameFailureFingerprint, 3)
+  assert.equal(mission.properties.capabilities.properties.isolatedDraftTest.const, false)
+  assert.equal(mission.properties.capabilities.properties.productionExecution.const, false)
+  assert.equal(mission.properties.automaticRetryAfterRestart.const, false)
+  assert.equal(failure.properties.schemaVersion.const, FAILURE_EVIDENCE_SCHEMA_VERSION)
+  assert.equal(report.properties.schemaVersion.const, SOFTWARE_TRIAL_REPORT_SCHEMA_VERSION)
+  assert.equal(report.properties.success.const, false)
+  assert.equal(report.properties.readiness.properties.isolatedTestCompleted.const, false)
 })
 
 test('the foundation package has no install lifecycle scripts', () => {
@@ -172,6 +224,7 @@ test('the bundle patch installs the expected package', async () => {
   assert.match(patch, /writeEnabled: false/)
   assert.match(patch, /authoring:/)
   assert.match(patch, /expectedVersion: 1\.15\.0/)
+  assert.match(patch, /autonomy:/)
   assert.match(patch, /execution:/)
   assert.match(patch, /enabled: false/)
 })
@@ -224,6 +277,14 @@ test('the info tool is read-only and registers once', async () => {
       policyVersion: null,
     },
   })
+  assert.deepEqual(result.autonomy, {
+    configured: false,
+    enabled: false,
+    ownerScope: 'session',
+    schemaVersion: null,
+    capabilities: {},
+    limits: {},
+  })
   assert.equal(result.capabilities.workflowCatalog, true)
   assert.equal(result.capabilities.manifestValidation, true)
   assert.equal(result.capabilities.preflightValidation, true)
@@ -235,6 +296,10 @@ test('the info tool is read-only and registers once', async () => {
   assert.equal(result.capabilities.draftCompareAndSwap, true)
   assert.equal(result.capabilities.deterministicDraftValidation, false)
   assert.equal(result.capabilities.deterministicWorkflowGraph, true)
+  assert.equal(result.capabilities.boundedAutonomousDraftAuthoring, false)
+  assert.equal(result.capabilities.autonomousWdlValidationRepair, false)
+  assert.equal(result.capabilities.isolatedSoftwareTrial, false)
+  assert.equal(result.capabilities.autonomousProductionExecution, false)
   assert.equal(result.capabilities.nativeWorkflowCenter, true)
   assert.equal(result.capabilities.workflowExecution, false)
   assert.equal(result.capabilities.liveExecutionPlanning, false)
@@ -280,4 +345,28 @@ test('the info tool separates execution configuration from live service readines
   assert.equal(info.capabilities.normalizedWorkflowResults, true)
   assert.equal(info.capabilities.outputChecksums, true)
   assert.equal(info.capabilities.fastqcSummaries, true)
+})
+
+test('the info tool reports bounded Mission authoring without implying isolated execution', () => {
+  const info = getPackageInfo(
+    0,
+    0,
+    {},
+    {},
+    { validator: { subprocessAvailable: true } },
+    {
+      configured: true,
+      enabled: true,
+      ownerScope: 'session',
+      schemaVersion: MISSION_SCHEMA_VERSION,
+      capabilities: { boundedDraftAuthoring: true, isolatedDraftTest: false },
+      limits: MISSION_DEFAULT_LIMITS,
+    },
+  )
+
+  assert.equal(info.autonomy.enabled, true)
+  assert.equal(info.capabilities.boundedAutonomousDraftAuthoring, true)
+  assert.equal(info.capabilities.autonomousWdlValidationRepair, true)
+  assert.equal(info.capabilities.isolatedSoftwareTrial, false)
+  assert.equal(info.capabilities.autonomousProductionExecution, false)
 })

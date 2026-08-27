@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unpkg.com/dsh-bio-workflows@0.11.0/schema/mission.schema.json",
+  "title": "Bounded Autonomous WDL Authoring Mission v1",
+  "$comment": "A Mission grant is owner-session and runtime scoped. Runtime restart is fail-closed and never retries an in-flight operation. This schema describes the public Mission snapshot, not its private persistence record.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ok",
+    "schemaVersion",
+    "missionId",
+    "status",
+    "phase",
+    "sequence",
+    "goal",
+    "policy",
+    "planDigest",
+    "policyDigest",
+    "createdAt",
+    "updatedAt",
+    "expiresAt",
+    "draft",
+    "budget",
+    "lastValidation",
+    "failures",
+    "stop",
+    "capabilities",
+    "automaticRetryAfterRestart",
+    "error"
+  ],
+  "properties": {
+    "ok": { "const": true },
+    "schemaVersion": { "const": "1" },
+    "missionId": { "$ref": "#/$defs/missionId" },
+    "status": { "enum": ["active", "ready", "exhausted", "blocked", "cancelled", "interrupted"] },
+    "phase": { "enum": ["authoring", "validating", "diagnosing", "validated", "stopped"] },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "goal": { "$ref": "#/$defs/goal" },
+    "policy": { "$ref": "#/$defs/policy" },
+    "planDigest": { "$ref": "#/$defs/digest" },
+    "policyDigest": { "$ref": "#/$defs/digest" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "draft": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/draft" }
+      ]
+    },
+    "budget": { "$ref": "#/$defs/budget" },
+    "lastValidation": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/validation" }
+      ]
+    },
+    "failures": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/failure" }
+    },
+    "stop": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/stop" }
+      ]
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "autonomousDraftAuthoring",
+        "autonomousValidationRepair",
+        "isolatedDraftTest",
+        "productionExecution",
+        "workflowPromotion"
+      ],
+      "properties": {
+        "autonomousDraftAuthoring": { "const": true },
+        "autonomousValidationRepair": { "const": true },
+        "isolatedDraftTest": { "const": false },
+        "productionExecution": { "const": false },
+        "workflowPromotion": { "const": false }
+      }
+    },
+    "automaticRetryAfterRestart": { "const": false },
+    "error": { "type": "null" }
+  },
+  "$defs": {
+    "missionId": {
+      "type": "string",
+      "pattern": "^mission-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "draftId": {
+      "type": "string",
+      "pattern": "^draft-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "software": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "containerImage"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "containerImage": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^\\s\"'\\\\]+@sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "goal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["software", "objective", "acceptanceCriteria"],
+      "properties": {
+        "software": { "$ref": "#/$defs/software" },
+        "objective": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "acceptanceCriteria": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowedActions",
+        "maxActions",
+        "maxDraftCreates",
+        "maxDraftUpdates",
+        "maxValidationFailures",
+        "maxSameFailureFingerprint",
+        "maxWallTimeMs"
+      ],
+      "properties": {
+        "allowedActions": {
+          "const": ["draft_create", "draft_update", "draft_validate"]
+        },
+        "maxActions": { "type": "integer", "minimum": 1, "maximum": 64 },
+        "maxDraftCreates": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "maxDraftUpdates": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "maxValidationFailures": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "maxSameFailureFingerprint": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "maxWallTimeMs": { "type": "integer", "minimum": 60000, "maximum": 86400000 }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actions", "draftCreates", "draftUpdates", "validations", "validationFailures"],
+      "properties": {
+        "actions": { "type": "integer", "minimum": 0, "maximum": 64 },
+        "draftCreates": { "type": "integer", "minimum": 0, "maximum": 4 },
+        "draftUpdates": { "type": "integer", "minimum": 0, "maximum": 16 },
+        "validations": { "type": "integer", "minimum": 0, "maximum": 64 },
+        "validationFailures": { "type": "integer", "minimum": 0, "maximum": 16 }
+      }
+    },
+    "remaining": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actions", "draftCreates", "draftUpdates", "validationFailures", "wallTimeMs"],
+      "properties": {
+        "actions": { "type": "integer", "minimum": 0, "maximum": 64 },
+        "draftCreates": { "type": "integer", "minimum": 0, "maximum": 4 },
+        "draftUpdates": { "type": "integer", "minimum": 0, "maximum": 16 },
+        "validationFailures": { "type": "integer", "minimum": 0, "maximum": 16 },
+        "wallTimeMs": { "type": "integer", "minimum": 0, "maximum": 86400000 }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["used", "remaining"],
+      "properties": {
+        "used": { "$ref": "#/$defs/usage" },
+        "remaining": { "$ref": "#/$defs/remaining" }
+      }
+    },
+    "draft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["draftId", "revision", "contentDigest"],
+      "properties": {
+        "draftId": { "$ref": "#/$defs/draftId" },
+        "revision": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "contentDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "contentDigest", "validationDigest", "valid", "observedAt"],
+      "properties": {
+        "revision": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "contentDigest": { "$ref": "#/$defs/digest" },
+        "validationDigest": { "$ref": "#/$defs/digest" },
+        "valid": { "const": true },
+        "observedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "code", "severity"],
+      "properties": {
+        "path": { "type": "string", "maxLength": 512 },
+        "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "severity": { "enum": ["error", "warning"] }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "failureClass",
+        "draft",
+        "diagnostics",
+        "failureFingerprint",
+        "evidenceDigest",
+        "occurrence",
+        "observedAt"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "failureClass": { "enum": ["wdl_validation", "validation_infrastructure"] },
+        "draft": { "$ref": "#/$defs/draft" },
+        "diagnostics": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/diagnostic" }
+        },
+        "failureFingerprint": { "$ref": "#/$defs/digest" },
+        "evidenceDigest": { "$ref": "#/$defs/digest" },
+        "occurrence": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "observedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "stop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "at", "automaticRetry"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "at": { "type": "string", "format": "date-time" },
+        "automaticRetry": { "const": false }
+      }
+    }
+  }
+}

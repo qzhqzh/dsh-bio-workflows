@@ -67,7 +67,7 @@ const workflows = [
 
 const bootstrap: WorkflowCenterBootstrap = {
   schemaVersion: '1',
-  package: { name: 'dsh-bio-workflows', version: '0.10.0' },
+  package: { name: 'dsh-bio-workflows', version: '0.11.0' },
   workflows,
   diagnostics: catalogWarning
     ? [{ code: 'store_path_unsafe', message: 'The configured local workflow store is unavailable.' }]
@@ -81,12 +81,18 @@ const bootstrap: WorkflowCenterBootstrap = {
     draftAuthoringConfigured: true,
     draftWritesEnabled,
     miniwdlValidator: true,
+    autonomousMissionAuthoring: true,
+    isolatedSoftwareTrial: false,
     workflowGraph: true,
     executionConfigured: true,
     executionEnabled: false,
     jobsAvailable: true,
   },
-  privacy: { ownerScopedDraftsViaAgent: true, ownerScopedRunsViaAgent: true },
+  privacy: {
+    ownerScopedDraftsViaAgent: true,
+    ownerScopedMissionsViaAgent: true,
+    ownerScopedRunsViaAgent: true,
+  },
 }
 
 const sessions: SessionsFace = {
