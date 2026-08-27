@@ -620,7 +620,7 @@ try {
     },
     budgets: {
       cpu: 1,
-      memoryBytes: 256 * 1024 * 1024,
+      memoryBytes: 512 * 1024 * 1024,
       pids: 32,
       wallTimeMs: 90_000,
       taskTimeMs: 60_000,
@@ -814,7 +814,11 @@ workflow bomb {
   const timedOut = await manager.get(timeoutTrial.started.testId, operation)
   assert.equal(timedOut.test.status, 'failed')
   assert.equal(timedOut.test.evidence.passed, false)
-  assert.equal(timedOut.test.evidence.exit.timedOut, true)
+  assert.equal(
+    timedOut.test.evidence.exit.timedOut,
+    true,
+    JSON.stringify(timedOut.test.evidence),
+  )
   assert.equal(timedOut.test.evidence.failure.code, 'task_time_exceeded')
 
   const cancelMission = await createReadyTrial({
