@@ -1,11 +1,11 @@
 {
   "schemaVersion": "1",
-  "recordedAt": "2026-08-27T17:44:47.528Z",
+  "recordedAt": "2026-08-29T09:13:47.535Z",
   "scope": "real-bioworkflow-result-acceptance",
   "packageVersion": "0.12.0",
   "adapterSources": {
     "index.js": "7660fa4456dcbc30b382801c7d69d567b8047d9b656637a38f4072ac42f9804f",
-    "src/execution.js": "efd6da1f0ee1fe561558fd1ce4cf7fc2200c8ddcd8b6be1a062e9ae445fc3375",
+    "src/execution.js": "d69e680516c6b39eaa893cf33650a5099f48b97755d295cf0e34d288df655e8e",
     "src/execution-tools.js": "70a4faa747ed25f537de72b61e45df7741205f1a1968e1350e4124ef1a0dccc0",
     "src/workflow-store.js": "8bf2d5ddc9d8a1d1966e0a0b4eb398e93f8344a631009cd5683dc60eec6c1700"
   },
@@ -13,7 +13,7 @@
     "id": "fastq-qc",
     "version": "1.2.0",
     "bundleDigest": "sha256:6dac1d1a37672462a1e4539fccf967f6a1204a9667c94799f36351d8d92e564e",
-    "planDigest": "sha256:048628029b7a1ef549ab1cca33983b4bf8f9c01ed483c7dec33b8fee51104904"
+    "planDigest": "sha256:ca22bb19b52074b7899d0671214f53599777563eae926ec6a2f1bfe3bdefd8c0"
   },
   "runner": {
     "name": "miniwdl",
@@ -53,8 +53,8 @@
     "networkIsolation": {
       "mode": "ephemeral_internal",
       "network": {
-        "id": "usgb7smd9uudmpmile1ebclkh",
-        "name": "dsh-bio-run-3e533f60-c92a-4b75-9f9c-ba60bbaf52f8",
+        "id": "9zyglw0u76k8eu8x268l4gvnl",
+        "name": "dsh-bio-run-d090b2fa-8b76-4ffc-93fd-434aaa305763",
         "driver": "overlay",
         "scope": "swarm",
         "internal": true,
@@ -62,7 +62,7 @@
         "ingress": false,
         "labels": {
           "dsh.bio-workflows.managed": "true",
-          "dsh.bio-workflows.run-id": "run-3e533f60-c92a-4b75-9f9c-ba60bbaf52f8"
+          "dsh.bio-workflows.run-id": "run-d090b2fa-8b76-4ffc-93fd-434aaa305763"
         },
         "servicesAtAdmission": 0
       },
@@ -94,6 +94,10 @@
     "maxFastqcSummaryLines": 512,
     "maxTotalFastqcSummaryLines": 16384,
     "maxFastqcSummaryLineBytes": 4096,
+    "maxSamtoolsSummaryBytes": 1048576,
+    "maxSamtoolsFlagstatLines": 128,
+    "maxSamtoolsIdxstatsLines": 16384,
+    "maxSamtoolsSummaryLineBytes": 4096,
     "canonicalTargetNoFollowOpen": true,
     "descriptorIdentityRechecked": true,
     "hostZipExtraction": false
@@ -106,15 +110,15 @@
         "outputId": "html_reports",
         "ordinal": 0,
         "sizeBytes": "377991",
-        "sha256": "sha256:9d5c56bab54ce07cb95f98e2d5244486d83fbc27ab5c6ec7579abe686f3e6682",
-        "directSha256": "sha256:9d5c56bab54ce07cb95f98e2d5244486d83fbc27ab5c6ec7579abe686f3e6682"
+        "sha256": "sha256:883b6a264949a3bdc1aed830da0f857802525dd8cd065fa586bbaa35118a88a0",
+        "directSha256": "sha256:883b6a264949a3bdc1aed830da0f857802525dd8cd065fa586bbaa35118a88a0"
       },
       {
         "outputId": "zip_reports",
         "ordinal": 0,
         "sizeBytes": "288628",
-        "sha256": "sha256:b678481894dca1932e89aa486843ddba9753e0ddd331082fb1c70c4785b21aec",
-        "directSha256": "sha256:b678481894dca1932e89aa486843ddba9753e0ddd331082fb1c70c4785b21aec"
+        "sha256": "sha256:ef0428d8b2515eb83080d350527a0df71cab30a5511679cea8efb4d8eb46a3b9",
+        "directSha256": "sha256:ef0428d8b2515eb83080d350527a0df71cab30a5511679cea8efb4d8eb46a3b9"
       },
       {
         "outputId": "summary_reports",

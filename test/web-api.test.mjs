@@ -18,7 +18,7 @@ function options() {
       configured: true,
       subprocessAvailable: true,
       jobsAvailable: true,
-      supportedWorkflows: ['fastq-qc@1.2.0'],
+      supportedWorkflows: ['bam-qc@1.1.0', 'fastq-qc@1.2.0'],
     }),
     authoring: () => ({
       configured: true,
@@ -59,7 +59,7 @@ test('Workflow Center bootstrap exposes bounded public catalog facts but no owne
 
   assert.equal(value.schemaVersion, '1')
   assert.equal(value.package.version, '0.12.0')
-  assert.equal(value.workflows.length, 4)
+  assert.equal(value.workflows.length, 5)
   assert.equal(value.workflows.every((workflow) => workflow.source === 'builtin'), true)
   const fastq = value.workflows.find((workflow) => workflow.id === 'fastq-qc' && workflow.version === '1.2.0')
   assert.equal(fastq.executionSupported, true)
@@ -73,7 +73,14 @@ test('Workflow Center bootstrap exposes bounded public catalog facts but no owne
     { id: 'zip_reports', type: 'file', cardinality: 'many' },
     { id: 'summary_reports', type: 'file', cardinality: 'many' },
   ])
-  assert.equal(value.workflows.find((workflow) => workflow.id === 'bam-qc').executionSupported, false)
+  const bamDraft = value.workflows.find((workflow) => workflow.id === 'bam-qc' && workflow.version === '1.0.0')
+  const bam = value.workflows.find((workflow) => workflow.id === 'bam-qc' && workflow.version === '1.1.0')
+  assert.equal(bamDraft.executionSupported, false)
+  assert.equal(bam.executionSupported, true)
+  assert.deepEqual(bam.inputs.map(({ id, type, cardinality }) => ({ id, type, cardinality })), [
+    { id: 'bam', type: 'file', cardinality: 'one' },
+    { id: 'bai', type: 'file', cardinality: 'one' },
+  ])
   assert.equal(value.readiness.miniwdlValidator, true)
   assert.equal(value.readiness.autonomousMissionAuthoring, true)
   assert.equal(value.readiness.isolatedSoftwareTrial, false)
@@ -152,7 +159,7 @@ test('Workflow Center scans the catalog once and never resolves each built-in se
 
   const value = await createWorkflowCenterBootstrap(configured)
 
-  assert.equal(value.workflows.length, 4)
+  assert.equal(value.workflows.length, 5)
   assert.equal(searches, 1)
   assert.equal(resolves, 0)
 })
@@ -179,7 +186,7 @@ test('Workflow Center explicitly projects public workflow fields instead of spre
 
   const value = await createWorkflowCenterBootstrap(configured)
 
-  assert.equal(value.workflows.length, 4)
+  assert.equal(value.workflows.length, 5)
   assert.doesNotMatch(JSON.stringify(value), /ownerSession|private-session|localPath|credential|private-engine-token|privateDetail|\/data\/private/)
 })
 

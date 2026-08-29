@@ -653,7 +653,7 @@ test('public self-references and the dependency-free root DSH apply entry work',
   )
   assert.equal(approval.kind, 'deny')
 
-  assert.equal(searchResult.count, 4)
+  assert.equal(searchResult.count, 5)
 })
 
 test('the real DSH ToolRuntime preserves structured invalid-argument identity', async () => {
@@ -683,7 +683,7 @@ test('the real DSH ToolRuntime preserves structured invalid-argument identity', 
   })
   assert.equal(search.isError, false)
   const searchValue = JSON.parse(search.value)
-  assert.equal(searchValue.count, 4)
+  assert.equal(searchValue.count, 5)
   const fastq = searchValue.workflows.find((workflow) => workflow.id === 'fastq-qc')
 
   const deniedInstall = await runtime.execute({

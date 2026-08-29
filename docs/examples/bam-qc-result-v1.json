@@ -1,0 +1,75 @@
+{
+  "schemaVersion": "1",
+  "status": "completed",
+  "generatedAt": "2026-08-29T12:00:00.000Z",
+  "workflow": {
+    "id": "bam-qc",
+    "version": "1.1.0",
+    "bundleDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "planDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "artifacts": [
+    {
+      "outputId": "flagstat_report",
+      "type": "file",
+      "cardinality": "one",
+      "items": [
+        {
+          "ordinal": 0,
+          "path": "/run/engine/outputs/flagstat.txt",
+          "relativePath": "outputs/flagstat.txt",
+          "sizeBytes": "822",
+          "sha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ]
+    },
+    {
+      "outputId": "stats_report",
+      "type": "file",
+      "cardinality": "one",
+      "items": [
+        {
+          "ordinal": 0,
+          "path": "/run/engine/outputs/stats.txt",
+          "relativePath": "outputs/stats.txt",
+          "sizeBytes": "4960",
+          "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      ]
+    },
+    {
+      "outputId": "idxstats_report",
+      "type": "file",
+      "cardinality": "one",
+      "items": [
+        {
+          "ordinal": 0,
+          "path": "/run/engine/outputs/idxstats.txt",
+          "relativePath": "outputs/idxstats.txt",
+          "sizeBytes": "51",
+          "sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      ]
+    }
+  ],
+  "summaries": {
+    "samtools": {
+      "schemaVersion": "1",
+      "flagstat": {
+        "artifact": { "outputId": "flagstat_report", "ordinal": 0 },
+        "totalReads": "1000",
+        "mappedReads": "940",
+        "properlyPairedReads": "880",
+        "duplicateReads": "35"
+      },
+      "idxstats": {
+        "artifact": { "outputId": "idxstats_report", "ordinal": 0 },
+        "referenceCount": 2,
+        "mappedReads": "940",
+        "unmappedReads": "60"
+      },
+      "statsArtifact": { "outputId": "stats_report", "ordinal": 0 }
+    }
+  },
+  "diagnostics": []
+}

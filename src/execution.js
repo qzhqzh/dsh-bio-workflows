@@ -20,7 +20,11 @@ export const EXECUTION_PLAN_SCHEMA_VERSION = '1'
 export const RUN_CLEANUP_PLAN_SCHEMA_VERSION = '1'
 export const RUN_PROVENANCE_SCHEMA_VERSION = '1'
 export const BIO_WORKFLOW_RESULT_SCHEMA_VERSION = '1'
-export const EXECUTABLE_WORKFLOWS = Object.freeze(['fastq-qc@1.1.0', 'fastq-qc@1.2.0'])
+export const EXECUTABLE_WORKFLOWS = Object.freeze([
+  'bam-qc@1.1.0',
+  'fastq-qc@1.1.0',
+  'fastq-qc@1.2.0',
+])
 
 const EXECUTION_CONFIG_KEYS = new Set(['enabled', 'runsRoot', 'inputRoots', 'runner', 'policy'])
 const RUNNER_CONFIG_KEYS = new Set(['executable', 'dockerExecutable'])
@@ -56,6 +60,11 @@ const MAX_TOTAL_FASTQC_SUMMARY_BYTES = 8 * 1024 * 1024
 const MAX_FASTQC_SUMMARY_LINES = 512
 const MAX_TOTAL_FASTQC_SUMMARY_LINES = 16 * 1024
 const MAX_FASTQC_SUMMARY_LINE_BYTES = 4096
+const MAX_SAMTOOLS_SUMMARY_BYTES = 1024 * 1024
+const MAX_SAMTOOLS_FLAGSTAT_LINES = 128
+const MAX_SAMTOOLS_IDXSTATS_LINES = 16 * 1024
+const MAX_SAMTOOLS_SUMMARY_LINE_BYTES = 4096
+const MAX_SAMTOOLS_COUNT = (1n << 64n) - 1n
 const MAX_RUN_DISCOVERY_ENTRIES = 8192
 const MAX_RUN_DISCOVERY_RECORDS = 4096
 const MAX_RUN_DISCOVERY_BYTES = 32 * 1024 * 1024
@@ -84,6 +93,25 @@ const EXECUTABLE_SET = new Set(EXECUTABLE_WORKFLOWS)
 const SAFE_RUNS_ROOT_PATTERN = /^[A-Za-z0-9_./:+,@=-]+$/
 const PLACEHOLDER_PATTERN = '[A-Za-z0-9_./:@+=,-]+'
 const FASTQ_SUFFIXES = Object.freeze(['.fastq.gz', '.fq.gz', '.fastq', '.fq'])
+const BAM_QC_WORKFLOW_KEY = 'bam-qc@1.1.0'
+const BAM_QC_BUNDLE_DIGEST = 'sha256:6da83ed01408e28acd1928c0dd38adfd6ad59205d5b8b4c080fd8f3478b9ac0e'
+const EXECUTABLE_WORKFLOW_DIGESTS = new Map([
+  [BAM_QC_WORKFLOW_KEY, BAM_QC_BUNDLE_DIGEST],
+])
+const BAM_QC_RESOURCE_POLICY = Object.freeze({
+  cpu: 2,
+  memoryBytes: 4 * 1024 * 1024 * 1024,
+  pids: 4096,
+  wallTimeMs: 10 * 60 * 1000,
+})
+const BAM_QC_BUDGET_CEILINGS = Object.freeze({
+  maxInputSnapshotBytes: 128 * 1024 * 1024 * 1024,
+  maxRunStorageBytes: 132 * 1024 * 1024 * 1024,
+  maxResultArtifactBytes: 64 * 1024 * 1024,
+  maxTotalResultArtifactBytes: 128 * 1024 * 1024,
+  maxJobOutputBytes: 1024 * 1024,
+  maxSpillBytes: 16 * 1024 * 1024,
+})
 const RUN_STATUSES = Object.freeze([
   'prepared',
   'running',
@@ -109,11 +137,18 @@ export const BIO_WORKFLOW_RESULT_LIMITS = Object.freeze({
   maxFastqcSummaryLines: MAX_FASTQC_SUMMARY_LINES,
   maxTotalFastqcSummaryLines: MAX_TOTAL_FASTQC_SUMMARY_LINES,
   maxFastqcSummaryLineBytes: MAX_FASTQC_SUMMARY_LINE_BYTES,
+  maxSamtoolsSummaryBytes: MAX_SAMTOOLS_SUMMARY_BYTES,
+  maxSamtoolsFlagstatLines: MAX_SAMTOOLS_FLAGSTAT_LINES,
+  maxSamtoolsIdxstatsLines: MAX_SAMTOOLS_IDXSTATS_LINES,
+  maxSamtoolsSummaryLineBytes: MAX_SAMTOOLS_SUMMARY_LINE_BYTES,
 })
 
-function createMiniwdlConfig(runDirectory, networkName = null) {
+function createMiniwdlConfig(runDirectory, networkName = null, resourcePolicy = null) {
   const allowedNetworks = networkName === null ? [] : [networkName]
   const runtimeDefaults = networkName === null ? {} : { docker_network: networkName }
+  const resourceLimits = resourcePolicy === null
+    ? ''
+    : `cpu_max = ${resourcePolicy.cpu}\nmemory_max = ${resourcePolicy.memoryBytes}\ncommand_preamble = ulimit -u ${resourcePolicy.pids}\n`
   return `[scheduler]
 container_backend = docker_swarm
 fail_fast = true
@@ -130,7 +165,7 @@ copy_input_files = false
 [task_runtime]
 allow_privileged = false
 memory_limit_multiplier = 1.0
-placeholder_regex = ${PLACEHOLDER_PATTERN}
+${resourceLimits}placeholder_regex = ${PLACEHOLDER_PATTERN}
 env = {}
 defaults = ${JSON.stringify(runtimeDefaults)}
 
@@ -500,6 +535,64 @@ export function parseExecutionConfig(value = {}) {
     runner: { executable, dockerExecutable },
     policy,
   })
+}
+
+function effectiveExecutionBudgets(workflowKey, configured) {
+  if (workflowKey !== BAM_QC_WORKFLOW_KEY) return configured
+  const maxRunStorageBytes = Math.min(
+    configured.maxRunStorageBytes,
+    BAM_QC_BUDGET_CEILINGS.maxRunStorageBytes,
+  )
+  const maxTotalResultArtifactBytes = Math.min(
+    configured.maxTotalResultArtifactBytes,
+    BAM_QC_BUDGET_CEILINGS.maxTotalResultArtifactBytes,
+    maxRunStorageBytes,
+  )
+  return {
+    maxInputSnapshotBytes: Math.min(
+      configured.maxInputSnapshotBytes,
+      BAM_QC_BUDGET_CEILINGS.maxInputSnapshotBytes,
+      maxRunStorageBytes,
+    ),
+    maxRunStorageBytes,
+    maxResultArtifactBytes: Math.min(
+      configured.maxResultArtifactBytes,
+      BAM_QC_BUDGET_CEILINGS.maxResultArtifactBytes,
+      maxTotalResultArtifactBytes,
+    ),
+    maxTotalResultArtifactBytes,
+    maxJobOutputBytes: Math.min(
+      configured.maxJobOutputBytes,
+      BAM_QC_BUDGET_CEILINGS.maxJobOutputBytes,
+    ),
+    maxSpillBytes: Math.min(
+      configured.maxSpillBytes,
+      BAM_QC_BUDGET_CEILINGS.maxSpillBytes,
+    ),
+  }
+}
+
+function resourcePolicyForWorkflow(workflowKey) {
+  if (workflowKey !== BAM_QC_WORKFLOW_KEY) return null
+  return {
+    cpu: {
+      maximum: BAM_QC_RESOURCE_POLICY.cpu,
+      enforcement: 'wdl_runtime_and_miniwdl_cap_and_docker_swarm_hard_limit',
+    },
+    memory: {
+      maximumBytes: BAM_QC_RESOURCE_POLICY.memoryBytes.toString(),
+      enforcement: 'wdl_runtime_and_miniwdl_cap_and_docker_swarm_hard_limit',
+    },
+    pids: {
+      maximum: BAM_QC_RESOURCE_POLICY.pids,
+      enforcement: 'task_shell_rlimit_nproc',
+      scope: 'non_root_runner_real_uid',
+    },
+    wallTime: {
+      maximumMs: BAM_QC_RESOURCE_POLICY.wallTimeMs,
+      enforcement: 'host_timer_terminates_runner_process_tree',
+    },
+  }
 }
 
 class ExecutionOperationError extends Error {
@@ -1057,6 +1150,118 @@ async function normalizeInputs(
   return { normalized, fileFacts, totalSnapshotBytes: totalSnapshotBytes.toString() }
 }
 
+async function readApprovedInputPrefix(fact, bytes, signal) {
+  let handle
+  try {
+    throwIfAborted(signal)
+    handle = await open(
+      fact.path,
+      constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0),
+    )
+    const before = await handle.stat({ bigint: true })
+    if (
+      !before.isFile()
+      || !matchesInputFact(fact, before)
+      || await openedDescriptorPath(handle, 'input_path') !== fact.path
+    ) {
+      throw new ExecutionOperationError(
+        'input_changed_during_plan',
+        `input changed while its bounded header was being inspected: ${fact.path}`,
+      )
+    }
+    const buffer = Buffer.alloc(bytes)
+    const observed = await handle.read(buffer, 0, bytes, 0)
+    const after = await handle.stat({ bigint: true })
+    if (
+      !sameInputMetadata(before, after)
+      || await openedDescriptorPath(handle, 'input_path') !== fact.path
+    ) {
+      throw new ExecutionOperationError(
+        'input_changed_during_plan',
+        `input changed while its bounded header was being inspected: ${fact.path}`,
+      )
+    }
+    throwIfAborted(signal)
+    return buffer.subarray(0, observed.bytesRead)
+  } finally {
+    await handle?.close()
+  }
+}
+
+async function validateBamBaiInputContract(inputs, signal) {
+  const bam = inputs.normalized.bam
+  const bai = inputs.normalized.bai
+  const bamFact = inputs.fileFacts.find((fact) => fact.input === 'bam')
+  const baiFact = inputs.fileFacts.find((fact) => fact.input === 'bai')
+  if (
+    typeof bam !== 'string'
+    || typeof bai !== 'string'
+    || bamFact === undefined
+    || baiFact === undefined
+    || inputs.fileFacts.length !== 2
+  ) {
+    throw new ExecutionOperationError(
+      'bam_bai_contract_invalid',
+      'bam-qc@1.1.0 requires exactly one BAM and one BAI regular file',
+    )
+  }
+  if (!basename(bam).endsWith('.bam') || BigInt(bamFact.size) === 0n) {
+    throw new ExecutionOperationError(
+      'bam_input_invalid',
+      'bam-qc@1.1.0 requires a non-empty canonical input ending in .bam',
+    )
+  }
+  const acceptedBaiPaths = new Set([
+    `${bam}.bai`,
+    `${bam.slice(0, -'.bam'.length)}.bai`,
+  ])
+  if (dirname(bam) !== dirname(bai) || !acceptedBaiPaths.has(bai)) {
+    throw new ExecutionOperationError(
+      'bam_bai_pairing_invalid',
+      'BAI must be adjacent to BAM and named <bam>.bai or <stem>.bai',
+    )
+  }
+  if (BigInt(baiFact.size) < 8n) {
+    throw new ExecutionOperationError(
+      'bam_index_invalid',
+      'BAI must contain at least its fixed header and reference-count field',
+    )
+  }
+  const magic = await readApprovedInputPrefix(baiFact, 4, signal)
+  if (!magic.equals(Buffer.from([0x42, 0x41, 0x49, 0x01]))) {
+    throw new ExecutionOperationError(
+      'bam_index_invalid',
+      'BAI does not begin with the BAI v1 magic header',
+    )
+  }
+  if (BigInt(baiFact.mtimeNs) < BigInt(bamFact.mtimeNs)) {
+    throw new ExecutionOperationError(
+      'bam_index_stale',
+      'BAI modification time is older than the BAM modification time',
+    )
+  }
+  return {
+    schemaVersion: '1',
+    kind: 'bam_bai_pair',
+    bamInput: 'bam',
+    baiInput: 'bai',
+    canonicalAdjacent: true,
+    acceptedBaiNaming: bai === `${bam}.bai` ? 'bam_dot_bai' : 'stem_dot_bai',
+    baiMagicHex: magic.toString('hex'),
+    baiMinimumBytes: '8',
+    baiNotOlderThanBam: true,
+    compatibilityValidation: {
+      planning: 'pairing_magic_and_metadata',
+      runtime: [
+        'samtools_quickcheck',
+        'samtools_rebuilt_bai_byte_match',
+        'samtools_idxstats',
+      ],
+      matchClaim: 'runtime_only',
+    },
+  }
+}
+
 function extractWorkflowName(bundle) {
   const source = bundle.contents[bundle.descriptor.wdl.entrypoint]
   const match = /\bworkflow\s+([A-Za-z][A-Za-z0-9_]*)\s*\{/.exec(source)
@@ -1490,6 +1695,9 @@ function sameInputMetadata(left, right) {
 
 function safeInputSuffix(path) {
   const name = basename(path).toLowerCase()
+  if (name.endsWith('.bam.bai')) return '.bam.bai'
+  if (name.endsWith('.bam')) return '.bam'
+  if (name.endsWith('.bai')) return '.bai'
   return FASTQ_SUFFIXES.find((suffix) => name.endsWith(suffix)) ?? '.data'
 }
 
@@ -1791,7 +1999,7 @@ async function hashResultArtifact(
   inventory,
   budget,
   limits,
-  captureText = false,
+  textCapture = null,
   isCancelled = () => false,
 ) {
   let handle
@@ -1834,9 +2042,9 @@ async function hashResultArtifact(
         `declared outputs exceed the ${limits.maxTotalResultArtifactBytes} byte aggregate hashing limit`,
       )
     }
-    if (captureText && opened.size > BigInt(MAX_FASTQC_SUMMARY_BYTES)) {
+    if (textCapture !== null && opened.size > BigInt(textCapture.maxBytes)) {
       throw resultCollectionError(
-        `FastQC summary exceeds the ${MAX_FASTQC_SUMMARY_BYTES} byte parser limit`,
+        `${textCapture.label} exceeds the ${textCapture.maxBytes} byte parser limit`,
       )
     }
     const descriptorPath = await openedDescriptorPath(handle, 'result_artifact')
@@ -1866,7 +2074,7 @@ async function hashResultArtifact(
       }
       const value = chunk.subarray(0, read.bytesRead)
       digest.update(value)
-      if (captureText) captured.push(value)
+      if (textCapture !== null) captured.push(value)
       bytes += read.bytesRead
     }
     throwIfResultCollectionCancelled(isCancelled)
@@ -1897,11 +2105,11 @@ async function hashResultArtifact(
       throw resultCollectionError(`declared output has an invalid confined path: ${inventory.output}`)
     }
     let capturedText = null
-    if (captureText) {
+    if (textCapture !== null) {
       try {
         capturedText = STRICT_UTF8_DECODER.decode(Buffer.concat(captured, bytes))
       } catch {
-        throw resultCollectionError('FastQC summary is not valid UTF-8 text')
+        throw resultCollectionError(`${textCapture.label} is not valid UTF-8 text`)
       }
     }
     return {
@@ -1967,6 +2175,133 @@ function parseFastqcSummary(text, artifact) {
   }
 }
 
+function samtoolsSummaryLines(text, label, maximumLines) {
+  if (Buffer.byteLength(text, 'utf8') > MAX_SAMTOOLS_SUMMARY_BYTES) {
+    throw resultCollectionError(
+      `${label} exceeds the ${MAX_SAMTOOLS_SUMMARY_BYTES} byte parser limit`,
+    )
+  }
+  const lines = text.split(/\r?\n/)
+  if (lines.at(-1) === '') lines.pop()
+  if (lines.length === 0 || lines.length > maximumLines) {
+    throw resultCollectionError(`${label} must contain 1 to ${maximumLines} lines`)
+  }
+  for (const line of lines) {
+    if (
+      Buffer.byteLength(line, 'utf8') > MAX_SAMTOOLS_SUMMARY_LINE_BYTES
+      || FASTQC_SUMMARY_CONTROL_PATTERN.test(line)
+    ) {
+      throw resultCollectionError(
+        `${label} contains a control character or line exceeding ${MAX_SAMTOOLS_SUMMARY_LINE_BYTES} bytes`,
+      )
+    }
+  }
+  return lines
+}
+
+function parseSamtoolsCount(value, label) {
+  if (!/^(?:0|[1-9][0-9]*)$/.test(value) || value.length > 20) {
+    throw resultCollectionError(`${label} contains an invalid count`)
+  }
+  const count = BigInt(value)
+  if (count > MAX_SAMTOOLS_COUNT) {
+    throw resultCollectionError(`${label} count exceeds the unsigned 64-bit limit`)
+  }
+  return count
+}
+
+function addSamtoolsCounts(left, right, label) {
+  const total = left + right
+  if (total > MAX_SAMTOOLS_COUNT) {
+    throw resultCollectionError(`${label} count exceeds the unsigned 64-bit limit`)
+  }
+  return total
+}
+
+function parseSamtoolsFlagstat(text, artifact) {
+  const lines = samtoolsSummaryLines(text, 'samtools flagstat report', MAX_SAMTOOLS_FLAGSTAT_LINES)
+  const selected = new Map()
+  for (const line of lines) {
+    const match = /^([0-9]+) \+ ([0-9]+) (.+)$/.exec(line)
+    if (match === null) throw resultCollectionError('samtools flagstat report contains an invalid line')
+    const label = match[3]
+    let key = null
+    if (label.startsWith('in total ')) key = 'total'
+    else if (label.startsWith('mapped (')) key = 'mapped'
+    else if (label.startsWith('properly paired (')) key = 'properlyPaired'
+    else if (label === 'duplicates') key = 'duplicates'
+    if (key !== null) {
+      if (selected.has(key)) {
+        throw resultCollectionError(`samtools flagstat report repeats the ${key} metric`)
+      }
+      const passed = parseSamtoolsCount(match[1], 'samtools flagstat')
+      const failed = parseSamtoolsCount(match[2], 'samtools flagstat')
+      selected.set(key, addSamtoolsCounts(passed, failed, 'samtools flagstat'))
+    }
+  }
+  for (const key of ['total', 'mapped', 'properlyPaired', 'duplicates']) {
+    if (!selected.has(key)) {
+      throw resultCollectionError(`samtools flagstat report is missing the ${key} metric`)
+    }
+  }
+  const total = selected.get('total')
+  if ([selected.get('mapped'), selected.get('properlyPaired'), selected.get('duplicates')]
+    .some((count) => count > total)) {
+    throw resultCollectionError('samtools flagstat report contains counts larger than total reads')
+  }
+  return {
+    artifact,
+    totalReads: total.toString(),
+    mappedReads: selected.get('mapped').toString(),
+    properlyPairedReads: selected.get('properlyPaired').toString(),
+    duplicateReads: selected.get('duplicates').toString(),
+  }
+}
+
+function parseSamtoolsIdxstats(text, artifact) {
+  const lines = samtoolsSummaryLines(text, 'samtools idxstats report', MAX_SAMTOOLS_IDXSTATS_LINES)
+  const references = new Set()
+  let mappedReads = 0n
+  let unmappedReads = 0n
+  let referenceCount = 0
+  for (const [index, line] of lines.entries()) {
+    const fields = line.split('\t')
+    if (
+      fields.length !== 4
+      || fields[0].length === 0
+      || fields[0].length > 512
+      || references.has(fields[0])
+    ) {
+      throw resultCollectionError('samtools idxstats report contains an invalid or duplicate reference line')
+    }
+    references.add(fields[0])
+    const length = parseSamtoolsCount(fields[1], 'samtools idxstats reference length')
+    const mapped = parseSamtoolsCount(fields[2], 'samtools idxstats mapped reads')
+    const unmapped = parseSamtoolsCount(fields[3], 'samtools idxstats unmapped reads')
+    if (fields[0] === '*') {
+      if (length !== 0n || index !== lines.length - 1) {
+        throw resultCollectionError('samtools idxstats unplaced-read line must be last with zero length')
+      }
+    } else {
+      if (length === 0n) {
+        throw resultCollectionError('samtools idxstats reference length must be positive')
+      }
+      referenceCount += 1
+    }
+    mappedReads = addSamtoolsCounts(mappedReads, mapped, 'samtools idxstats mapped reads')
+    unmappedReads = addSamtoolsCounts(unmappedReads, unmapped, 'samtools idxstats unmapped reads')
+  }
+  if (!references.has('*')) {
+    throw resultCollectionError('samtools idxstats report is missing the unplaced-read line')
+  }
+  return {
+    artifact,
+    referenceCount,
+    mappedReads: mappedReads.toString(),
+    unmappedReads: unmappedReads.toString(),
+  }
+}
+
 function pushResultSemanticError(errors, path, code, message) {
   if (errors.length < 32) errors.push({ path, code, message })
 }
@@ -1987,6 +2322,7 @@ export function validateBioWorkflowResultSemantics(value) {
     }
   }
 
+  const artifactReferences = new Set()
   const summaryArtifactReferences = new Set()
   const outputIds = new Set()
   let artifactCount = 0
@@ -2025,6 +2361,7 @@ export function validateBioWorkflowResultSemantics(value) {
           )
         }
         if (typeof group.outputId === 'string' && Number.isInteger(item.ordinal)) {
+          artifactReferences.add(`${group.outputId}\u0000${item.ordinal}`)
           if (group.outputId === 'summary_reports') {
             summaryArtifactReferences.add(`${group.outputId}\u0000${item.ordinal}`)
           }
@@ -2133,6 +2470,83 @@ export function validateBioWorkflowResultSemantics(value) {
     }
   }
 
+  const samtools = value.summaries?.samtools
+  if (samtools !== undefined && isPlainObject(samtools)) {
+    const references = [
+      ['flagstat', samtools.flagstat?.artifact, 'flagstat_report'],
+      ['idxstats', samtools.idxstats?.artifact, 'idxstats_report'],
+      ['statsArtifact', samtools.statsArtifact, 'stats_report'],
+    ]
+    for (const [name, reference, outputId] of references) {
+      const key = isPlainObject(reference)
+        ? `${reference.outputId}\u0000${reference.ordinal}`
+        : null
+      if (
+        !isPlainObject(reference)
+        || reference.outputId !== outputId
+        || reference.ordinal !== 0
+        || !artifactReferences.has(key)
+      ) {
+        pushResultSemanticError(
+          errors,
+          `$.summaries.samtools.${name}${name === 'statsArtifact' ? '' : '.artifact'}`,
+          'missing_reference',
+          `${name} must reference ${outputId} artifact ordinal 0`,
+        )
+      }
+    }
+    const flagstatCounts = isPlainObject(samtools.flagstat)
+      ? [
+          samtools.flagstat.totalReads,
+          samtools.flagstat.mappedReads,
+          samtools.flagstat.properlyPairedReads,
+          samtools.flagstat.duplicateReads,
+        ]
+      : []
+    if (flagstatCounts.length === 4 && flagstatCounts.every((count) => (
+      typeof count === 'string' && /^(?:0|[1-9][0-9]*)$/.test(count) && count.length <= 20
+    ))) {
+      const [total, mapped, properlyPaired, duplicates] = flagstatCounts.map(BigInt)
+      if ([total, mapped, properlyPaired, duplicates].some((count) => count > MAX_SAMTOOLS_COUNT)) {
+        pushResultSemanticError(
+          errors,
+          '$.summaries.samtools.flagstat',
+          'range',
+          'flagstat counts must fit unsigned 64-bit values',
+        )
+      } else if ([mapped, properlyPaired, duplicates].some((count) => count > total)) {
+        pushResultSemanticError(
+          errors,
+          '$.summaries.samtools.flagstat',
+          'count_mismatch',
+          'flagstat derived counts must not exceed totalReads',
+        )
+      }
+    }
+    if (
+      flagstatCounts.length === 4
+      && isPlainObject(samtools.idxstats)
+      && typeof samtools.idxstats.mappedReads === 'string'
+      && typeof samtools.idxstats.unmappedReads === 'string'
+      && /^(?:0|[1-9][0-9]*)$/.test(samtools.idxstats.mappedReads)
+      && /^(?:0|[1-9][0-9]*)$/.test(samtools.idxstats.unmappedReads)
+      && samtools.idxstats.mappedReads.length <= 20
+      && samtools.idxstats.unmappedReads.length <= 20
+      && flagstatCounts.every((count) => (
+        typeof count === 'string' && count.length <= 20 && /^(?:0|[1-9][0-9]*)$/.test(count)
+      ))
+      && BigInt(samtools.idxstats.mappedReads) + BigInt(samtools.idxstats.unmappedReads)
+        !== BigInt(flagstatCounts[0])
+    ) {
+      pushResultSemanticError(
+        errors,
+        '$.summaries.samtools.idxstats',
+        'count_mismatch',
+        'idxstats mapped and unmapped reads must sum to flagstat totalReads',
+      )
+    }
+  }
+
   return { valid: errors.length === 0, errors }
 }
 
@@ -2151,6 +2565,7 @@ async function createBioWorkflowResult(
   const outputTypes = new Map(manifest.outputs.map((port) => [port.id, port.type]))
   let declaredBytes = 0n
   let declaredSummaryBytes = 0n
+  let declaredSamtoolsSummaryBytes = 0n
   const seenEntities = new Set()
   for (const item of outputInventory) {
     if (outputTypes.get(item.output) !== 'file') continue
@@ -2183,11 +2598,26 @@ async function createBioWorkflowResult(
         )
       }
     }
+    if (
+      workflow.id === 'bam-qc'
+      && workflow.version === '1.1.0'
+      && (item.output === 'flagstat_report' || item.output === 'idxstats_report')
+    ) {
+      declaredSamtoolsSummaryBytes += size
+      if (declaredSamtoolsSummaryBytes > BigInt(2 * MAX_SAMTOOLS_SUMMARY_BYTES)) {
+        throw resultCollectionError(
+          `samtools summaries exceed the ${2 * MAX_SAMTOOLS_SUMMARY_BYTES} byte aggregate parser limit`,
+        )
+      }
+    }
   }
   const budget = { remainingBytes: limits.maxTotalResultArtifactBytes }
   const artifacts = []
   const fastqcReports = []
   let totalFastqcSummaryLines = 0
+  let samtoolsFlagstat = null
+  let samtoolsIdxstats = null
+  let samtoolsStatsArtifact = null
   for (const port of manifest.outputs.filter((item) => item.type === 'file' || item.type === 'directory')) {
     throwIfResultCollectionCancelled(isCancelled)
     if (port.type !== 'file') {
@@ -2196,19 +2626,27 @@ async function createBioWorkflowResult(
     const values = outputInventory.filter((item) => item.output === port.id)
     const items = []
     for (const [ordinal, inventory] of values.entries()) {
-      const captureText = workflow.id === 'fastq-qc'
+      const captureFastqc = workflow.id === 'fastq-qc'
         && workflow.version === '1.2.0'
         && port.id === 'summary_reports'
+      const captureSamtools = workflow.id === 'bam-qc'
+        && workflow.version === '1.1.0'
+        && (port.id === 'flagstat_report' || port.id === 'idxstats_report')
+      const textCapture = captureFastqc
+        ? { label: 'FastQC summary', maxBytes: MAX_FASTQC_SUMMARY_BYTES }
+        : captureSamtools
+          ? { label: `samtools ${port.id}`, maxBytes: MAX_SAMTOOLS_SUMMARY_BYTES }
+          : null
       const hashed = await hashResultArtifact(
         engineRoot,
         inventory,
         budget,
         limits,
-        captureText,
+        textCapture,
         isCancelled,
       )
       items.push({ ordinal, ...hashed.artifact })
-      if (captureText) {
+      if (captureFastqc) {
         const report = parseFastqcSummary(
           hashed.capturedText,
           { outputId: 'summary_reports', ordinal },
@@ -2220,6 +2658,16 @@ async function createBioWorkflowResult(
           )
         }
         fastqcReports.push(report)
+      } else if (captureSamtools && port.id === 'flagstat_report') {
+        samtoolsFlagstat = parseSamtoolsFlagstat(
+          hashed.capturedText,
+          { outputId: port.id, ordinal },
+        )
+      } else if (captureSamtools && port.id === 'idxstats_report') {
+        samtoolsIdxstats = parseSamtoolsIdxstats(
+          hashed.capturedText,
+          { outputId: port.id, ordinal },
+        )
       }
     }
     artifacts.push({
@@ -2228,6 +2676,14 @@ async function createBioWorkflowResult(
       cardinality: port.cardinality,
       items,
     })
+    if (
+      workflow.id === 'bam-qc'
+      && workflow.version === '1.1.0'
+      && port.id === 'stats_report'
+      && items.length === 1
+    ) {
+      samtoolsStatsArtifact = { outputId: port.id, ordinal: 0 }
+    }
   }
 
   const summaries = {}
@@ -2248,6 +2704,25 @@ async function createBioWorkflowResult(
       reportCount: fastqcReports.length,
       moduleCounts,
       reports: fastqcReports,
+    }
+  }
+  if (workflow.id === 'bam-qc' && workflow.version === '1.1.0') {
+    if (samtoolsFlagstat === null || samtoolsIdxstats === null || samtoolsStatsArtifact === null) {
+      throw resultCollectionError('bam-qc result is missing a declared samtools report')
+    }
+    if (
+      BigInt(samtoolsIdxstats.mappedReads) + BigInt(samtoolsIdxstats.unmappedReads)
+      !== BigInt(samtoolsFlagstat.totalReads)
+    ) {
+      throw resultCollectionError(
+        'samtools idxstats counts do not match the sequential flagstat total',
+      )
+    }
+    summaries.samtools = {
+      schemaVersion: '1',
+      flagstat: samtoolsFlagstat,
+      idxstats: samtoolsIdxstats,
+      statsArtifact: samtoolsStatsArtifact,
     }
   }
 
@@ -2417,6 +2892,38 @@ function startRunStorageMonitor(runDirectory, maxBytes, handle) {
   }
 }
 
+function startWallTimeMonitor(
+  maximumMs,
+  handle,
+  scheduleTimeout,
+  cancelTimeout,
+  isCancellationRequested,
+) {
+  let stopped = false
+  let violation = null
+  const timer = scheduleTimeout(() => {
+    if (stopped || violation !== null || isCancellationRequested()) return
+    violation = {
+      code: 'run_wall_time_budget_exceeded',
+      message: `run exceeded the ${maximumMs}ms wall-time budget`,
+      maximumMs,
+    }
+    handle.terminate()
+  }, maximumMs)
+  timer?.unref?.()
+  return {
+    async stop() {
+      stopped = true
+      cancelTimeout(timer)
+      return {
+        violation,
+        maximumMs,
+        enforcement: 'host_timer_terminates_runner_process_tree',
+      }
+    },
+  }
+}
+
 function assertRunAccess(record, agent) {
   if (agent === null || typeof agent !== 'object' || typeof agent.id !== 'string' || agent.id.length === 0) {
     throw new ExecutionOperationError('execution_owner_required', 'workflow run access requires a DSH agent session')
@@ -2538,6 +3045,12 @@ export function createExecutionManager(options) {
   const persistRecord = typeof options.persistRecord === 'function' ? options.persistRecord : atomicWriteJson
   const now = typeof options.now === 'function' ? options.now : () => new Date()
   const createId = typeof options.createId === 'function' ? options.createId : () => randomUUID()
+  const scheduleTimeout = typeof options.scheduleTimeout === 'function'
+    ? options.scheduleTimeout
+    : setTimeout
+  const cancelTimeout = typeof options.cancelTimeout === 'function'
+    ? options.cancelTimeout
+    : clearTimeout
   const activeRuns = new Map()
 
   function requireOwner(operation) {
@@ -2906,6 +3419,21 @@ export function createExecutionManager(options) {
         `execution MVP does not support ${workflowKey}; supported: ${EXECUTABLE_WORKFLOWS.join(', ')}`,
       )
     }
+    const admittedDigest = EXECUTABLE_WORKFLOW_DIGESTS.get(workflowKey)
+    if (workflowKey === BAM_QC_WORKFLOW_KEY) {
+      if (config.policy.networkIsolation.mode !== 'ephemeral_internal') {
+        throw new ExecutionOperationError(
+          'bam_qc_network_isolation_required',
+          'bam-qc@1.1.0 requires ephemeral_internal network isolation',
+        )
+      }
+      if (currentUid() === null || currentUid() === 0n) {
+        throw new ExecutionOperationError(
+          'bam_qc_non_root_runner_required',
+          'bam-qc@1.1.0 requires a non-root Linux runner for its PID ceiling',
+        )
+      }
+    }
     const subprocess = getSubprocess()
     if (typeof subprocess?.resolveExecutable !== 'function' || typeof subprocess?.spawn !== 'function') {
       throw new ExecutionOperationError(
@@ -2922,6 +3450,13 @@ export function createExecutionManager(options) {
     if (!resolvedBundle.ok) {
       throw new ExecutionOperationError(resolvedBundle.error.code, resolvedBundle.error.message)
     }
+    if (admittedDigest !== undefined && resolvedBundle.bundle.digest !== admittedDigest) {
+      throw new ExecutionOperationError(
+        'workflow_revision_not_admitted',
+        `${workflowKey} resolved to a bundle digest outside the execution allowlist`,
+        { admittedDigest, actualDigest: resolvedBundle.bundle.digest },
+      )
+    }
     if (resolvedBundle.bundle.digest !== request.expectedDigest) {
       throw new ExecutionOperationError(
         'bundle_digest_mismatch',
@@ -2935,14 +3470,19 @@ export function createExecutionManager(options) {
       config.policy.networkIsolation.mode,
     )
     const workflowName = extractWorkflowName(resolvedBundle.bundle)
+    const effectiveBudgets = effectiveExecutionBudgets(workflowKey, config.policy.budgets)
+    const resourcePolicy = resourcePolicyForWorkflow(workflowKey)
     const inputs = await normalizeInputs(
       resolvedBundle.bundle.descriptor.manifest,
       request.inputs,
       roots.inputRoots,
       config.policy.inputChecksum,
-      config.policy.budgets.maxInputSnapshotBytes,
+      effectiveBudgets.maxInputSnapshotBytes,
       operation.signal,
     )
+    const inputContract = workflowKey === BAM_QC_WORKFLOW_KEY
+      ? await validateBamBaiInputContract(inputs, operation.signal)
+      : null
     throwIfAborted(operation.signal)
     const runner = await probeRunner(
       config,
@@ -2967,11 +3507,12 @@ export function createExecutionManager(options) {
       },
       inputs: inputs.normalized,
       inputFileFacts: inputs.fileFacts,
+      ...(inputContract === null ? {} : { inputContract }),
       inputSnapshotPolicy: {
         mode: 'run_owned_copy_after_approval',
         preApprovalIntegrity: config.policy.inputChecksum,
         totalBytes: inputs.totalSnapshotBytes,
-        maxTotalBytes: config.policy.budgets.maxInputSnapshotBytes.toString(),
+        maxTotalBytes: effectiveBudgets.maxInputSnapshotBytes.toString(),
         minimumFreeSpaceReserveBytes: SNAPSHOT_FREE_SPACE_RESERVE_BYTES.toString(),
         rejectGrowthDuringCopy: true,
       },
@@ -3013,7 +3554,7 @@ export function createExecutionManager(options) {
         securityPolicy: {
           inputMode: 'run_owned_snapshot',
           inputChecksum: config.policy.inputChecksum,
-          maxTotalInputBytes: config.policy.budgets.maxInputSnapshotBytes.toString(),
+          maxTotalInputBytes: effectiveBudgets.maxInputSnapshotBytes.toString(),
           minimumFreeSpaceReserveBytes: SNAPSHOT_FREE_SPACE_RESERVE_BYTES.toString(),
           fileIoRoot: '<run-directory>',
           placeholderRegex: PLACEHOLDER_PATTERN,
@@ -3036,19 +3577,34 @@ export function createExecutionManager(options) {
           swarmAutoInit: false,
           callCache: false,
           downloadCache: false,
+          ...(resourcePolicy === null ? {} : { resourcePolicy }),
         },
       },
       runsRoot: roots.runsRoot,
       runsRootIdentity: roots.runsRootIdentity,
       budgets: {
-        maxInputSnapshotBytes: config.policy.budgets.maxInputSnapshotBytes.toString(),
-        maxRunStorageBytes: config.policy.budgets.maxRunStorageBytes.toString(),
+        ...(workflowKey === BAM_QC_WORKFLOW_KEY ? {
+          policy: 'minimum_of_operator_configuration_and_bam_qc_admission_ceiling',
+        } : {}),
+        maxInputSnapshotBytes: effectiveBudgets.maxInputSnapshotBytes.toString(),
+        maxRunStorageBytes: effectiveBudgets.maxRunStorageBytes.toString(),
         runStorageEnforcement: 'periodic_allocated_bytes_scan',
         runStorageScanIntervalMs: RUN_STORAGE_SCAN_INTERVAL_MS,
-        maxResultArtifactBytes: config.policy.budgets.maxResultArtifactBytes.toString(),
-        maxTotalResultArtifactBytes: config.policy.budgets.maxTotalResultArtifactBytes.toString(),
-        maxJobOutputBytes: config.policy.budgets.maxJobOutputBytes,
-        maxSpillBytesPerStream: config.policy.budgets.maxSpillBytes,
+        maxResultArtifactBytes: effectiveBudgets.maxResultArtifactBytes.toString(),
+        maxTotalResultArtifactBytes: effectiveBudgets.maxTotalResultArtifactBytes.toString(),
+        maxJobOutputBytes: effectiveBudgets.maxJobOutputBytes,
+        maxSpillBytesPerStream: effectiveBudgets.maxSpillBytes,
+        ...(resourcePolicy === null ? {} : {
+          maxCpu: resourcePolicy.cpu.maximum,
+          cpuEnforcement: resourcePolicy.cpu.enforcement,
+          maxMemoryBytes: resourcePolicy.memory.maximumBytes,
+          memoryEnforcement: resourcePolicy.memory.enforcement,
+          maxPids: resourcePolicy.pids.maximum,
+          pidEnforcement: resourcePolicy.pids.enforcement,
+          pidScope: resourcePolicy.pids.scope,
+          maxWallTimeMs: resourcePolicy.wallTime.maximumMs,
+          wallTimeEnforcement: resourcePolicy.wallTime.enforcement,
+        }),
       },
       expectedOutputs: resolvedBundle.bundle.descriptor.manifest.outputs.map((output) => ({
         id: output.id,
@@ -3067,7 +3623,10 @@ export function createExecutionManager(options) {
           ? []
           : ['container_network_isolation_not_enforced']),
         'run_storage_budget_is_monitor_enforced_not_filesystem_quota',
-        'builtin_fastq_qc_only',
+        ...(workflowKey === BAM_QC_WORKFLOW_KEY
+          ? ['pid_budget_is_real_uid_rlimit_not_container_cgroup']
+          : []),
+        'exact_builtin_execution_allowlist_only',
       ],
     }
     const result = {
@@ -3139,6 +3698,7 @@ export function createExecutionManager(options) {
     state,
     handle,
     storageMonitor,
+    wallTimeMonitor,
     manifest,
     workflowName,
     engineDirectory,
@@ -3152,7 +3712,9 @@ export function createExecutionManager(options) {
       const outcome = await handle.done
       await handle.waitForExit()
       const storage = await storageMonitor.stop()
+      const wallTime = wallTimeMonitor === null ? null : await wallTimeMonitor.stop()
       state.record.storageBudget = storage
+      if (wallTime !== null) state.record.wallTimeBudget = wallTime
       let status = state.cancelRequested
         ? 'killed'
         : outcome.exitCode === 0 ? 'completed' : 'failed'
@@ -3163,6 +3725,10 @@ export function createExecutionManager(options) {
       if (storage.violation !== null && !state.cancelRequested) {
         status = 'failed'
         error = storage.violation
+      }
+      if (wallTime?.violation !== null && wallTime?.violation !== undefined) {
+        status = 'failed'
+        error = wallTime.violation
       }
       if (status === 'completed') {
         try {
@@ -3245,6 +3811,7 @@ export function createExecutionManager(options) {
       }
     } catch (error) {
       await storageMonitor.stop().catch(() => null)
+      await wallTimeMonitor?.stop().catch(() => null)
       if (!networkCleanupComplete) {
         try {
           await removeRunNetwork(
@@ -3337,7 +3904,14 @@ export function createExecutionManager(options) {
       await writeExclusiveText(inputsPath, `${JSON.stringify(qualifiedInputs, null, 2)}\n`)
       await writeExclusiveText(
         configPath,
-        createMiniwdlConfig(canonicalRunDirectory, createdNetwork?.name ?? null),
+        createMiniwdlConfig(
+          canonicalRunDirectory,
+          createdNetwork?.name ?? null,
+          prepared.result.plan.workflow.id === 'bam-qc'
+            && prepared.result.plan.workflow.version === '1.1.0'
+            ? BAM_QC_RESOURCE_POLICY
+            : null,
+        ),
       )
       const argv = [
         prepared.runner.miniwdl.executable,
@@ -3386,6 +3960,13 @@ export function createExecutionManager(options) {
             enforcement: 'periodic_allocated_bytes_scan',
             intervalMs: RUN_STORAGE_SCAN_INTERVAL_MS,
           },
+          ...(prepared.result.plan.budgets.maxWallTimeMs === undefined ? {} : {
+            wallTimeBudget: {
+              violation: null,
+              maximumMs: prepared.result.plan.budgets.maxWallTimeMs,
+              enforcement: prepared.result.plan.budgets.wallTimeEnforcement,
+            },
+          }),
           pid: null,
           exit: null,
           outputs: null,
@@ -3423,7 +4004,7 @@ export function createExecutionManager(options) {
         jobId = jobs.start({
           kind: 'bio',
           label: `${request.id}@${request.version} ${runId}`,
-          outputLimitBytes: config.policy.budgets.maxJobOutputBytes,
+          outputLimitBytes: prepared.result.plan.budgets.maxJobOutputBytes,
           owner,
           run() {
             handle = prepared.subprocess.spawn({
@@ -3432,12 +4013,12 @@ export function createExecutionManager(options) {
               stdio: {
                 stdin: 'ignore',
                 stdout: {
-                  maxBytes: config.policy.budgets.maxJobOutputBytes,
-                  spill: { maxBytes: config.policy.budgets.maxSpillBytes },
+                  maxBytes: prepared.result.plan.budgets.maxJobOutputBytes,
+                  spill: { maxBytes: prepared.result.plan.budgets.maxSpillBytesPerStream },
                 },
                 stderr: {
-                  maxBytes: config.policy.budgets.maxJobOutputBytes,
-                  spill: { maxBytes: config.policy.budgets.maxSpillBytes },
+                  maxBytes: prepared.result.plan.budgets.maxJobOutputBytes,
+                  spill: { maxBytes: prepared.result.plan.budgets.maxSpillBytesPerStream },
                 },
               },
               graceMs: PROCESS_GRACE_MS,
@@ -3448,14 +4029,24 @@ export function createExecutionManager(options) {
             persistInBackground(state)
             const storageMonitor = startRunStorageMonitor(
               canonicalRunDirectory,
-              BigInt(config.policy.budgets.maxRunStorageBytes),
+              BigInt(prepared.result.plan.budgets.maxRunStorageBytes),
               handle,
             )
+            const wallTimeMonitor = prepared.result.plan.budgets.maxWallTimeMs === undefined
+              ? null
+              : startWallTimeMonitor(
+                  prepared.result.plan.budgets.maxWallTimeMs,
+                  handle,
+                  scheduleTimeout,
+                  cancelTimeout,
+                  () => state.cancelRequested,
+                )
             networkManagedByFinalize = true
             finalization = finalizeRun(
               state,
               handle,
               storageMonitor,
+              wallTimeMonitor,
               prepared.bundle.descriptor.manifest,
               prepared.result.plan.workflow.workflowName,
               engineDirectory,

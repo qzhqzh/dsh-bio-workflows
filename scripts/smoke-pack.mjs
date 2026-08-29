@@ -664,7 +664,7 @@ try {
       async () => assert.fail('mutating store tool bypassed approval'),
     )
     assert.equal(approval.kind, 'deny')
-    assert.equal(searchResult.count, 4)
+    assert.equal(searchResult.count, 5)
   `
   execFileSync(
     process.execPath,

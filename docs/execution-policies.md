@@ -39,6 +39,13 @@ execution:
 Configuration is strict: unknown keys, unsafe integers, expanded package
 maxima, and inconsistent byte limits fail plugin startup.
 
+`bam-qc@1.1.0` applies a stricter admission profile on top of this
+configuration. Effective byte budgets are the minimum of the operator value
+and the BAM ceiling (128 GiB input snapshots, 132 GiB run storage, 64 MiB per
+artifact, 128 MiB total artifacts, 1 MiB job output, and 16 MiB spill per
+stream). Planning also binds fixed 2-CPU, 4-GiB-memory, 4096-process, and
+10-minute wall-time limits.
+
 ## Pre-approval input integrity
 
 With `inputChecksum: sha256`, planning opens every regular input with no-follow
@@ -62,6 +69,10 @@ not accepted as isolation evidence for untrusted AI-authored WDL: the fixture
 runner keeps its separate `--network none`, seccomp, controller, canary, egress,
 Docker-gateway, and live host-service probes.
 
+Unlike FastQC, `bam-qc@1.1.0` rejects advisory networking rather than listing
+it as a limitation. Each run must receive and later remove its verified
+internal overlay.
+
 ## Budgets
 
 The approved plan binds all configured limits. Input copying, per-artifact and
@@ -69,6 +80,22 @@ aggregate result hashing, DSH output capture, and per-stream spill fail closed
 at those values. Total run storage is measured from allocated filesystem blocks
 every second and once after process exit; overflow terminates the runner and
 records `run_storage_budget_exceeded`.
+
+For `bam-qc@1.1.0`, miniwdl caps the task at the WDL's fixed 2 CPU and 4 GiB,
+Docker Swarm receives the corresponding hard CPU/memory limits, and the task
+shell receives `RLIMIT_NPROC=4096`. Admission rejects a root DSH runner because
+Linux does not enforce that process limit reliably for root. This PID limit is
+scoped to the runner's real UID rather than a container PID cgroup and is
+disclosed as such in the approved plan. A separate host timer terminates the
+miniwdl process tree at 10 minutes and records
+`run_wall_time_budget_exceeded`; cancellation still wins as the truthful
+terminal state when the owner requested it first.
+
+The admitted task also rebuilds a BAI from the run-owned BAM with the exact
+pinned samtools 1.20 image and requires a byte-for-byte match before `idxstats`.
+This deliberately accepts one canonical BAI representation; an otherwise valid
+index produced with different bytes fails closed and must be rebuilt with the
+pinned tool before approval.
 
 The storage monitor is not a kernel filesystem quota and a short-lived burst
 can exceed the threshold between scans. This limitation is explicit in every
@@ -90,4 +117,3 @@ candidates to be at least `minimumAgeDays` old, and caps one action at
 `maxDeletesPerCall`. Execution replans and then rechecks owner, terminal state,
 provenance digest, directory identity, and runs-root identity before deletion.
 Unreadable or incomplete discovery fails closed.
-

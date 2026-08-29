@@ -16,6 +16,7 @@ import {
   symlink,
   truncate,
   unlink,
+  utimes,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -154,8 +155,19 @@ class FakeSubprocess {
   }
 
   async #completeRun(spec) {
+    if (this.options.runOutcome !== undefined && this.options.runOutcome.exitCode !== 0) {
+      const directoryArgument = spec.argv[spec.argv.indexOf('--dir') + 1]
+      const engineDirectory = directoryArgument.endsWith(`${sep}.`)
+        ? directoryArgument.slice(0, -2)
+        : directoryArgument
+      await mkdir(engineDirectory, { recursive: true })
+      await writeFile(join(engineDirectory, 'error.json'), JSON.stringify({
+        error: this.options.runFailure ?? 'simulated workflow failure',
+      }))
+      return this.options.runOutcome
+    }
     await this.#writeOutputs(spec)
-    return { exitCode: 0, signal: null }
+    return this.options.runOutcome ?? { exitCode: 0, signal: null }
   }
 
   async #writeOutputs(spec) {
@@ -163,6 +175,37 @@ class FakeSubprocess {
     const engineDirectory = directoryArgument.endsWith(`${sep}.`)
       ? directoryArgument.slice(0, -2)
       : directoryArgument
+    if (this.options.workflowId === 'bam-qc') {
+      const outputDirectory = join(engineDirectory, 'call-samtools_qc', 'out')
+      await mkdir(outputDirectory, { recursive: true })
+      const flagstat = join(outputDirectory, 'flagstat.txt')
+      const stats = join(outputDirectory, 'stats.txt')
+      const idxstats = join(outputDirectory, 'idxstats.txt')
+      await writeFile(flagstat, [
+        '4 + 0 in total (QC-passed reads + QC-failed reads)',
+        '0 + 0 duplicates',
+        '3 + 0 mapped (75.00% : N/A)',
+        '2 + 0 properly paired (50.00% : N/A)',
+        '',
+      ].join('\n'))
+      await writeFile(stats, 'SN\traw total sequences:\t4\n')
+      await writeFile(idxstats, 'chr1\t1000\t3\t0\n*\t0\t0\t1\n')
+      const defaultOutputs = {
+        'bam_qc.flagstat_report': flagstat,
+        'bam_qc.stats_report': stats,
+        'bam_qc.idxstats_report': idxstats,
+      }
+      const outputs = await this.options.onOutputs?.({
+        engineDirectory,
+        outputDirectory,
+        flagstat,
+        stats,
+        idxstats,
+        defaultOutputs,
+      }) ?? defaultOutputs
+      await writeFile(join(engineDirectory, 'outputs.json'), JSON.stringify(outputs))
+      return
+    }
     const outputDirectory = join(engineDirectory, 'call-fastqc', 'out')
     await mkdir(outputDirectory, { recursive: true })
     const html = join(outputDirectory, 'sample_fastqc.html')
@@ -282,16 +325,20 @@ async function makeFixture(options = {}) {
   await writeFile(dockerExecutable, '#!/bin/sh\nexit 0\n')
   await chmod(miniwdlExecutable, 0o755)
   await chmod(dockerExecutable, 0o755)
-  const input = join(inputRoot, 'sample.fastq.gz')
-  await writeFile(input, '@read\nACGT\n+\n!!!!\n')
+  const workflowId = options.workflowId ?? 'fastq-qc'
+  const input = join(inputRoot, workflowId === 'bam-qc' ? 'sample.bam' : 'sample.fastq.gz')
+  await writeFile(input, workflowId === 'bam-qc' ? 'synthetic-bam' : '@read\nACGT\n+\n!!!!\n')
+  const bai = workflowId === 'bam-qc' ? `${input}.bai` : null
+  if (bai !== null) await writeFile(bai, Buffer.from([0x42, 0x41, 0x49, 0x01, 0, 0, 0, 0]))
   const store = createWorkflowStore()
-  const search = await store.search({ source: 'builtin', query: 'fastq' })
+  const search = await store.search({ source: 'builtin', query: workflowId })
   const workflow = search.workflows.find((item) => (
-    item.version === (options.workflowVersion ?? '1.1.0')
+    item.id === workflowId && item.version === (options.workflowVersion ?? '1.1.0')
   ))
   assert.notEqual(workflow, undefined)
   const subprocess = options.subprocess ?? new FakeSubprocess({
     ...options,
+    workflowId,
     miniwdlExecutable,
     dockerExecutable,
   })
@@ -303,25 +350,34 @@ async function makeFixture(options = {}) {
       runsRoot,
       inputRoots: [inputRoot],
       runner: { executable: miniwdlExecutable, dockerExecutable },
-      ...(options.executionPolicy === undefined ? {} : { policy: options.executionPolicy }),
+      ...(options.executionPolicy === undefined
+        ? workflowId === 'bam-qc'
+          ? { policy: { networkIsolation: { mode: 'ephemeral_internal' } } }
+          : {}
+        : { policy: options.executionPolicy }),
     },
     getSubprocess: () => subprocess,
     getJobs: () => jobs,
     createId: options.createId ?? (() => TEST_UUID),
     now: options.now ?? (() => new Date('2026-08-25T12:00:00.000Z')),
     ...(options.persistRecord === undefined ? {} : { persistRecord: options.persistRecord }),
+    ...(options.scheduleTimeout === undefined ? {} : { scheduleTimeout: options.scheduleTimeout }),
+    ...(options.cancelTimeout === undefined ? {} : { cancelTimeout: options.cancelTimeout }),
   })
   const request = {
     id: workflow.id,
     version: workflow.version,
     expectedDigest: workflow.digest,
-    inputs: { reads: [input], threads: 2 },
+    inputs: workflowId === 'bam-qc'
+      ? { bam: input, bai }
+      : { reads: [input], threads: 2 },
   }
   return {
     root,
     inputRoot,
     runsRoot,
     input,
+    bai,
     store,
     workflow,
     subprocess,
@@ -395,6 +451,10 @@ test('execution config is strict, disabled by default, and requires disjoint ded
     maxFastqcSummaryLines: 512,
     maxTotalFastqcSummaryLines: 16 * 1024,
     maxFastqcSummaryLineBytes: 4096,
+    maxSamtoolsSummaryBytes: 1024 * 1024,
+    maxSamtoolsFlagstatLines: 128,
+    maxSamtoolsIdxstatsLines: 16 * 1024,
+    maxSamtoolsSummaryLineBytes: 4096,
   })
   assert.deepEqual(parseExecutionConfig(), {
     enabled: false,
@@ -542,6 +602,332 @@ test('strict execution binds pre-approval input content and uses an ephemeral in
   }
 })
 
+test('bam-qc 1.1.0 binds BAM/BAI admission, fixed resources, and normalized samtools results', async () => {
+  const fixture = await makeFixture({
+    workflowId: 'bam-qc',
+    executionPolicy: {
+      inputChecksum: 'sha256',
+      networkIsolation: { mode: 'ephemeral_internal' },
+    },
+  })
+  const agent = { id: 'owner-session' }
+  try {
+    const planned = await fixture.manager.plan(fixture.request, { agent })
+    assert.equal(planned.ok, true, JSON.stringify(planned.error))
+    assert.deepEqual(planned.plan.inputContract, {
+      schemaVersion: '1',
+      kind: 'bam_bai_pair',
+      bamInput: 'bam',
+      baiInput: 'bai',
+      canonicalAdjacent: true,
+      acceptedBaiNaming: 'bam_dot_bai',
+      baiMagicHex: '42414901',
+      baiMinimumBytes: '8',
+      baiNotOlderThanBam: true,
+      compatibilityValidation: {
+        planning: 'pairing_magic_and_metadata',
+        runtime: [
+          'samtools_quickcheck',
+          'samtools_rebuilt_bai_byte_match',
+          'samtools_idxstats',
+        ],
+        matchClaim: 'runtime_only',
+      },
+    })
+    assert.equal(planned.plan.inputFileFacts.length, 2)
+    assert.equal(planned.plan.inputFileFacts.every((fact) => /^sha256:[a-f0-9]{64}$/.test(fact.contentSha256)), true)
+    assert.equal(planned.plan.runner.securityPolicy.networkIsolation.mode, 'ephemeral_internal_overlay')
+    assert.equal(planned.plan.budgets.policy, 'minimum_of_operator_configuration_and_bam_qc_admission_ceiling')
+    assert.equal(planned.plan.budgets.maxInputSnapshotBytes, String(128 * 1024 * 1024 * 1024))
+    assert.equal(planned.plan.budgets.maxRunStorageBytes, String(132 * 1024 * 1024 * 1024))
+    assert.equal(planned.plan.budgets.maxResultArtifactBytes, String(64 * 1024 * 1024))
+    assert.equal(planned.plan.budgets.maxTotalResultArtifactBytes, String(128 * 1024 * 1024))
+    assert.equal(planned.plan.budgets.maxCpu, 2)
+    assert.equal(planned.plan.budgets.maxMemoryBytes, String(4 * 1024 * 1024 * 1024))
+    assert.equal(planned.plan.budgets.maxPids, 4096)
+    assert.equal(planned.plan.budgets.maxWallTimeMs, 10 * 60 * 1000)
+    assert.deepEqual(planned.plan.expectedOutputs.map((output) => output.id), [
+      'flagstat_report',
+      'stats_report',
+      'idxstats_report',
+    ])
+
+    const started = await fixture.manager.run({
+      ...fixture.request,
+      expectedPlanDigest: planned.planDigest,
+    }, { agent })
+    assert.equal(started.ok, true, JSON.stringify(started.error))
+    await fixture.jobs.records.get(started.jobId).settled
+    const observed = await fixture.manager.getRun(started.runId, { agent })
+    assert.equal(observed.run.status, 'completed')
+    assert.equal(observed.run.storageBudget.violation, null)
+    assert.equal(observed.run.wallTimeBudget.violation, null)
+    assert.equal(observed.run.networkIsolation.cleanup, 'removed')
+    assert.deepEqual(observed.run.inputSnapshots.map((snapshot) => (
+      snapshot.stagedPath.slice(snapshot.stagedPath.lastIndexOf('.'))
+    )), ['.bam', '.bai'])
+    assert.deepEqual(observed.run.result.artifacts.map((group) => group.outputId), [
+      'flagstat_report',
+      'stats_report',
+      'idxstats_report',
+    ])
+    assert.deepEqual(observed.run.result.summaries.samtools, {
+      schemaVersion: '1',
+      flagstat: {
+        artifact: { outputId: 'flagstat_report', ordinal: 0 },
+        totalReads: '4',
+        mappedReads: '3',
+        properlyPairedReads: '2',
+        duplicateReads: '0',
+      },
+      idxstats: {
+        artifact: { outputId: 'idxstats_report', ordinal: 0 },
+        referenceCount: 1,
+        mappedReads: '3',
+        unmappedReads: '1',
+      },
+      statsArtifact: { outputId: 'stats_report', ordinal: 0 },
+    })
+    assert.deepEqual(validateBioWorkflowResultSemantics(observed.run.result), { valid: true, errors: [] })
+    const miniwdlConfig = await readFile(join(started.runDirectory, 'miniwdl.cfg'), 'utf8')
+    assert.match(miniwdlConfig, /cpu_max = 2/)
+    assert.match(miniwdlConfig, /memory_max = 4294967296/)
+    assert.match(miniwdlConfig, /command_preamble = ulimit -u 4096/)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('bam-qc planning rejects missing, mispaired, malformed, stale, and advisory-network inputs', async () => {
+  const fixtures = []
+  try {
+    const missing = await makeFixture({ workflowId: 'bam-qc' })
+    fixtures.push(missing)
+    const missingResult = await missing.manager.plan({
+      ...missing.request,
+      inputs: { bam: missing.input },
+    })
+    assert.equal(missingResult.error.code, 'invalid_workflow_inputs')
+
+    const mispaired = await makeFixture({ workflowId: 'bam-qc' })
+    fixtures.push(mispaired)
+    const otherBai = join(mispaired.inputRoot, 'other.bai')
+    await writeFile(otherBai, Buffer.from([0x42, 0x41, 0x49, 0x01, 0, 0, 0, 0]))
+    const mispairedResult = await mispaired.manager.plan({
+      ...mispaired.request,
+      inputs: { bam: mispaired.input, bai: otherBai },
+    })
+    assert.equal(mispairedResult.error.code, 'bam_bai_pairing_invalid')
+
+    const malformed = await makeFixture({ workflowId: 'bam-qc' })
+    fixtures.push(malformed)
+    await writeFile(malformed.bai, Buffer.from('not-a-bai'))
+    const malformedResult = await malformed.manager.plan(malformed.request)
+    assert.equal(malformedResult.error.code, 'bam_index_invalid')
+
+    const stale = await makeFixture({ workflowId: 'bam-qc' })
+    fixtures.push(stale)
+    const oldTime = new Date('2026-01-01T00:00:00.000Z')
+    const newTime = new Date('2026-01-02T00:00:00.000Z')
+    await utimes(stale.bai, oldTime, oldTime)
+    await utimes(stale.input, newTime, newTime)
+    const staleResult = await stale.manager.plan(stale.request)
+    assert.equal(staleResult.error.code, 'bam_index_stale')
+
+    const advisory = await makeFixture({ workflowId: 'bam-qc', executionPolicy: {} })
+    fixtures.push(advisory)
+    const advisoryResult = await advisory.manager.plan(advisory.request)
+    assert.equal(advisoryResult.error.code, 'bam_qc_network_isolation_required')
+
+    const overBudget = await makeFixture({
+      workflowId: 'bam-qc',
+      executionPolicy: {
+        networkIsolation: { mode: 'ephemeral_internal' },
+        budgets: {
+          maxInputSnapshotBytes: 16,
+          maxRunStorageBytes: 128,
+          maxResultArtifactBytes: 32,
+          maxTotalResultArtifactBytes: 64,
+          maxJobOutputBytes: 1024,
+          maxSpillBytes: 2048,
+        },
+      },
+    })
+    fixtures.push(overBudget)
+    const overBudgetResult = await overBudget.manager.plan(overBudget.request)
+    assert.equal(overBudgetResult.error.code, 'input_snapshot_limit_exceeded')
+  } finally {
+    await Promise.all(fixtures.map((fixture) => rm(fixture.root, { recursive: true, force: true })))
+  }
+})
+
+test('bam-qc planning rejects a mutable task container identity', async () => {
+  const fixture = await makeFixture({ workflowId: 'bam-qc' })
+  try {
+    const mutableStore = {
+      async resolve(...args) {
+        const resolved = await fixture.store.resolve(...args)
+        const entrypoint = resolved.bundle.descriptor.wdl.entrypoint
+        return {
+          ...resolved,
+          bundle: {
+            ...resolved.bundle,
+            contents: {
+              ...resolved.bundle.contents,
+              [entrypoint]: resolved.bundle.contents[entrypoint].replace(
+                /quay\.io\/biocontainers\/samtools:[^"\s]+@sha256:[a-f0-9]{64}/,
+                'quay.io/biocontainers/samtools:latest',
+              ),
+            },
+          },
+        }
+      },
+    }
+    const manager = createExecutionManager({
+      store: mutableStore,
+      config: fixture.manager.config,
+      getSubprocess: () => fixture.subprocess,
+      getJobs: () => fixture.jobs,
+    })
+
+    const rejected = await manager.plan(fixture.request)
+
+    assert.equal(rejected.error.code, 'container_digest_unpinned')
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('bam-qc planning rejects a self-consistent replacement outside the admitted bundle digest', async () => {
+  const fixture = await makeFixture({ workflowId: 'bam-qc' })
+  try {
+    const replacementDigest = `sha256:${'f'.repeat(64)}`
+    const replacedStore = {
+      async resolve(...args) {
+        const resolved = await fixture.store.resolve(...args)
+        return {
+          ...resolved,
+          bundle: { ...resolved.bundle, digest: replacementDigest },
+        }
+      },
+    }
+    const manager = createExecutionManager({
+      store: replacedStore,
+      config: fixture.manager.config,
+      getSubprocess: () => fixture.subprocess,
+      getJobs: () => fixture.jobs,
+    })
+
+    const rejected = await manager.plan({
+      ...fixture.request,
+      expectedDigest: replacementDigest,
+    })
+
+    assert.equal(rejected.error.code, 'workflow_revision_not_admitted')
+    assert.equal(rejected.actualDigest, replacementDigest)
+    assert.equal(rejected.admittedDigest, fixture.workflow.digest)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('bam-qc fails closed on changed approval content, runtime index mismatch, and ordered wall-time overflow', async () => {
+  const fixtures = []
+  const agent = { id: 'owner-session' }
+  try {
+    const changed = await makeFixture({
+      workflowId: 'bam-qc',
+      executionPolicy: {
+        inputChecksum: 'sha256',
+        networkIsolation: { mode: 'ephemeral_internal' },
+      },
+    })
+    fixtures.push(changed)
+    const approved = await changed.manager.plan(changed.request, { agent })
+    const approvedBaiDigest = approved.plan.inputFileFacts.find((fact) => fact.input === 'bai').contentSha256
+    await writeFile(changed.bai, Buffer.from([0x42, 0x41, 0x49, 0x01, 1, 0, 0, 0]))
+    const changedPlan = await changed.manager.plan(changed.request, { agent })
+    assert.notEqual(
+      changedPlan.plan.inputFileFacts.find((fact) => fact.input === 'bai').contentSha256,
+      approvedBaiDigest,
+    )
+    const changedStart = await changed.manager.run({
+      ...changed.request,
+      expectedPlanDigest: approved.planDigest,
+    }, { agent })
+    assert.equal(changedStart.error.code, 'plan_digest_mismatch')
+
+    const mismatched = await makeFixture({
+      workflowId: 'bam-qc',
+      runOutcome: { exitCode: 1, signal: null },
+      runFailure: 'samtools idxstats rejected a mismatched BAI',
+    })
+    fixtures.push(mismatched)
+    const mismatchPlan = await mismatched.manager.plan(mismatched.request, { agent })
+    const mismatchStart = await mismatched.manager.run({
+      ...mismatched.request,
+      expectedPlanDigest: mismatchPlan.planDigest,
+    }, { agent })
+    await mismatched.jobs.records.get(mismatchStart.jobId).settled
+    const mismatchRun = await mismatched.manager.getRun(mismatchStart.runId, { agent })
+    assert.equal(mismatchRun.run.status, 'failed')
+    assert.equal(mismatchRun.run.error.code, 'miniwdl_failed')
+    assert.match(mismatchRun.run.error.miniwdl.error, /mismatched BAI/)
+
+    let wallTimer
+    const timed = await makeFixture({
+      workflowId: 'bam-qc',
+      holdRun: true,
+      scheduleTimeout(callback) {
+        wallTimer = callback
+        return { unref() {} }
+      },
+      cancelTimeout() {},
+    })
+    fixtures.push(timed)
+    const timedPlan = await timed.manager.plan(timed.request, { agent })
+    const timedStart = await timed.manager.run({
+      ...timed.request,
+      expectedPlanDigest: timedPlan.planDigest,
+    }, { agent })
+    assert.equal(typeof wallTimer, 'function')
+    wallTimer()
+    assert.equal(timed.jobs.kill(timedStart.jobId, agent), 'requested')
+    await timed.jobs.records.get(timedStart.jobId).settled
+    const timedRun = await timed.manager.getRun(timedStart.runId, { agent })
+    assert.equal(timedRun.run.status, 'failed')
+    assert.equal(timedRun.run.error.code, 'run_wall_time_budget_exceeded')
+    assert.equal(timedRun.run.wallTimeBudget.violation.maximumMs, 10 * 60 * 1000)
+    assert.equal(timed.subprocess.terminated, true)
+
+    let cancelledFirstWallTimer
+    const cancelledFirst = await makeFixture({
+      workflowId: 'bam-qc',
+      holdRun: true,
+      scheduleTimeout(callback) {
+        cancelledFirstWallTimer = callback
+        return { unref() {} }
+      },
+      cancelTimeout() {},
+    })
+    fixtures.push(cancelledFirst)
+    const cancelledFirstPlan = await cancelledFirst.manager.plan(cancelledFirst.request, { agent })
+    const cancelledFirstStart = await cancelledFirst.manager.run({
+      ...cancelledFirst.request,
+      expectedPlanDigest: cancelledFirstPlan.planDigest,
+    }, { agent })
+    assert.equal(cancelledFirst.jobs.kill(cancelledFirstStart.jobId, agent), 'requested')
+    cancelledFirstWallTimer()
+    await cancelledFirst.jobs.records.get(cancelledFirstStart.jobId).settled
+    const cancelledFirstRun = await cancelledFirst.manager.getRun(cancelledFirstStart.runId, { agent })
+    assert.equal(cancelledFirstRun.run.status, 'killed')
+    assert.equal(cancelledFirstRun.run.error, null)
+    assert.equal(cancelledFirstRun.run.wallTimeBudget.violation, null)
+  } finally {
+    await Promise.all(fixtures.map((fixture) => rm(fixture.root, { recursive: true, force: true })))
+  }
+})
+
 test('configured execution budgets are plan-bound and fail closed on run storage overflow', async () => {
   const fixture = await makeFixture({
     executionPolicy: {
@@ -602,6 +988,7 @@ test('planning fails closed for disabled execution, unsupported workflows, and e
     const unsupported = await fixture.manager.plan({
       ...fixture.request,
       id: 'bam-qc',
+      version: '1.0.0',
     })
     assert.equal(unsupported.error.code, 'workflow_execution_unsupported')
 

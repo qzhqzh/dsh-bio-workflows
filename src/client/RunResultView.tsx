@@ -8,6 +8,7 @@ import {
   type RunDetailsProjection,
   type RunHistoryItemProjection,
   type RunLifecycleStatus,
+  type SamtoolsSummaryProjection,
 } from './run-result.ts'
 import type { ToolViewProps } from './types.ts'
 
@@ -30,6 +31,7 @@ const FAILURE_DETAIL_BY_CODE: Record<string, string> = {
   result_collection_failed: 'Declared outputs did not satisfy the result contract. No output files are presented here.',
   run_interrupted: 'Runtime continuity was lost and no automatic retry occurred. Review provenance before deciding what to do next.',
   run_storage_budget_exceeded: 'The run exceeded its storage budget and was stopped. No successful result is claimed.',
+  run_wall_time_budget_exceeded: 'The run exceeded its wall-time budget and was stopped. No successful result is claimed.',
   runner_lifecycle_failed: 'The isolated runner did not complete its lifecycle safely. No successful result is claimed.',
 }
 
@@ -55,6 +57,10 @@ function formatBytes(value: string) {
   return `${scaled >= 10 ? scaled.toFixed(0) : scaled.toFixed(1)} ${units[unit]}`
 }
 
+function formatCount(value: string) {
+  return BigInt(value).toLocaleString()
+}
+
 function shortDigest(value: string) {
   return `${value.slice(0, 19)}…`
 }
@@ -64,6 +70,9 @@ function outputLabel(value: string) {
     html_reports: 'HTML reports',
     zip_reports: 'ZIP reports',
     summary_reports: 'Summary reports',
+    flagstat_report: 'Flagstat report',
+    stats_report: 'Stats report',
+    idxstats_report: 'Index statistics report',
   }
   if (known[value] !== undefined) return known[value]
   return value.replaceAll('_', ' ').replace(/\b\w/g, (character) => character.toUpperCase())
@@ -91,6 +100,16 @@ function FastqcCountsView({ counts }: { counts: FastqcCounts }) {
       <div data-tone="success"><dt>Passed</dt><dd>{counts.pass}</dd></div>
       <div data-tone="warning"><dt>Warnings</dt><dd>{counts.warn}</dd></div>
       <div data-tone="error"><dt>Failed</dt><dd>{counts.fail}</dd></div>
+    </dl>
+  )
+}
+
+function SamtoolsCountsView({ summary }: { summary: SamtoolsSummaryProjection }) {
+  return (
+    <dl className="dsh-bio-result__qc-counts" aria-label="samtools technical counts">
+      <div><dt>Total reads</dt><dd>{formatCount(summary.totalReads)}</dd></div>
+      <div><dt>Mapped reads</dt><dd>{formatCount(summary.mappedReads)}</dd></div>
+      <div><dt>References</dt><dd>{summary.referenceCount.toLocaleString()}</dd></div>
     </dl>
   )
 }
@@ -150,6 +169,13 @@ function outcomeCopy(run: RunDetailsProjection) {
       detail: `FastQC finished for ${reports}; all ${pass} published checks passed.`,
     }
   }
+  const samtools = result.samtools
+  if (samtools !== undefined) {
+    return {
+      ...status,
+      detail: `samtools validated the BAM/BAI pair and published bounded technical counts for ${formatCount(samtools.totalReads)} reads. Review the checksummed reports before downstream analysis.`,
+    }
+  }
   return {
     ...status,
     detail: `The approved workflow finished and produced ${result.artifactCount} checksummed ${result.artifactCount === 1 ? 'file' : 'files'}. No structured biological summary is published for this workflow.`,
@@ -204,6 +230,7 @@ function RunResult({ run }: { run: RunDetailsProjection }) {
   const outcome = outcomeCopy(run)
   const result = run.result
   const fastqc = result?.fastqc
+  const samtools = result?.samtools
   return (
     <section className="dsh-bio-result" data-tone={outcome.tone} aria-label={`${workflowLabel(run)} analysis result`}>
       <header className="dsh-bio-result__header">
@@ -230,6 +257,18 @@ function RunResult({ run }: { run: RunDetailsProjection }) {
             ))}
           </ul>
           {fastqc.reportsOmitted > 0 ? <p className="dsh-bio-result__bounded-note">{fastqc.reportsOmitted} additional sample reports remain in the owner-scoped Agent result.</p> : null}
+        </section>
+      ) : null}
+      {samtools !== undefined ? (
+        <section className="dsh-bio-result__section" aria-labelledby={`${resultId}-samtools-heading`}>
+          <div className="dsh-bio-result__section-heading">
+            <div><h4 id={`${resultId}-samtools-heading`}>Technical alignment summary</h4><p>Normalized from bounded samtools flagstat and idxstats reports</p></div>
+            <span>{samtools.referenceCount} {samtools.referenceCount === 1 ? 'reference' : 'references'}</span>
+          </div>
+          <SamtoolsCountsView summary={samtools} />
+          <p className="dsh-bio-result__bounded-note">
+            {formatCount(samtools.properlyPairedReads)} properly paired · {formatCount(samtools.duplicateReads)} duplicates · {formatCount(samtools.indexUnmappedReads)} index-reported unmapped
+          </p>
         </section>
       ) : null}
       {result !== undefined ? (

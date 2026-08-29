@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add an exact `bam-qc@1.1.0` production-admission candidate with canonical BAM/BAI
+  pairing, bounded BAI header/freshness checks, optional pre-approval SHA-256,
+  mandatory per-run internal networking, fixed CPU/memory/PID/wall-time
+  limits, pinned samtools validation with byte-identical BAI rebuilding,
+  checksummed artifacts, normalized
+  technical counts, and real success/cancellation evidence. Historical
+  `bam-qc@1.0.0`, custom WDL, installed bundles, and drafts remain outside the
+  execution allowlist.
 - Reorient Workflow Center around Analyze data, Build workflow, Activity, and
   contextual Setup. Show authoritative scientific-fit inputs/outputs before
   implementation details, keep package checking explicitly non-executing, and
