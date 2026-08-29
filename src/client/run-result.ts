@@ -13,6 +13,7 @@ const MAX_PRESENTED_FASTQC_REPORTS = 12
 const MAX_FASTQC_MODULES = 16_384
 const MAX_RESULT_ARTIFACT_BYTES = 16n * 1024n * 1024n * 1024n
 const MAX_TOTAL_RESULT_ARTIFACT_BYTES = 64n * 1024n * 1024n * 1024n
+const MAX_SAMTOOLS_COUNT = (1n << 64n) - 1n
 
 const RUN_ID = /^run-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const IDENTIFIER = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/
@@ -79,6 +80,16 @@ export interface FastqcSummaryProjection {
   reportsOmitted: number
 }
 
+export interface SamtoolsSummaryProjection {
+  totalReads: string
+  mappedReads: string
+  properlyPairedReads: string
+  duplicateReads: string
+  referenceCount: number
+  indexMappedReads: string
+  indexUnmappedReads: string
+}
+
 export interface RunNormalizedResultProjection {
   generatedAt: string
   artifactCount: number
@@ -86,6 +97,7 @@ export interface RunNormalizedResultProjection {
   artifactGroups: RunArtifactGroupProjection[]
   artifactGroupsOmitted: number
   fastqc?: FastqcSummaryProjection
+  samtools?: SamtoolsSummaryProjection
   diagnostics: Array<{ code: string }>
   diagnosticsOmitted: number
 }
@@ -318,6 +330,59 @@ function projectFastqcSummary(value: unknown, summaryArtifactReferences: Set<str
   }
 }
 
+function projectSamtoolsSummary(
+  value: unknown,
+  artifactReferences: Set<string>,
+): SamtoolsSummaryProjection | null {
+  if (!isRecord(value)
+    || value.schemaVersion !== '1'
+    || !isRecord(value.flagstat)
+    || !isRecord(value.idxstats)
+    || !isRecord(value.statsArtifact)
+  ) return null
+  const expectedReferences: Array<[Record<string, unknown>, string]> = [
+    [value.flagstat.artifact as Record<string, unknown>, 'flagstat_report'],
+    [value.idxstats.artifact as Record<string, unknown>, 'idxstats_report'],
+    [value.statsArtifact, 'stats_report'],
+  ]
+  if (expectedReferences.some(([reference, outputId]) => (
+    !isRecord(reference)
+    || reference.outputId !== outputId
+    || reference.ordinal !== 0
+    || !artifactReferences.has(`${outputId}:0`)
+  ))) return null
+  const total = byteCount(value.flagstat.totalReads, MAX_SAMTOOLS_COUNT)
+  const mapped = byteCount(value.flagstat.mappedReads, MAX_SAMTOOLS_COUNT)
+  const properlyPaired = byteCount(value.flagstat.properlyPairedReads, MAX_SAMTOOLS_COUNT)
+  const duplicates = byteCount(value.flagstat.duplicateReads, MAX_SAMTOOLS_COUNT)
+  const indexMapped = byteCount(value.idxstats.mappedReads, MAX_SAMTOOLS_COUNT)
+  const indexUnmapped = byteCount(value.idxstats.unmappedReads, MAX_SAMTOOLS_COUNT)
+  if (
+    total === null
+    || mapped === null
+    || properlyPaired === null
+    || duplicates === null
+    || indexMapped === null
+    || indexUnmapped === null
+    || mapped > total
+    || properlyPaired > total
+    || duplicates > total
+    || indexMapped + indexUnmapped !== total
+    || !Number.isSafeInteger(value.idxstats.referenceCount)
+    || Number(value.idxstats.referenceCount) < 0
+    || Number(value.idxstats.referenceCount) > 16_383
+  ) return null
+  return {
+    totalReads: total.toString(),
+    mappedReads: mapped.toString(),
+    properlyPairedReads: properlyPaired.toString(),
+    duplicateReads: duplicates.toString(),
+    referenceCount: Number(value.idxstats.referenceCount),
+    indexMappedReads: indexMapped.toString(),
+    indexUnmappedReads: indexUnmapped.toString(),
+  }
+}
+
 function projectNormalizedResult(
   value: unknown,
   workflow: RunWorkflowIdentity,
@@ -360,7 +425,7 @@ function projectNormalizedResult(
       const size = byteCount(item.sizeBytes, MAX_RESULT_ARTIFACT_BYTES)
       if (size === null) return null
       ordinals.add(Number(item.ordinal))
-      if (group.outputId === 'summary_reports') artifactReferences.add(`${group.outputId}:${item.ordinal}`)
+      artifactReferences.add(`${group.outputId}:${item.ordinal}`)
       artifactCount += 1
       if (artifactCount > MAX_ARTIFACT_ITEMS) return null
       groupBytes += size
@@ -382,13 +447,25 @@ function projectNormalizedResult(
   }
 
   const summaryKeys = Object.keys(value.summaries)
-  if (summaryKeys.some((key) => key !== 'fastqc')) return null
+  if (summaryKeys.some((key) => key !== 'fastqc' && key !== 'samtools')) return null
   let fastqc: FastqcSummaryProjection | undefined
   if (value.summaries.fastqc !== undefined) {
-    const projectedFastqc = projectFastqcSummary(value.summaries.fastqc, artifactReferences)
+    if (workflow.id !== 'fastq-qc' || workflow.version !== '1.2.0') return null
+    const projectedFastqc = projectFastqcSummary(
+      value.summaries.fastqc,
+      new Set([...artifactReferences].filter((reference) => reference.startsWith('summary_reports:'))),
+    )
     if (projectedFastqc === null) return null
     fastqc = projectedFastqc
   }
+  let samtools: SamtoolsSummaryProjection | undefined
+  if (value.summaries.samtools !== undefined) {
+    if (workflow.id !== 'bam-qc' || workflow.version !== '1.1.0') return null
+    const projectedSamtools = projectSamtoolsSummary(value.summaries.samtools, artifactReferences)
+    if (projectedSamtools === null) return null
+    samtools = projectedSamtools
+  }
+  if (fastqc !== undefined && samtools !== undefined) return null
 
   const diagnostics: Array<{ code: string }> = []
   for (const diagnostic of value.diagnostics) {
@@ -405,6 +482,7 @@ function projectNormalizedResult(
     artifactGroups,
     artifactGroupsOmitted: value.artifacts.length - artifactGroups.length,
     ...(fastqc === undefined ? {} : { fastqc }),
+    ...(samtools === undefined ? {} : { samtools }),
     diagnostics,
     diagnosticsOmitted: value.diagnostics.length - diagnostics.length,
   }

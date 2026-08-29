@@ -1,0 +1,114 @@
+{
+  "bundleVersion": "1",
+  "manifest": {
+    "schemaVersion": "1",
+    "id": "bam-qc",
+    "version": "1.1.0",
+    "name": "BAM quality control",
+    "summary": "Validate one BAM/BAI pair and return checksummed samtools QC reports.",
+    "status": "ready",
+    "engine": {
+      "name": "miniwdl"
+    },
+    "inputs": [
+      {
+        "id": "bam",
+        "type": "file",
+        "required": true,
+        "description": "Canonical .bam file to inspect. The execution adapter snapshots it before launch."
+      },
+      {
+        "id": "bai",
+        "type": "file",
+        "required": true,
+        "description": "Adjacent BAI index named <bam>.bai or <stem>.bai."
+      }
+    ],
+    "outputs": [
+      {
+        "id": "flagstat_report",
+        "type": "file",
+        "description": "samtools flagstat text report."
+      },
+      {
+        "id": "stats_report",
+        "type": "file",
+        "description": "samtools stats text report."
+      },
+      {
+        "id": "idxstats_report",
+        "type": "file",
+        "description": "samtools idxstats text report proving the index was loaded."
+      }
+    ],
+    "tags": [
+      "bam",
+      "qc",
+      "samtools",
+      "wdl"
+    ]
+  },
+  "wdl": {
+    "version": "1.0",
+    "entrypoint": "main.wdl",
+    "engines": [
+      {
+        "name": "miniwdl",
+        "version": "1.15.0"
+      },
+      {
+        "name": "cromwell"
+      }
+    ]
+  },
+  "source": {
+    "kind": "builtin",
+    "repository": "https://github.com/qzhqzh/dsh-bio-workflows",
+    "revision": "0.13.0"
+  },
+  "authors": [
+    "dsh-bio-workflows maintainers"
+  ],
+  "license": "MIT",
+  "verification": {
+    "status": "verified",
+    "checks": [
+      "bundle-file-digests",
+      "local-import-closure",
+      "wdl-source-shape",
+      "miniwdl-check@1.15.0",
+      "miniwdl-run@1.15.0",
+      "container-digest-pinned",
+      "docker-swarm-internal-network",
+      "bam-bai-contract-v1",
+      "rebuilt-bai-byte-match",
+      "input-snapshot-sha256",
+      "output-artifact-sha256",
+      "samtools-summary-v1",
+      "cancellation-provenance",
+      "example-json"
+    ]
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "role": "license",
+      "sha256": "8e02f8ac03fd6bc80b43d27ae6ccba78a2af6fc5fb2698c99793bec3e9b29549"
+    },
+    {
+      "path": "README.md",
+      "role": "documentation",
+      "sha256": "140a419adbadb44e14af5afe26246af6b15ec8de723a1c6a32bb4a7665f312c2"
+    },
+    {
+      "path": "examples/inputs.json",
+      "role": "example",
+      "sha256": "2f5c78312efbd491b02f9247538ad1520220d477949973deb2e90b71e73cf033"
+    },
+    {
+      "path": "main.wdl",
+      "role": "workflow",
+      "sha256": "68502a89713bd755245229c263bdeed7d56ec59d806425591bb64c6a5cc47e51"
+    }
+  ]
+}

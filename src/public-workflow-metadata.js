@@ -1,10 +1,11 @@
 import bamQc100 from '../workflows/bam-qc/1.0.0/workflow.json' with { type: 'json' }
+import bamQc110 from '../workflows/bam-qc/1.1.0/workflow.json' with { type: 'json' }
 import fastqQc100 from '../workflows/fastq-qc/1.0.0/workflow.json' with { type: 'json' }
 import fastqQc110 from '../workflows/fastq-qc/1.1.0/workflow.json' with { type: 'json' }
 import fastqQc120 from '../workflows/fastq-qc/1.2.0/workflow.json' with { type: 'json' }
 
 const BUILTIN_MANIFESTS = new Map(
-  [bamQc100, fastqQc100, fastqQc110, fastqQc120].map((descriptor) => [
+  [bamQc100, bamQc110, fastqQc100, fastqQc110, fastqQc120].map((descriptor) => [
     `${descriptor.manifest.id}@${descriptor.manifest.version}`,
     descriptor.manifest,
   ]),

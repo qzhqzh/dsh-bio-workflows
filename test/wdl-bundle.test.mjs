@@ -152,6 +152,82 @@ test('built-in WDL bundles load with verified files and explicit limitations', a
   assert.ok(!validation.warnings.some((warning) => warning.code === 'container_digest_unpinned'))
 })
 
+test('bam-qc 1.1.0 is bound to real success, cancellation, and mismatched-index evidence', async () => {
+  const bam = await loadWdlBundle(new URL('../workflows/bam-qc/1.1.0/', import.meta.url))
+  const evidence = JSON.parse(await readFile(
+    new URL('../docs/evidence/bam-qc-1.1.0-result-acceptance.json', import.meta.url),
+    'utf8',
+  ))
+
+  assert.equal(bam.descriptor.manifest.id, 'bam-qc')
+  assert.equal(bam.descriptor.manifest.version, '1.1.0')
+  assert.equal(bam.descriptor.manifest.status, 'ready')
+  assert.equal(bam.descriptor.verification.status, 'verified')
+  assert.equal(evidence.schemaVersion, '1')
+  assert.equal(evidence.packageVersion, PACKAGE_VERSION)
+  assert.equal(evidence.workflow.bundleDigest, bam.digest)
+  for (const digest of [
+    evidence.workflow.successPlanDigest,
+    evidence.workflow.cancellationPlanDigest,
+    evidence.workflow.mismatchPlanDigest,
+  ]) {
+    assert.match(digest, /^sha256:[a-f0-9]{64}$/)
+  }
+  assert.equal(evidence.runner.name, 'miniwdl')
+  assert.equal(evidence.runner.version, '1.15.0')
+  assert.match(evidence.runner.containerImage, /@sha256:[a-f0-9]{64}$/)
+  assert.deepEqual(evidence.runtime, {
+    realComponents: [
+      'ApprovalService',
+      'ToolRuntime',
+      'bio_workflows_search',
+      'bio_workflows_plan',
+      'bio_workflows_run',
+      'bio_workflows_run_get',
+    ],
+  })
+  assert.deepEqual(evidence.approval, {
+    requests: 3,
+    askedEvents: 3,
+    decidedEvents: 3,
+    outcome: 'allowed-once',
+    bundleDigestBound: true,
+    planDigestsBound: true,
+    ownerSession: 'bio-workflow-bam-acceptance',
+  })
+  assert.equal(evidence.executionPolicy.networkIsolation.network.internal, true)
+  assert.equal(evidence.executionPolicy.networkIsolation.cleanup, 'removed')
+  assert.equal(evidence.executionPolicy.storageBudget.violation, null)
+  assert.equal(evidence.executionPolicy.wallTimeBudget.violation, null)
+  assert.equal(evidence.success.jobStatus, 'completed')
+  assert.equal(evidence.success.runStatus, 'completed')
+  assert.equal(evidence.success.artifacts.every((artifact) => (
+    artifact.sha256 === artifact.directSha256
+  )), true)
+  assert.deepEqual(evidence.success.summaries.samtools.flagstat, {
+    artifact: { outputId: 'flagstat_report', ordinal: 0 },
+    totalReads: '2',
+    mappedReads: '2',
+    properlyPairedReads: '2',
+    duplicateReads: '0',
+  })
+  assert.equal(evidence.success.summaries.samtools.idxstats.referenceCount, 1)
+  assert.equal(evidence.cancellation.jobStatus, 'killed')
+  assert.equal(evidence.cancellation.runStatus, 'killed')
+  assert.equal(evidence.cancellation.result, null)
+  assert.equal(evidence.cancellation.networkCleanup, 'removed')
+  assert.equal(evidence.mismatchedIndex.planningAcceptedMetadataShape, true)
+  assert.equal(evidence.mismatchedIndex.jobStatus, 'failed')
+  assert.equal(evidence.mismatchedIndex.runStatus, 'failed')
+  assert.equal(evidence.mismatchedIndex.errorCode, 'miniwdl_failed')
+  assert.equal(evidence.mismatchedIndex.result, null)
+  assert.equal(evidence.mismatchedIndex.networkCleanup, 'removed')
+  for (const [relativePath, expectedSha256] of Object.entries(evidence.sourceSha256)) {
+    const source = await readFile(new URL(`../${relativePath}`, import.meta.url), 'utf8')
+    assert.equal(sha256Text(source), expectedSha256, `${relativePath} changed after BAM acceptance`)
+  }
+})
+
 test('descriptor validation rejects path traversal and engine mismatches', async () => {
   const source = JSON.parse(await readFile(new URL('../workflows/fastq-qc/1.0.0/workflow.json', import.meta.url)))
   source.files[0].path = '../LICENSE'

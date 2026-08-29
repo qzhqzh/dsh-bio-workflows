@@ -65,6 +65,25 @@ const workflows = [
     verification: { status: 'verified', checks: ['miniwdl-check@1.15.0'] },
   },
   {
+    id: 'bam-qc', version: '1.1.0', name: 'BAM quality control',
+    summary: 'Validate one BAM/BAI pair and return checksummed samtools QC reports.',
+    inputs: [
+      { id: 'bam', type: 'file', required: true, cardinality: 'one' as const, description: 'BAM file to inspect.' },
+      { id: 'bai', type: 'file', required: true, cardinality: 'one' as const, description: 'Adjacent BAI index.' },
+    ],
+    outputs: [
+      { id: 'flagstat_report', type: 'file', cardinality: 'one' as const },
+      { id: 'stats_report', type: 'file', cardinality: 'one' as const },
+      { id: 'idxstats_report', type: 'file', cardinality: 'one' as const },
+    ],
+    status: 'ready', language: 'wdl', languageVersion: '1.0', source: 'builtin' as const,
+    trust: 'builtin', installed: false, digest: `sha256:${'e'.repeat(64)}`,
+    executionSupported: true,
+    scientificFitStatus: 'available' as const,
+    tags: ['bam', 'qc', 'samtools', 'wdl'], engines: [{ name: 'miniwdl', version: '1.15.0' }],
+    verification: { status: 'verified', checks: ['miniwdl-run@1.15.0', 'bam-bai-contract-v1'] },
+  },
+  {
     id: 'bam-qc', version: '1.0.0', name: 'BAM quality control',
     summary: 'Collect samtools flagstat and stats reports from an aligned BAM file.',
     inputs: [{ id: 'bam', type: 'file', required: true, cardinality: 'one' as const, description: 'Aligned BAM file to inspect.' }],
@@ -283,6 +302,47 @@ const runGetPayload = {
   error: null,
 }
 
+const bamPreviewWorkflow = {
+  id: 'bam-qc',
+  version: '1.1.0',
+  bundleDigest: `sha256:${'f'.repeat(64)}`,
+}
+const bamRunGetPayload = {
+  ...runGetPayload,
+  run: {
+    ...runGetPayload.run,
+    plan: { workflow: bamPreviewWorkflow },
+    result: {
+      ...runGetPayload.run.result,
+      workflow: bamPreviewWorkflow,
+      artifacts: [
+        { ...resultArtifact('flagstat_report', 0, 'outputs/flagstat.txt', '822', '7'), cardinality: 'one' },
+        { ...resultArtifact('stats_report', 0, 'outputs/stats.txt', '4960', '8'), cardinality: 'one' },
+        { ...resultArtifact('idxstats_report', 0, 'outputs/idxstats.txt', '51', '9'), cardinality: 'one' },
+      ],
+      summaries: {
+        samtools: {
+          schemaVersion: '1',
+          flagstat: {
+            artifact: { outputId: 'flagstat_report', ordinal: 0 },
+            totalReads: '1000',
+            mappedReads: '940',
+            properlyPairedReads: '880',
+            duplicateReads: '35',
+          },
+          idxstats: {
+            artifact: { outputId: 'idxstats_report', ordinal: 0 },
+            referenceCount: 2,
+            mappedReads: '940',
+            unmappedReads: '60',
+          },
+          statsArtifact: { outputId: 'stats_report', ordinal: 0 },
+        },
+      },
+    },
+  },
+}
+
 const runListPayload = {
   ok: true,
   count: 3,
@@ -322,6 +382,8 @@ if (query.get('view') === 'graph') {
   }} />)
 } else if (query.get('view') === 'result') {
   root.render(<div id="result-root"><RunResultToolView block={toolBlock(runGetPayload)} /></div>)
+} else if (query.get('view') === 'result-bam') {
+  root.render(<div id="result-root"><RunResultToolView block={toolBlock(bamRunGetPayload)} /></div>)
 } else if (query.get('view') === 'result-failed') {
   const failed = {
     ...runGetPayload,

@@ -65,6 +65,7 @@
     "smoke:dsh-agent": "node scripts/smoke-dsh-agent-loop.mjs",
     "accept:draft-fixture-runner": "node scripts/accept-draft-fixture-runner.mjs",
     "accept:fastq-qc-result": "node scripts/accept-fastq-qc-result.mjs",
+    "accept:bam-qc": "node scripts/accept-bam-qc.mjs",
     "prepack": "npm run build"
   },
   "keywords": [

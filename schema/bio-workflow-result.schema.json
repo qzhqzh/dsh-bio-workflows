@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://unpkg.com/dsh-bio-workflows@0.12.0/schema/bio-workflow-result.schema.json",
   "title": "BioWorkflowResult v1",
-  "$comment": "Use validateBioWorkflowResultSemantics from dsh-bio-workflows/execution for cross-group aggregate limits and FastQC count/reference consistency.",
+  "$comment": "Use validateBioWorkflowResultSemantics from dsh-bio-workflows/execution for cross-group aggregate limits plus FastQC and samtools count/reference consistency.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -32,7 +32,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "fastqc": { "$ref": "#/$defs/fastqcSummary" }
+        "fastqc": { "$ref": "#/$defs/fastqcSummary" },
+        "samtools": { "$ref": "#/$defs/samtoolsSummary" }
       }
     },
     "diagnostics": {
@@ -56,6 +57,11 @@
     },
     "byteCount": {
       "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)$"
+    },
+    "samtoolsCount": {
+      "type": "string",
+      "maxLength": 20,
       "pattern": "^(?:0|[1-9][0-9]*)$"
     },
     "workflow": {
@@ -159,6 +165,46 @@
           "maxItems": 1024,
           "items": { "$ref": "#/$defs/fastqcReport" }
         }
+      }
+    },
+    "samtoolsFlagstat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact",
+        "totalReads",
+        "mappedReads",
+        "properlyPairedReads",
+        "duplicateReads"
+      ],
+      "properties": {
+        "artifact": { "$ref": "#/$defs/artifactReference" },
+        "totalReads": { "$ref": "#/$defs/samtoolsCount" },
+        "mappedReads": { "$ref": "#/$defs/samtoolsCount" },
+        "properlyPairedReads": { "$ref": "#/$defs/samtoolsCount" },
+        "duplicateReads": { "$ref": "#/$defs/samtoolsCount" }
+      }
+    },
+    "samtoolsIdxstats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact", "referenceCount", "mappedReads", "unmappedReads"],
+      "properties": {
+        "artifact": { "$ref": "#/$defs/artifactReference" },
+        "referenceCount": { "type": "integer", "minimum": 0, "maximum": 16383 },
+        "mappedReads": { "$ref": "#/$defs/samtoolsCount" },
+        "unmappedReads": { "$ref": "#/$defs/samtoolsCount" }
+      }
+    },
+    "samtoolsSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "flagstat", "idxstats", "statsArtifact"],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "flagstat": { "$ref": "#/$defs/samtoolsFlagstat" },
+        "idxstats": { "$ref": "#/$defs/samtoolsIdxstats" },
+        "statsArtifact": { "$ref": "#/$defs/artifactReference" }
       }
     },
     "diagnostic": {

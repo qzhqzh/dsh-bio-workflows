@@ -86,6 +86,42 @@ function completedPayload() {
   }
 }
 
+function bamCompletedPayload() {
+  const payload = completedPayload()
+  const bamWorkflow = {
+    id: 'bam-qc',
+    version: '1.1.0',
+    bundleDigest: `sha256:${'c'.repeat(64)}`,
+  }
+  payload.run.plan.workflow = bamWorkflow
+  payload.run.result.workflow = bamWorkflow
+  payload.run.result.artifacts = [
+    { outputId: 'flagstat_report', type: 'file', cardinality: 'one', items: [artifact(0)] },
+    { outputId: 'stats_report', type: 'file', cardinality: 'one', items: [artifact(0)] },
+    { outputId: 'idxstats_report', type: 'file', cardinality: 'one', items: [artifact(0)] },
+  ]
+  payload.run.result.summaries = {
+    samtools: {
+      schemaVersion: '1',
+      flagstat: {
+        artifact: { outputId: 'flagstat_report', ordinal: 0 },
+        totalReads: '4',
+        mappedReads: '3',
+        properlyPairedReads: '2',
+        duplicateReads: '0',
+      },
+      idxstats: {
+        artifact: { outputId: 'idxstats_report', ordinal: 0 },
+        referenceCount: 1,
+        mappedReads: '3',
+        unmappedReads: '1',
+      },
+      statsArtifact: { outputId: 'stats_report', ordinal: 0 },
+    },
+  }
+  return payload
+}
+
 test('run result projection keeps outcome evidence and omits Host-private fields', () => {
   const payload = completedPayload()
   payload.run.result.diagnostics = [{
@@ -105,6 +141,30 @@ test('run result projection keeps outcome evidence and omits Host-private fields
   assert.equal(JSON.stringify(projected).includes('ownerSession'), false)
   assert.equal(JSON.stringify(projected).includes('/private/run'), false)
   assert.equal(JSON.stringify(projected).includes('environmentPolicy'), false)
+})
+
+test('run result projection publishes bounded samtools counts and verifies artifact references', () => {
+  const projected = projectRunGetToolResult(block(bamCompletedPayload()))
+
+  assert.equal(projected.state, 'ready')
+  assert.equal(projected.value.resultState, 'available')
+  assert.deepEqual(projected.value.result.samtools, {
+    totalReads: '4',
+    mappedReads: '3',
+    properlyPairedReads: '2',
+    duplicateReads: '0',
+    referenceCount: 1,
+    indexMappedReads: '3',
+    indexUnmappedReads: '1',
+  })
+
+  const invalidReference = bamCompletedPayload()
+  invalidReference.run.result.summaries.samtools.statsArtifact.outputId = 'flagstat_report'
+  assert.equal(projectRunGetToolResult(block(invalidReference)).value.resultState, 'invalid')
+
+  const invalidCount = bamCompletedPayload()
+  invalidCount.run.result.summaries.samtools.flagstat.mappedReads = '5'
+  assert.equal(projectRunGetToolResult(block(invalidCount)).value.resultState, 'invalid')
 })
 
 test('run result projection rejects a result for a different requested run', () => {

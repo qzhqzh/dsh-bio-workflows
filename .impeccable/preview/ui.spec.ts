@@ -263,7 +263,10 @@ test('Workflow Center exposes the exact execution allowlist and blocks unsupport
   await page.getByText('Technical details', { exact: true }).click()
   await expect(page.getByLabel('Selected workflow details').getByText('Execution', { exact: true })).toBeVisible()
   await expect(page.getByText('Allowlisted', { exact: true })).toBeVisible()
-  await page.getByRole('row', { name: /BAM quality control/ }).click()
+  await page.getByRole('row', { name: /BAM quality control.*1\.1\.0/ }).click()
+  await expect(page.getByText('Allowlisted', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Prepare analysis' })).toBeEnabled()
+  await page.getByRole('row', { name: /BAM quality control.*1\.0\.0/ }).click()
   await expect(page.getByText('Not execution-allowlisted')).toBeVisible()
   await expect(page.getByRole('button', { name: /Analysis unavailable/ })).toBeDisabled()
   await page.getByRole('button', { name: 'Activity' }).click()
@@ -310,6 +313,26 @@ test('Run result presents completion and QC findings before technical provenance
   await expect(page.getByText('Checksummed files', { exact: true })).toBeVisible()
   await expect(page.getByText('Absolute host paths', { exact: false })).toBeVisible()
   await page.screenshot({ path: '/tmp/dsh-bio-workflows-result-desktop.png', fullPage: true })
+  expect(errors).toEqual([])
+})
+
+test('BAM result presents bounded samtools counts without biological overclaim', async ({ page }) => {
+  const errors: string[] = []
+  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
+  await page.setViewportSize({ width: 980, height: 900 })
+  await page.goto('/?view=result-bam')
+
+  await expect(page.getByRole('heading', { name: 'Analysis completed' })).toBeVisible()
+  await expect(page.getByText(/samtools validated the BAM\/BAI pair/)).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Technical alignment summary' })).toBeVisible()
+  await expect(page.getByText('Total reads', { exact: true })).toBeVisible()
+  await expect(page.getByText('1,000', { exact: true })).toBeVisible()
+  await expect(page.getByText('Mapped reads', { exact: true })).toBeVisible()
+  await expect(page.getByText('940', { exact: true })).toBeVisible()
+  await expect(page.getByText(/880 properly paired · 35 duplicates · 60 index-reported unmapped/)).toBeVisible()
+  await expect(page.getByText(/Completion confirms execution and result collection, not biological significance/)).toBeVisible()
+  await expect(page.getByRole('button', { name: /run|retry/i })).toHaveCount(0)
+  await page.screenshot({ path: '/tmp/dsh-bio-workflows-bam-result-desktop.png', fullPage: true })
   expect(errors).toEqual([])
 })
 

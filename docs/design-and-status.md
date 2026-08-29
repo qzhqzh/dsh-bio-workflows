@@ -13,8 +13,9 @@ deterministic source, Mission state, filesystem, validation, graph, and
 execution-policy boundaries.
 
 The `0.7.0` `BioWorkflowResult v1`, bounded output hashing, FastQC summary
-parsing, and opt-in execution MVP remain backward compatible. Built-in
-`fastq-qc@1.1.0` and `1.2.0` remain the only executable workflows.
+parsing, and opt-in execution MVP remain backward compatible. The Issue #22
+candidate adds only exact `bam-qc@1.1.0`, with BAM/BAI admission, strict
+internal networking, fixed compute limits, and bounded samtools summaries.
 
 The `0.12.0` release adds a second, default-off execution boundary for
 fixture-only draft tests. A new plan/start approval binds the exact
@@ -23,19 +24,21 @@ assertions, and budgets. Its dedicated `dsh_fixture_docker` backend is not the
 production adapter and cannot install, promote, allowlist, or production-run a
 draft. It does not extend the published authoring-only Mission grant.
 
-This is intentionally narrower than general WDL execution. `bam-qc`, installed
-bundles, and user drafts remain outside production execution. Both production
+This is intentionally narrower than general WDL execution. Historical
+`bam-qc@1.0.0`, installed bundles, and user drafts remain outside production execution. Both production
 execution and isolated fixture testing are disabled by default, use optional
 DSH `subprocess` and `jobs` services, and never change the semantics of
 declaration-only `bio_workflows_preflight`.
 
 The adapter contract and lifecycle are covered with deterministic integration
-fixtures, while CI runs real `miniwdl check` for all four versioned bundles.
-The retained `0.7.0` `fastq-qc@1.2.0` digest also completed a real miniwdl 1.15.0 / Docker
+fixtures, while CI runs real `miniwdl check` for all five versioned bundles.
+The current `fastq-qc@1.2.0` digest also completed a real miniwdl 1.15.0 / Docker
 29.3.1 Swarm / FastQC run with confined outputs, independently checked output
 digests, parsed summaries, and real `LocalJobRegistry` lifecycle states; the
 sanitized record is stored under `docs/evidence/` and is bound to the reviewed
-execution-adapter source hashes. The additive `0.10.0` registration and Client
+execution-adapter source hashes. The exact `bam-qc@1.1.0` bundle has a separate
+source-bound record for real completion, cancellation, and mismatched-index
+failure. The additive `0.10.0` registration and Client
 entry are covered by DSH ToolRuntime, package, web API, and browser integration
 tests and do not relabel that historical record.
 The current Agent-loop smoke uses a deterministic model to create, read,
@@ -72,6 +75,7 @@ flowchart LR
   P --> U[BioWorkflowResult v1]
   U --> V[SHA-256 artifact groups]
   U --> W[Bounded FastQC summary]
+  U --> BA[Bounded samtools summary]
   N --> Q[job_output and job_kill]
   A --> R[bio_workflows_run_get]
   R --> P
@@ -116,13 +120,13 @@ model-authored command fragments or environment names to a host shell.
 | Isolated fixture testing | Implemented and accepted in `0.12.0` | Separate exact-plan approval, declarative fixture/assertion contracts, hash-bound miniwdl environment and controller seccomp policy, dedicated backend, inspected Docker controls, 17 deterministic probes, bounded evidence, owner/restart lifecycle, independent review, and real local/CI success/timeout/cancel/overflow/adversarial acceptance | No promotion or production authority |
 | Deterministic workflow graph | Implemented | Exact owner/revision/digest binding, schema validation, stable nodes/edges/source ranges, partial-graph diagnostics, parser and tool tests | Additional WDL syntax coverage and source editor navigation |
 | Native Workflow Center | Implemented | Same-package Client build, official sidebar/overlay/tool slots, built-in-only bootstrap, exact execution-allowlist affordances, deep-validated graph replay, fail-closed current-Session Agent bridge, desktop/mobile and modal keyboard Playwright tests | Agent-mediated draft browsing, direct source editor, richer Store providers |
-| Starter workflows | Two families, four versions | All WDL 1.0 bundles pass pinned `miniwdl 1.15.0 check`; `fastq-qc@1.2.0` has a retained real result acceptance record | Promote and verify BAM separately |
+| Starter workflows | Two families, five versions | All WDL 1.0 bundles pass pinned `miniwdl 1.15.0 check`; exact FastQC admitted revisions and the BAM candidate have retained real result evidence | Additional workflow families require separate admission |
 | Declaration-only preflight | Implemented and unchanged | Pure input/environment validation with `executionReady: false` | None inside this intentionally pure boundary |
-| Trusted execution plan | Implemented for `fastq-qc@1.1.0` and `1.2.0` | Canonical input checks, optional pre-approval SHA-256, configurable snapshot/result/log/storage budgets, executable identities, active Swarm probe, deterministic `planDigest` | Full hashing remains opt-in for large inputs |
+| Trusted execution plan | Implemented for `fastq-qc@1.1.0`, `fastq-qc@1.2.0`, and candidate `bam-qc@1.1.0` | Canonical input checks, optional pre-approval SHA-256, BAM/BAI contract, configurable/effective budgets, fixed BAM compute profile, executable identities, active Swarm probe, deterministic `planDigest` | Full hashing remains opt-in for large inputs; BAM PID limit is a disclosed real-UID rlimit |
 | Execution authorization | Implemented | `tools/pre-execute` asks with exact bundle and plan digests; tool body replans | Policy presets beyond one-shot user approval |
 | miniwdl adapter | Implemented MVP plus optional egress policy | Exact executable/version, real semantic check, fixed argv, no ambient environment inheritance, fixed Docker host and Engine ID, ephemeral verified internal Swarm overlay, no host shell | Hard filesystem quotas and additional backends; this is not the untrusted-draft fixture backend |
 | Run lifecycle | Implemented | Real LocalJobRegistry success/read/kill/wait acceptance plus model-driven AgentLoop search/plan/run, approval audit, owner disposal, process-tree termination, owner fencing, bounded owner-scoped history, fail-closed restart interruption reconciliation, and exact-plan approved retention cleanup | Deliberate retry/resume policy; no automatic retry or cleanup |
-| Provenance and outputs | Result v1 implemented | Atomic `run.json`, input snapshot hashes, checksummed artifact groups, FastQC summary adapter, bounded parser and hashing limits | Directory digests and additional workflow-specific adapters |
+| Provenance and outputs | Result v1 implemented | Atomic `run.json`, input snapshot hashes, checksummed artifact groups, FastQC and samtools summary adapters, bounded parser and hashing limits | Directory digests and additional workflow-specific adapters |
 
 ## Is the main functionality implemented?
 
@@ -189,8 +193,11 @@ full WDL IDE.
 - Outputs are held in a bounded tmpfs volume, scanned before and after copy-out,
   and retained only as bounded logs, regular artifacts, assertions, and
   digest-bound evidence without host-sensitive paths.
-- Only `builtin:fastq-qc@1.1.0` and `builtin:fastq-qc@1.2.0` are executable,
-  with exact bundle digests and a digest-pinned container image.
+- Only `builtin:fastq-qc@1.1.0`, `builtin:fastq-qc@1.2.0`, and candidate
+  `builtin:bam-qc@1.1.0` are executable, with exact bundle digests and
+  digest-pinned container images. The BAM candidate's execution allowlist also
+  hard-pins bundle digest
+  `sha256:6da83ed01408e28acd1928c0dd38adfd6ad59205d5b8b4c080fd8f3478b9ac0e`.
 - Input paths are canonicalized inside allowed roots and bound to size,
   nanosecond timestamps, device, and inode in `planDigest`; they are rechecked
   after approval through no-follow file handles, copied to safe run-owned names,
@@ -232,13 +239,20 @@ full WDL IDE.
   1 MiB and 512 lines per report, 4096 bytes per line, and 8 MiB / 16384 module
   lines per result; malformed UTF-8 or module states fail the run, and the host
   plugin never extracts ZIP archives.
+- `bam-qc@1.1.0` requires canonical adjacent BAM/BAI regular files, checks the
+  BAI magic and freshness before approval, then uses pinned samtools to run
+  `quickcheck`, rebuild the BAI, require an exact byte match, and run `idxstats`
+  as the authoritative compatibility chain. Advisory networking and root-runner
+  PID enforcement fail closed. Its plan fixes 2 CPU, 4 GiB, 4096 processes, and
+  10 minutes, and its flagstat/idxstats summaries retain only bounded technical
+  counts and exact artifact references.
 
 ## Next milestones
 
 1. Keep independent review and immutable promotion as a future, separately
    approved trust boundary; the current Mission release remains authoring-only.
-2. Consider `bam-qc` only under a future explicit allowlist authorization with
-   real BAM/BAI success and cancellation evidence.
+2. Complete independent review and owner merge/release gates for the exact
+   `bam-qc@1.1.0` evidence tracked by Issue #22; do not generalize the admission.
 3. Add richer provider and draft browsing without changing execution trust.
 4. Only after those explicit decisions, consider Cromwell/WES or editable
    visual round trips.

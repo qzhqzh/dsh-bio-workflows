@@ -445,7 +445,7 @@ function WorkflowsArea({ workflows, selected, onSelect, ask, busy }: {
             {!selected.executionSupported && (
               <div className="dsh-bio-trust-note">
                 <WarningIcon />
-                <div><strong>Not execution-allowlisted</strong><p>This bundle can be inspected and validated, but 0.12.0 will not plan or run it.</p></div>
+                <div><strong>Not execution-allowlisted</strong><p>This bundle can be inspected and validated, but this package version will not plan or run it.</p></div>
               </div>
             )}
             <p className="dsh-bio-action-help"><strong>Package check:</strong> {PACKAGE_CHECK_DETAIL} The allowlist is shown under Technical details; analysis eligibility also requires verified scientific-fit metadata, and Host readiness can still block planning or execution.</p>

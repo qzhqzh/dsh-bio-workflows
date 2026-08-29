@@ -115,13 +115,17 @@ test('package metadata matches the runtime identity', () => {
   assert.equal(packageJson.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-tool'), true)
 })
 
-test('BioWorkflowResult v1 schema exposes checksummed artifacts and FastQC summaries', async () => {
+test('BioWorkflowResult v1 schema exposes checksummed artifacts plus FastQC and samtools summaries', async () => {
   const schema = JSON.parse(await readFile(
     new URL('../schema/bio-workflow-result.schema.json', import.meta.url),
     'utf8',
   ))
   const example = JSON.parse(await readFile(
     new URL('../docs/examples/bio-workflow-result-v1.json', import.meta.url),
+    'utf8',
+  ))
+  const bamExample = JSON.parse(await readFile(
+    new URL('../docs/examples/bam-qc-result-v1.json', import.meta.url),
     'utf8',
   ))
 
@@ -131,6 +135,9 @@ test('BioWorkflowResult v1 schema exposes checksummed artifacts and FastQC summa
   assert.equal(schema.$defs.artifact.properties.sizeBytes.$ref, '#/$defs/byteCount')
   assert.deepEqual(schema.$defs.fastqcModule.properties.status.enum, ['pass', 'warn', 'fail'])
   assert.equal(schema.$defs.fastqcSummary.properties.reports.maxItems, 1024)
+  assert.equal(schema.properties.summaries.properties.samtools.$ref, '#/$defs/samtoolsSummary')
+  assert.equal(schema.$defs.samtoolsCount.maxLength, 20)
+  assert.equal(schema.$defs.samtoolsIdxstats.properties.referenceCount.maximum, 16383)
   assert.equal(example.schemaVersion, schema.properties.schemaVersion.const)
   assert.match(example.workflow.bundleDigest, /^sha256:[a-f0-9]{64}$/)
   assert.deepEqual(example.artifacts.map((group) => group.outputId), [
@@ -142,6 +149,13 @@ test('BioWorkflowResult v1 schema exposes checksummed artifacts and FastQC summa
   assert.match(example.artifacts[0].items[0].sha256, /^sha256:[a-f0-9]{64}$/)
   assert.deepEqual(example.summaries.fastqc.moduleCounts, { pass: 1, warn: 1, fail: 1 })
   assert.deepEqual(validateBioWorkflowResultSemantics(example), { valid: true, errors: [] })
+  assert.deepEqual(bamExample.artifacts.map((group) => group.outputId), [
+    'flagstat_report',
+    'stats_report',
+    'idxstats_report',
+  ])
+  assert.equal(bamExample.summaries.samtools.flagstat.totalReads, '1000')
+  assert.deepEqual(validateBioWorkflowResultSemantics(bamExample), { valid: true, errors: [] })
 })
 
 test('draft revision and validation evidence schemas match runtime contract versions and limits', async () => {

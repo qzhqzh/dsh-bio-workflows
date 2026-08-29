@@ -19,11 +19,12 @@ test('the workflow store searches and structurally validates built-in starters',
 
   assert.deepEqual(all.workflows.map((workflow) => workflow.id), [
     'bam-qc',
+    'bam-qc',
     'fastq-qc',
     'fastq-qc',
     'fastq-qc',
   ])
-  assert.equal(all.count, 4)
+  assert.equal(all.count, 5)
   assert.deepEqual(all.diagnostics, [])
   assert.equal(qc.count, 3)
   assert.equal(qc.workflows[0].source, 'builtin')
@@ -242,7 +243,7 @@ test('opt-in stores install immutable bundles and scaffold local WDL drafts', as
     assert.equal(draftSearch.count, 1)
     assert.equal(draftSearch.workflows[0].id, 'custom-qc')
     assert.equal(draftSearch.workflows[0].trust, 'local')
-    assert.equal(combinedSearch.count, 5)
+    assert.equal(combinedSearch.count, 6)
     assert.equal(
       combinedSearch.workflows.filter((workflow) => workflow.id === 'fastq-qc').length,
       3,

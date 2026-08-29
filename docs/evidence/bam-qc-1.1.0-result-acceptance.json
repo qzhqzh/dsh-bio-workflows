@@ -1,0 +1,234 @@
+{
+  "schemaVersion": "1",
+  "recordedAt": "2026-08-29T09:13:09.701Z",
+  "scope": "real-bam-qc-admission-acceptance",
+  "packageVersion": "0.12.0",
+  "sourceSha256": {
+    "index.js": "7660fa4456dcbc30b382801c7d69d567b8047d9b656637a38f4072ac42f9804f",
+    "src/execution.js": "d69e680516c6b39eaa893cf33650a5099f48b97755d295cf0e34d288df655e8e",
+    "src/execution-tools.js": "70a4faa747ed25f537de72b61e45df7741205f1a1968e1350e4124ef1a0dccc0",
+    "src/workflow-store.js": "8bf2d5ddc9d8a1d1966e0a0b4eb398e93f8344a631009cd5683dc60eec6c1700",
+    "schema/bio-workflow-result.schema.json": "292974cd5767370a1c9ab57920d5c781065c1c1a5b1045fd316000b2f665fcd7",
+    "workflows/bam-qc/1.1.0/main.wdl": "68502a89713bd755245229c263bdeed7d56ec59d806425591bb64c6a5cc47e51",
+    "workflows/bam-qc/1.1.0/workflow.json": "aee37184081c1423c94bfe155723d23aa2a086a2b754a389e487c240a1e6ff51",
+    "scripts/accept-bam-qc.mjs": "c51ecd4f6b69b0af8dabdb38ffc9c365580948f27e7eb626f761b2861f4fd579"
+  },
+  "workflow": {
+    "id": "bam-qc",
+    "version": "1.1.0",
+    "bundleDigest": "sha256:6da83ed01408e28acd1928c0dd38adfd6ad59205d5b8b4c080fd8f3478b9ac0e",
+    "successPlanDigest": "sha256:c4c7511db7839001857541f64a36bf7f8cedd017e993cc66767945cc03d183ea",
+    "cancellationPlanDigest": "sha256:c4c7511db7839001857541f64a36bf7f8cedd017e993cc66767945cc03d183ea",
+    "mismatchPlanDigest": "sha256:b94d78d87f85e986fad4ccd4969ada1c0f19a8194aa401bdfd2c708c69db49f2"
+  },
+  "runner": {
+    "name": "miniwdl",
+    "version": "1.15.0",
+    "containerImage": "quay.io/biocontainers/samtools:1.20--h50ea8bc_0@sha256:d0ebd10e887e3ddd02d071f1ca7b649dc90dc6fb99a5ffd0f5ebf8611a1f92cc",
+    "subprocessProvider": "@deepseek-ai/dsh-subprocess-local@0.1.1-rc.2",
+    "jobsProvider": "@deepseek-ai/dsh-jobs-local@0.1.1-rc.2"
+  },
+  "runtime": {
+    "realComponents": [
+      "ApprovalService",
+      "ToolRuntime",
+      "bio_workflows_search",
+      "bio_workflows_plan",
+      "bio_workflows_run",
+      "bio_workflows_run_get"
+    ]
+  },
+  "approval": {
+    "requests": 3,
+    "askedEvents": 3,
+    "decidedEvents": 3,
+    "outcome": "allowed-once",
+    "bundleDigestBound": true,
+    "planDigestsBound": true,
+    "ownerSession": "bio-workflow-bam-acceptance"
+  },
+  "input": {
+    "description": "Two coordinate-sorted, synthetic, non-sensitive paired reads on one 1000-base reference plus an adjacent BAI.",
+    "contract": {
+      "schemaVersion": "1",
+      "kind": "bam_bai_pair",
+      "bamInput": "bam",
+      "baiInput": "bai",
+      "canonicalAdjacent": true,
+      "acceptedBaiNaming": "bam_dot_bai",
+      "baiMagicHex": "42414901",
+      "baiMinimumBytes": "8",
+      "baiNotOlderThanBam": true,
+      "compatibilityValidation": {
+        "planning": "pairing_magic_and_metadata",
+        "runtime": [
+          "samtools_quickcheck",
+          "samtools_rebuilt_bai_byte_match",
+          "samtools_idxstats"
+        ],
+        "matchClaim": "runtime_only"
+      }
+    },
+    "preApprovalContentSha256": {
+      "bam": "sha256:481d7d97d24d7fd968afc36ae76ef9fe778e356ff2f99fe4821ae967c29736df",
+      "bai": "sha256:4fcd5a17e0477258817fd8d2b01432309d0213b73ea2eface79a9aaecb37c2a2"
+    },
+    "snapshotSha256": {
+      "bam": "481d7d97d24d7fd968afc36ae76ef9fe778e356ff2f99fe4821ae967c29736df",
+      "bai": "4fcd5a17e0477258817fd8d2b01432309d0213b73ea2eface79a9aaecb37c2a2"
+    }
+  },
+  "executionPolicy": {
+    "networkIsolation": {
+      "mode": "ephemeral_internal",
+      "network": {
+        "id": "l6l0m6g71b862vn097trmfkwh",
+        "name": "dsh-bio-run-fc0b7b97-3611-406e-aa00-6988bdb84bb8",
+        "driver": "overlay",
+        "scope": "swarm",
+        "internal": true,
+        "attachable": false,
+        "ingress": false,
+        "labels": {
+          "dsh.bio-workflows.managed": "true",
+          "dsh.bio-workflows.run-id": "run-fc0b7b97-3611-406e-aa00-6988bdb84bb8"
+        },
+        "servicesAtAdmission": 0
+      },
+      "cleanup": "removed"
+    },
+    "budgets": {
+      "policy": "minimum_of_operator_configuration_and_bam_qc_admission_ceiling",
+      "maxInputSnapshotBytes": "1048576",
+      "maxRunStorageBytes": "2147483648",
+      "runStorageEnforcement": "periodic_allocated_bytes_scan",
+      "runStorageScanIntervalMs": 1000,
+      "maxResultArtifactBytes": "33554432",
+      "maxTotalResultArtifactBytes": "67108864",
+      "maxJobOutputBytes": 262144,
+      "maxSpillBytesPerStream": 16777216,
+      "maxCpu": 2,
+      "cpuEnforcement": "wdl_runtime_and_miniwdl_cap_and_docker_swarm_hard_limit",
+      "maxMemoryBytes": "4294967296",
+      "memoryEnforcement": "wdl_runtime_and_miniwdl_cap_and_docker_swarm_hard_limit",
+      "maxPids": 4096,
+      "pidEnforcement": "task_shell_rlimit_nproc",
+      "pidScope": "non_root_runner_real_uid",
+      "maxWallTimeMs": 600000,
+      "wallTimeEnforcement": "host_timer_terminates_runner_process_tree"
+    },
+    "storageBudget": {
+      "violation": null,
+      "maximumObservedBytes": "172215",
+      "enforcement": "periodic_allocated_bytes_scan",
+      "intervalMs": 1000
+    },
+    "wallTimeBudget": {
+      "violation": null,
+      "maximumMs": 600000,
+      "enforcement": "host_timer_terminates_runner_process_tree"
+    }
+  },
+  "resultPolicy": {
+    "maxArtifacts": 1024,
+    "maxArtifactBytes": "17179869184",
+    "maxTotalArtifactBytes": "68719476736",
+    "maxFastqcSummaryBytes": 1048576,
+    "maxTotalFastqcSummaryBytes": 8388608,
+    "maxFastqcSummaryLines": 512,
+    "maxTotalFastqcSummaryLines": 16384,
+    "maxFastqcSummaryLineBytes": 4096,
+    "maxSamtoolsSummaryBytes": 1048576,
+    "maxSamtoolsFlagstatLines": 128,
+    "maxSamtoolsIdxstatsLines": 16384,
+    "maxSamtoolsSummaryLineBytes": 4096,
+    "canonicalTargetNoFollowOpen": true,
+    "descriptorIdentityRechecked": true
+  },
+  "success": {
+    "jobStatus": "completed",
+    "runStatus": "completed",
+    "artifacts": [
+      {
+        "outputId": "flagstat_report",
+        "ordinal": 0,
+        "sizeBytes": "457",
+        "sha256": "sha256:52def5777e3a53dc13d9d6280bfcfa3154388bccdfacf0651e75a01d8fd2edd0",
+        "directSha256": "sha256:52def5777e3a53dc13d9d6280bfcfa3154388bccdfacf0651e75a01d8fd2edd0"
+      },
+      {
+        "outputId": "stats_report",
+        "ordinal": 0,
+        "sizeBytes": "6400",
+        "sha256": "sha256:aca2674d391c4bbf2602d0d00f2b813c2e6ba1f11522fa28703093f6d74d8699",
+        "directSha256": "sha256:aca2674d391c4bbf2602d0d00f2b813c2e6ba1f11522fa28703093f6d74d8699"
+      },
+      {
+        "outputId": "idxstats_report",
+        "ordinal": 0,
+        "sizeBytes": "22",
+        "sha256": "sha256:f71d0eae1e700afa839ee75949b30103257db5adb77f12767dc363caf59a9461",
+        "directSha256": "sha256:f71d0eae1e700afa839ee75949b30103257db5adb77f12767dc363caf59a9461"
+      }
+    ],
+    "summaries": {
+      "samtools": {
+        "schemaVersion": "1",
+        "flagstat": {
+          "artifact": {
+            "outputId": "flagstat_report",
+            "ordinal": 0
+          },
+          "totalReads": "2",
+          "mappedReads": "2",
+          "properlyPairedReads": "2",
+          "duplicateReads": "0"
+        },
+        "idxstats": {
+          "artifact": {
+            "outputId": "idxstats_report",
+            "ordinal": 0
+          },
+          "referenceCount": 1,
+          "mappedReads": "2",
+          "unmappedReads": "0"
+        },
+        "statsArtifact": {
+          "outputId": "stats_report",
+          "ordinal": 0
+        }
+      }
+    }
+  },
+  "cancellation": {
+    "jobStatus": "killed",
+    "runStatus": "killed",
+    "result": null,
+    "networkCleanup": "removed",
+    "exit": {
+      "exitCode": null,
+      "signal": "SIGTERM"
+    }
+  },
+  "mismatchedIndex": {
+    "fixture": "valid BAI generated for a different reference dictionary",
+    "planningAcceptedMetadataShape": true,
+    "jobStatus": "failed",
+    "runStatus": "failed",
+    "errorCode": "miniwdl_failed",
+    "result": null,
+    "networkCleanup": "removed"
+  },
+  "assertions": [
+    "exact built-in bundle and plan digests matched before each launch",
+    "all three launches traversed the real DSH ToolRuntime and one-time ApprovalService gate for the same owner session",
+    "BAM and BAI canonical identities plus pre-approval SHA-256 digests were snapshot-bound",
+    "the exact ephemeral internal Swarm network was verified and removed for every terminal path",
+    "the WDL and miniwdl configuration fixed CPU, memory, PID, and wall-time ceilings",
+    "pinned samtools quickcheck plus a rebuilt byte-identical BAI accepted the matching pair before idxstats and report generation",
+    "all declared outputs stayed confined and every recorded SHA-256 matched an independent calculation",
+    "bounded flagstat and idxstats parsing produced technical counts without biological interpretation",
+    "an immediate real LocalJobRegistry cancellation killed the runner and retained no completed result",
+    "a valid BAI for a different reference dictionary passed metadata admission but failed closed during containerized compatibility validation"
+  ]
+}

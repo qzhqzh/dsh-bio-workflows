@@ -247,18 +247,20 @@ entrypoint field, so catalog registration cannot grant execution authority.
 
 ## Workflow Store and WDL bundles
 
-Two workflow families and four structurally checked versioned bundles ship
+Two workflow families and five structurally checked versioned bundles ship
 with the package:
 
 - `fastq-qc@1.0.0`: original non-executable FastQC draft;
 - `fastq-qc@1.1.0`: hardened FastQC execution baseline;
 - `fastq-qc@1.2.0`: checksummed results plus declared plain-text FastQC
   summaries;
-- `bam-qc@1.0.0`: `samtools flagstat` and `samtools stats` for one BAM file.
+- `bam-qc@1.0.0`: historical non-executable BAM starter;
+- `bam-qc@1.1.0`: production-admission candidate with BAM/BAI validation plus checksummed
+  `flagstat`, `stats`, and `idxstats` results.
 
-All four bundles use WDL 1.0, pass `miniwdl v1.15.0 check`, and declare
-miniwdl plus Cromwell compatibility. Versions `1.1.0` and `1.2.0` are marked
-`ready` and `verified`. The retained `0.7.0` source-hash-bound
+All five bundles use WDL 1.0, pass `miniwdl v1.15.0 check`, and declare
+miniwdl plus Cromwell compatibility. The execution-enabled revisions are marked
+`ready` and `verified`. The current source-hash-bound
 [result acceptance record](./docs/evidence/fastq-qc-1.2.0-result-acceptance.json)
 captures a real miniwdl/Docker Swarm/FastQC completion, exact artifact digests,
 parsed module summaries, and real LocalJobRegistry lifecycle states. A separate
@@ -266,6 +268,10 @@ parsed module summaries, and real LocalJobRegistry lifecycle states. A separate
 uses DSH `0.1.1-rc.2`'s real Agent, approval, tool, job, session, and subprocess
 services to prove model-driven `search -> plan -> run` and complete cleanup of a
 long-running runner process tree when its Agent handle is disposed. The
+source-hash-bound
+[BAM admission record](./docs/evidence/bam-qc-1.1.0-result-acceptance.json)
+separately retains real matching-pair completion, cancellation, and mismatched
+index fail-closed evidence for the exact `bam-qc@1.1.0` bundle. The
 execution adapter remains unchanged by the `0.8.0`–`0.10.0` authoring, graph,
 and UI releases; root tool registration is covered by the new DSH integration
 tests and the expanded Agent-loop smoke rather than relabeling historical
@@ -294,10 +300,12 @@ The normalized result contract is published separately as
 [`BioWorkflowResult v1`](https://unpkg.com/dsh-bio-workflows@0.12.0/schema/bio-workflow-result.schema.json).
 It is additive to `run.json`: historical `0.5.x` and `0.6.x` records without a
 `result` field remain readable. A complete
-[example result](./docs/examples/bio-workflow-result-v1.json) ships with the
-package. Apply the JSON Schema first, then
+[FastQC](./docs/examples/bio-workflow-result-v1.json) and
+[BAM](./docs/examples/bam-qc-result-v1.json) examples ship with the package.
+Apply the JSON Schema first, then
 `validateBioWorkflowResultSemantics` for the cross-group 1024-artifact limit and
-FastQC count/reference consistency that JSON Schema cannot express directly.
+FastQC/samtools count and artifact-reference consistency that JSON Schema
+cannot express directly.
 
 The built-in store is searchable without configuration. Local writes are off
 by default. To enable install, legacy scaffold, and revisioned draft mutations,
@@ -563,11 +571,14 @@ entry replacement. Violations fail with `runs_root_unsafe`,
           maxDeletesPerCall: 50
 ```
 
-The executable allowlist contains `fastq-qc@1.1.0` and `fastq-qc@1.2.0`; use
-`1.2.0` for normalized results and FastQC summaries. `bam-qc`, the historical
-`fastq-qc@1.0.0` draft, and
-custom/local bundles remain searchable and structurally validatable, but cannot
-cross this execution adapter yet. A normal run is:
+The candidate executable allowlist contains `fastq-qc@1.1.0`,
+`fastq-qc@1.2.0`, and exact `bam-qc@1.1.0`; the BAM entry is additionally
+hard-pinned to bundle digest
+`sha256:6da83ed01408e28acd1928c0dd38adfd6ad59205d5b8b4c080fd8f3478b9ac0e`.
+Use FastQC `1.2.0` or BAM QC `1.1.0` for normalized results.
+Historical `bam-qc@1.0.0`, `fastq-qc@1.0.0`, and custom/local bundles remain
+searchable and structurally validatable but cannot cross this execution
+adapter. A normal run is:
 
 1. Search the built-in workflow and retain its exact `version` and bundle
    `digest`.
@@ -576,7 +587,8 @@ cross this execution adapter yet. A normal run is:
    paths, miniwdl/Docker executable identities and versions, the fixed Docker
    host and Engine ID, active Swarm-manager state, expected outputs, environment
    policy, total snapshot bytes, and a deterministic `planDigest`. The execution
-   preview caps copied inputs at 1 TiB per run.
+   preview caps copied inputs at 1 TiB per run; BAM QC applies the tighter
+   effective admission ceiling recorded in its plan.
 3. Call `bio_workflows_run` with the same selection and inputs plus
    `expectedPlanDigest`. DSH asks for approval with the bundle and plan digests,
    then the tool replans before starting anything.
@@ -610,6 +622,9 @@ accepted only while their path identity remains unchanged and their resolved
 target stays inside the engine directory. Each FastQC summary is limited to
 1 MiB, 512 lines, and 4096 bytes per line; all summaries in one result are
 limited to 8 MiB and 16384 module lines. The host never extracts the ZIP report.
+For BAM QC, `flagstat` and `idxstats` parsing is separately limited to 1 MiB,
+4096 bytes per line, and 128/16384 lines respectively; published counts are
+unsigned decimal strings so large technical counts remain lossless.
 Provenance has a separate 32 MiB read/write limit and remains readable after
 input mounts are removed.
 
@@ -622,6 +637,15 @@ identity and isolation flags, and removes it after the runner exits. This is a
 production egress control for the trusted built-in allowlist; it is not the
 fixture runner's stronger host-service-denial evidence and grants no authority
 to AI-authored drafts.
+
+`bam-qc@1.1.0` fails planning unless `ephemeral_internal` is configured and the
+Linux runner is non-root. Its exact plan fixes 2 CPU, 4 GiB memory, a
+4096-process non-root `RLIMIT_NPROC`, and a 10-minute host wall timer. The WDL
+runs `samtools quickcheck`, rebuilds the BAI with pinned samtools 1.20, requires
+a byte-for-byte index match, and only then runs `idxstats` and produces reports;
+only that runtime chain claims BAM/index compatibility. The plan explicitly
+discloses that the PID ceiling is a real-UID rlimit rather than a container
+cgroup.
 
 All byte budgets are plan-bound and may only reduce the package maxima. Input
 snapshots and result artifacts fail closed at their configured limits; job
@@ -673,7 +697,9 @@ Releases add independently reviewable layers:
     assertions — available in `0.12.0`
 14. Revision-pinned read-only Git/TRS snapshots plus optional execution
     integrity, egress, budget, and retention policies — available in `0.12.0`
-15. Next: independent review/promotion only under a future explicit trust
+15. Exact `bam-qc@1.1.0` BAM/BAI admission and normalized samtools results —
+    candidate for the next release under Issue #22's separate merge/release gates
+16. Next: independent review/promotion only under a future explicit trust
     boundary; additional production adapters remain intentionally deferred
 
 Execution support remains explicit, auditable, and disabled by default.
@@ -703,6 +729,7 @@ Docker executable paths plus access to an already-active local Swarm manager:
 DSH_BIO_MINIWDL_EXECUTABLE=/absolute/path/to/miniwdl \
 DSH_BIO_DOCKER_EXECUTABLE=/absolute/path/to/docker \
 npm run accept:fastq-qc-result
+npm run accept:bam-qc
 ```
 
 The two DSH smokes require the pinned global CLI
@@ -732,8 +759,10 @@ Workflow Center。Agent 可以创建 session 隔离的 WDL 草稿、按 revision
 确定性 `WorkflowGraph v1` 渲染为只读流程图；创建与更新各自需要 DSH 审批。界面
 只向当前 Agent 提交意图，不直接修改草稿或启动任务。自定义 WDL 仍不会自动进入
 搜索结果、安装区或执行白名单；画布编辑与 promotion 尚未开放。
-内置 `fastq-qc@1.1.0` 与 `1.2.0` 继续处于执行白名单，推荐使用 `1.2.0`；
-`bam-qc` 和旧版 `fastq-qc@1.0.0` 仍不可执行。执行前会检查真实输入文件、探测
+内置 `fastq-qc@1.1.0`、`1.2.0` 与精确的 `bam-qc@1.1.0` 处于执行白名单；
+历史 `bam-qc@1.0.0` 和 `fastq-qc@1.0.0` 仍不可执行。BAM 版本要求相邻 BAI、
+严格内部网络、非 root runner、固定 CPU/内存/PID/墙钟上限，并在容器内通过
+`quickcheck`、固定 samtools 重建 BAI 的字节一致性检查与 `idxstats` 后才发布有界技术计数。执行前会检查真实输入文件、探测
 miniwdl/Docker 与已启用的 Swarm manager、生成 `planDigest`，并把审批绑定到精确
 bundle 与 plan 摘要；审批后再次规划，将输入复制到运行目录并记录 SHA-256，
 清除环境中的 miniwdl/Docker 覆盖项，随后以 DSH 后台任务运行。日志/取消复用 `job_output`、
