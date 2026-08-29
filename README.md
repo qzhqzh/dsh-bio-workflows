@@ -120,17 +120,34 @@ On a compatible DSH Web profile, installation of the same npm package also
 loads the browser Client face. Open **Bio Workflows** from the sidebar footer.
 The panel has four areas:
 
-- **Workflows** searches the public built-in catalog, shows verification,
-  digest, and exact execution-allowlist facts, and asks the Agent to validate.
-  Planning is enabled only for allowlisted built-in releases; configured local
-  bundles remain discoverable through the owner-bound Agent tools.
-- **AI Drafts** creates owner-scoped drafts and asks for an exact revision graph
-  or validation. Mutations always require the current revision and content
-  digest; conflicts stop instead of silently overwriting.
-- **Runs** asks the Agent for owner-scoped history, run provenance, or a safe
-  plan. The UI never starts a task directly.
-- **Setup** reports read-only host readiness and can ask the Agent to diagnose
-  miniwdl, Docker, jobs, roots, and policy.
+- **Analyze data** searches the public built-in catalog and presents declared
+  inputs, outputs, and execution eligibility before implementation metadata.
+  Missing scientific-fit metadata is shown as unavailable and blocks preparation
+  instead of being misreported as undeclared. **Prepare analysis** is primary
+  for eligible releases. **Check workflow
+  package** asks the Agent for read-only descriptor, digest, import, WDL version,
+  example-input, and container-image pin diagnostics; it does not run an engine.
+  Trust, engine, WDL version, and digest facts remain available under
+  **Technical details**. Planning is enabled only for allowlisted built-in
+  releases with available scientific-fit metadata; Host readiness can still
+  block it. Configured local bundles remain discoverable through owner-bound
+  Agent tools.
+- **Build workflow** starts from a biological question, input data and types,
+  desired outputs, constraints, and acceptance criteria. The Agent proposes the
+  internal draft id and name. Exact draft, Mission, fixture, and test identities
+  remain available as advanced operations. Mutations always require the current
+  revision and content digest; conflicts stop instead of silently overwriting.
+- **Activity** asks the Agent for owner-scoped run history, provenance, or a safe
+  plan. Recent-run tool cards lead with lifecycle outcomes; exact result cards
+  distinguish execution completion from normalized technical QC, summarize
+  declared checksummed outputs, and keep digests and file-level evidence under
+  progressive disclosure. Absolute Host paths, owner identity, commands,
+  environment values, and raw logs are not repeated in the card. Exact run-id
+  lookup is advanced, and the UI never starts or retries a task directly.
+- **Setup** is a contextual utility: it reports one overall analysis-readiness
+  result and the first actionable blocker. The full read-only Host checklist is
+  collapsed under **Operator details**, and the Agent can diagnose miniwdl,
+  Docker, jobs, roots, and policy.
 
 If no Harness task is current, Workflow Center shows **Open a Harness task**
 and disables every Agent action. The bootstrap endpoint returns only bounded
@@ -138,9 +155,22 @@ public built-in catalog facts and normalized diagnostic codes/messages; it never
 returns local workflow summaries, Store paths, validator details, drafts, or
 runs. Requests without same-origin browser context fail closed. The panel traps
 keyboard focus while open, closes with Escape, and restores focus to its launcher.
+Accepted Agent actions remain visible as a **Sending** or **Queued** handoff with
+a **Continue in Agent task** action, so users can see what was requested and
+where to follow its progress.
+
+The reviewed [lifecycle projection contract](docs/workflow-center-lifecycle-projection.md)
+uses DSH's owner-bound session projection rather than another browser endpoint.
+Runtime implementation is deferred until DSH's outward `session.prompt()` face
+returns the same request `rpcId` that the Host already logs on the committed user
+message; it currently acknowledges acceptance without exposing that id, so the
+UI must not guess which later tool chain belongs to a button intent.
 
 The `bio_workflows_draft_graph` result receives a native read-only graph card
-inside the conversation. WDL source and its revision/content digest remain the
+inside the conversation. `bio_workflows_run_list` and
+`bio_workflows_run_get` receive bounded, outcome-first history/result cards from
+the same settled owner-scoped tool results; they do not add a browser data path
+or execution action. WDL source and its revision/content digest remain the
 authority; layout, selection, and explanations are presentation only.
 
 ## Configure the catalog

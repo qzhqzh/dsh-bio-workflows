@@ -25,15 +25,31 @@ authoritative.
 - Inside the overlay use a compact four-item navigation rail, a broad main
   workspace, and a contextual inspector. Collapse the inspector beneath the
   main content on narrow screens.
-- Workflows is a dense searchable row list, not a grid of equal cards.
-- AI Drafts and Runs are focused action workbenches. Setup is a readiness list.
+- Analyze data is a dense searchable row list, not a grid of equal cards. Show
+  accepted inputs, produced outputs, and execution availability in the scan path.
+- Build workflow begins with an analysis brief: biological question, input data
+  and types, desired outputs, constraints, and acceptance criteria. The Agent
+  proposes internal draft naming; exact lifecycle identities stay in an advanced
+  disclosure until the reviewed lifecycle projection contract's upstream
+  correlation and freshness gates are satisfied.
+- Activity prioritizes recent owner-scoped runs through the Agent. Exact run-id
+  lookup is advanced. Setup is a secondary utility with one overall result and
+  first actionable blocker; the full readiness list stays collapsed under
+  operator details.
 - The keyed `bio_workflows_draft_graph` tool view renders an actual read-only
   WorkflowGraph result; no decorative or guessed graph is shown as evidence.
+- Keyed `bio_workflows_run_list` and `bio_workflows_run_get` views lead with
+  lifecycle outcome, normalized technical QC, and declared checksummed outputs.
+  Exact provenance and bounded file evidence are progressive; Host paths,
+  owner identity, commands, environment values, and raw logs stay out of the
+  card. Result views never add retry or execution controls.
 
 ## Visual world
 
 - Inherit DeepSeek Harness tokens, typography, spacing rhythm, and dark/light
   themes. The plugin has no separate logo or brand palette.
+- Keep the Workflow Center's outer surface opaque even when a host skin uses a
+  transparent base-background token; retain the host tint over an opaque base.
 - The signature motif is a restrained assay/workflow lane: fine tracks,
   compact status marks, and clearly typed WDL nodes.
 - Use modest blue-violet only for primary interaction and selected state;
@@ -43,8 +59,15 @@ authoritative.
 
 ## Interaction and trust
 
-- Buttons say the real next action: `Ask Agent to validate`, `Create with
-  Agent`, `Show graph`, `List my runs`, and `Diagnose setup`.
+- Buttons say the user outcome: `Prepare analysis`, `Check workflow package`,
+  `Build workflow draft`, `Show graph`, `Show recent runs`, and `Diagnose setup`.
+- Present scientific fit and declared input/output metadata before trust, engine,
+  WDL version, and digest details. Technical details use progressive disclosure.
+- Explain package checks before action: they validate descriptor shape, file
+  digests, local imports, WDL declarations, example JSON, and container pins;
+  they do not execute a workflow.
+- Keep every accepted Agent handoff visible with its subject, requested action,
+  queued state, and a clear way to continue in the current Harness task.
 - Loading, empty, error, success, hover, disabled, focus-visible, and reduced
   motion states are required.
 - Draft mutation prompts include the exact revision/digest baseline rule.

@@ -2,6 +2,7 @@ import { useCallback, useSyncExternalStore } from 'react'
 
 import { WorkflowCenter } from './WorkflowCenter.tsx'
 import { DraftGraphToolView } from './WorkflowGraphView.tsx'
+import { RunListToolView, RunResultToolView } from './RunResultView.tsx'
 import { WorkflowIcon } from './icons.tsx'
 import { STYLE } from './styles.ts'
 import type { ClientPluginContext, SessionsFace, SlotsFace } from './types.ts'
@@ -75,9 +76,19 @@ export function apply(ctx: ClientPluginContext) {
     { name: 'tool.call.toolview', key: 'bio_workflows_draft_graph' },
     DraftGraphToolView,
   ))
+  slots.inject('tool.call.toolview', () => slots.register(
+    { name: 'tool.call.toolview', key: 'bio_workflows_run_list' },
+    RunListToolView,
+  ))
+  slots.inject('tool.call.toolview', () => slots.register(
+    { name: 'tool.call.toolview', key: 'bio_workflows_run_get' },
+    RunResultToolView,
+  ))
 }
 
 export { WorkflowCenter } from './WorkflowCenter.tsx'
 export { DraftGraphToolView, WorkflowGraphView } from './WorkflowGraphView.tsx'
+export { RunListToolView, RunResultToolView } from './RunResultView.tsx'
+export { projectRunGetToolResult, projectRunListToolResult } from './run-result.ts'
 export { layoutWorkflowGraph } from './graph-layout.ts'
 export type { WorkflowCenterBootstrap, WorkflowGraph } from './types.ts'

@@ -12,7 +12,7 @@ The primary users are bioinformaticians and research engineers working inside De
 
 ## Product Purpose
 
-`dsh-bio-workflows` turns bioinformatics workflow operations into one auditable DeepSeek Harness experience. Success means a user can move from a biological intent to a revision-bound WDL draft, deterministic checks, a trustworthy graph preview, and an explicitly approved run while the plugin keeps generated source outside the production execution allowlist.
+`dsh-bio-workflows` turns bioinformatics workflow operations into one auditable DeepSeek Harness experience. Success means a user can move from biological intent and existing data to a safe, interpretable analysis result while the plugin handles deterministic checks, approval boundaries, provenance, and the separation between generated source and the production execution allowlist.
 
 ## Positioning
 
@@ -29,10 +29,22 @@ The product combines Harness-owned AI reasoning and approvals with plugin-owned 
 ## Capabilities and Constraints
 
 - Catalog and Store discovery, manifest and WDL bundle validation, revisioned draft authoring, deterministic draft validation, execution planning, approved background execution, durable run history, and normalized results already exist in the Host package.
-- The Workflow Center has four primary areas: Workflows, AI Drafts, Runs, and Setup.
+- The Workflow Center has four areas organized around user jobs: Analyze data,
+  Build workflow, Activity, and contextual Setup.
 - The UI may submit a natural-language request to the current Harness Agent. The Agent remains responsible for tool selection, argument construction, approval interaction, and conversational repair.
 - UI reads expose only bounded built-in catalog and readiness data. Local workflow summaries, owner-scoped drafts, and runs remain behind the Agent/tool boundary.
-- Plan and Run affordances are enabled only when the exact built-in workflow release is in the Host execution allowlist.
+- Settled `bio_workflows_run_list` and `bio_workflows_run_get` calls receive
+  keyed, read-only Client views. They explicitly project bounded outcome,
+  normalized QC, output, and provenance fields from the owner-scoped tool
+  result; they never expose Host paths, owner identity, commands, environment
+  values, or a direct retry/execution action.
+- Missing or malformed scientific-fit metadata is explicitly unavailable, never
+  inferred to mean that a workflow declares no inputs or outputs.
+- Plan and Run affordances are enabled only when the exact built-in workflow release is in the Host execution allowlist and its scientific-fit metadata is available; Host readiness remains an independent gate.
+- A future owner-scoped activity view must use the native DSH session projection
+  and the reviewed lifecycle projection contract. It remains deferred until the
+  outward session face exposes the prompt request `rpcId` already recorded in
+  the committed user message, plus a trustworthy client freshness signal.
 - Graphs are derived, read-only evidence. Layout, selection, zoom, and explanatory annotations never enter the authoritative graph digest.
 - Missing concurrency baselines fail closed. Stale baselines produce conflicts; the product never silently applies last-write-wins.
 - Draft validation and graph generation do not authorize task execution.

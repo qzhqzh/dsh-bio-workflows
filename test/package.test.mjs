@@ -306,7 +306,7 @@ test('the checked-in Client bundle source map matches every current Client sourc
   const mapUrl = new URL('../lib/client.js.map', import.meta.url)
   const sourceMap = JSON.parse(await readFile(mapUrl, 'utf8'))
 
-  assert.equal(sourceMap.sources.length, 7)
+  assert.equal(sourceMap.sources.length, 9)
   assert.equal(sourceMap.sources.length, sourceMap.sourcesContent.length)
   for (const [index, source] of sourceMap.sources.entries()) {
     assert.match(source, /^\.\.\/src\/client\//)

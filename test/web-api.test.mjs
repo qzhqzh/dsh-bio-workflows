@@ -61,7 +61,18 @@ test('Workflow Center bootstrap exposes bounded public catalog facts but no owne
   assert.equal(value.package.version, '0.12.0')
   assert.equal(value.workflows.length, 4)
   assert.equal(value.workflows.every((workflow) => workflow.source === 'builtin'), true)
-  assert.equal(value.workflows.find((workflow) => workflow.id === 'fastq-qc' && workflow.version === '1.2.0').executionSupported, true)
+  const fastq = value.workflows.find((workflow) => workflow.id === 'fastq-qc' && workflow.version === '1.2.0')
+  assert.equal(fastq.executionSupported, true)
+  assert.equal(fastq.scientificFitStatus, 'available')
+  assert.deepEqual(fastq.inputs.map(({ id, type, cardinality }) => ({ id, type, cardinality })), [
+    { id: 'reads', type: 'file', cardinality: 'many' },
+    { id: 'threads', type: 'integer', cardinality: 'one' },
+  ])
+  assert.deepEqual(fastq.outputs.map(({ id, type, cardinality }) => ({ id, type, cardinality })), [
+    { id: 'html_reports', type: 'file', cardinality: 'many' },
+    { id: 'zip_reports', type: 'file', cardinality: 'many' },
+    { id: 'summary_reports', type: 'file', cardinality: 'many' },
+  ])
   assert.equal(value.workflows.find((workflow) => workflow.id === 'bam-qc').executionSupported, false)
   assert.equal(value.readiness.miniwdlValidator, true)
   assert.equal(value.readiness.autonomousMissionAuthoring, true)
@@ -96,6 +107,103 @@ test('Workflow Center exposes only boolean isolated-test readiness, never its ow
   assert.equal(value.readiness.isolatedSoftwareTrial, false)
   assert.equal(value.privacy.ownerScopedDraftTestsViaAgent, true)
   assert.doesNotMatch(JSON.stringify(value), /private-engine|private\/draft-tests|runsRoot/)
+})
+
+test('Workflow Center bounds scientific-fit port metadata and reports truncation', async () => {
+  const configured = options()
+  const ports = Array.from({ length: 40 }, (_, index) => ({
+    id: `input_${index}`,
+    type: 'file',
+    required: true,
+    cardinality: 'one',
+    description: `Public input ${index}`,
+    privatePath: `/private/input-${index}`,
+  }))
+  configured.builtinWorkflowFit = () => ({ inputs: ports, outputs: ports })
+
+  const value = await createWorkflowCenterBootstrap(configured)
+  const bounded = value.workflows[0]
+
+  assert.equal(bounded.inputs.length, 32)
+  assert.equal(bounded.outputs.length, 32)
+  assert.equal(bounded.inputsTruncated, true)
+  assert.equal(bounded.outputsTruncated, true)
+  assert.equal(bounded.scientificFitStatus, 'available')
+  assert.equal(bounded.inputs.at(-1).id, 'input_31')
+  assert.doesNotMatch(JSON.stringify(value), /privatePath|\/private\/input-/)
+})
+
+test('Workflow Center scans the catalog once and never resolves each built-in separately', async () => {
+  const configured = options()
+  const store = configured.store
+  let searches = 0
+  let resolves = 0
+  configured.store = {
+    ...store,
+    async search(value) {
+      searches += 1
+      return store.search(value)
+    },
+    async resolve() {
+      resolves += 1
+      throw new Error('per-workflow resolution must not run')
+    },
+  }
+
+  const value = await createWorkflowCenterBootstrap(configured)
+
+  assert.equal(value.workflows.length, 4)
+  assert.equal(searches, 1)
+  assert.equal(resolves, 0)
+})
+
+test('Workflow Center explicitly projects public workflow fields instead of spreading Store records', async () => {
+  const configured = options()
+  const store = configured.store
+  configured.store = {
+    ...store,
+    async search(value) {
+      const catalog = await store.search(value)
+      return {
+        ...catalog,
+        workflows: catalog.workflows.map((workflow) => ({
+          ...workflow,
+          ownerSession: 'private-session',
+          localPath: '/data/private/workflow',
+          engines: workflow.engines.map((engine) => ({ ...engine, credential: 'private-engine-token' })),
+          verification: { ...workflow.verification, privateDetail: '/data/private/validator' },
+        })),
+      }
+    },
+  }
+
+  const value = await createWorkflowCenterBootstrap(configured)
+
+  assert.equal(value.workflows.length, 4)
+  assert.doesNotMatch(JSON.stringify(value), /ownerSession|private-session|localPath|credential|private-engine-token|privateDetail|\/data\/private/)
+})
+
+test('Workflow Center marks unavailable or malformed scientific fit without claiming ports are undeclared', async () => {
+  const unavailable = options()
+  unavailable.builtinWorkflowFit = () => { throw new Error('private failure at /data/secret/workflow.json') }
+
+  const unavailableValue = await createWorkflowCenterBootstrap(unavailable)
+
+  assert.equal(unavailableValue.workflows.every((workflow) => workflow.scientificFitStatus === 'unavailable'), true)
+  assert.equal(unavailableValue.workflows.every((workflow) => workflow.inputs.length === 0 && workflow.outputs.length === 0), true)
+  assert.doesNotMatch(JSON.stringify(unavailableValue), /private failure|\/data\/secret/)
+
+  const malformed = options()
+  malformed.builtinWorkflowFit = () => ({
+    inputs: [null],
+    outputs: [{ id: 'would_have_leaked', type: 'file', cardinality: 'one' }],
+  })
+
+  const malformedValue = await createWorkflowCenterBootstrap(malformed)
+
+  assert.equal(malformedValue.workflows.every((workflow) => workflow.scientificFitStatus === 'unavailable'), true)
+  assert.equal(malformedValue.workflows.every((workflow) => workflow.inputs.length === 0 && workflow.outputs.length === 0), true)
+  assert.doesNotMatch(JSON.stringify(malformedValue), /would_have_leaked/)
 })
 
 test('Workflow Center bootstrap never exposes configured local or draft catalog summaries', async () => {

@@ -71,11 +71,14 @@ inferred from current `master` alone:
   is unnecessary for the MVP; a later large-workflow review mode may use it
   without changing validation authority.
 - The Web Client has a keyed `tool.call.toolview` slot for one tool's durable
-  call/result and supports richer `ConversationNodeDefinition` event folding.
-  The graph tool already supplies a stable business object, so its keyed tool
-  card is the smaller first integration. A custom event family and correlated
-  Conversation Node are justified only when several authoring, test, and run
-  events must be folded into one lifecycle view.
+  call/result, while DSH's native session-projection seam carries bounded
+  Host-computed per-session read models. The graph tool already supplies a
+  stable business object, so its keyed tool card is the smaller first
+  integration. A correlated lifecycle projection is justified only when
+  authoring, test, and run events must be folded together, and only after the
+  outward prompt contract exposes the request `rpcId` already stored in the
+  committed user message. See
+  [Workflow Center lifecycle projection contract](workflow-center-lifecycle-projection.md).
 
 Relevant upstream references, pinned to the verified release:
 
@@ -245,8 +248,10 @@ Host entry remains independent of browser runtime dependencies:
 
 1. `bio_workflows_draft_graph` returns bounded graph JSON in its durable tool
    result.
-2. The Client face registers a keyed `tool.call.toolview` entry for that exact
-   tool name and a Workflow Center in the official sidebar/overlay slots.
+2. The Client face registers keyed `tool.call.toolview` entries for that graph
+   result plus owner-scoped `bio_workflows_run_list` and
+   `bio_workflows_run_get` results, and a Workflow Center in the official
+   sidebar/overlay slots.
 3. The renderer reads only the call arguments and settled result supplied by
    the slot, verifies the revision/digest binding, and renders a read-only graph,
    diagnostics, and exact source coordinates.
@@ -255,11 +260,18 @@ Host entry remains independent of browser runtime dependencies:
 5. Workflow Center actions enqueue natural-language intent on the current DSH
    Session; only the Agent can select tools and cross ordinary approvals.
 
-Once draft-test and promotion transitions exist, a richer event family and
-`ConversationNodeDefinition` may fold those facts together with existing run
-events into one lifecycle card.
-That later design must use stable business ids and replayable Session events;
-it must not assign an update to the latest visually open card.
+The run views consume only settled tool-result blocks already authorized by the
+current Agent session. They explicitly project bounded lifecycle outcome,
+normalized QC, declared output counts, and checksums; they omit absolute Host
+paths, owner identity, commands, environment values, and raw logs. They contain
+no direct start, retry, cancellation, or cleanup control and therefore do not
+replace the deferred owner-scoped Activity projection.
+
+Once the prompt admission correlation gate is satisfied, one bounded native
+session projection may fold authoring, fixture-test, and run facts into the
+Activity view. It must use stable business ids and replayable Session events;
+it must not assign an update to the latest visually open card or expose a new
+browser control endpoint.
 
 ## Security and reproducibility rules
 
