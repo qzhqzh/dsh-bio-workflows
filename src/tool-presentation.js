@@ -30,6 +30,9 @@ const TOOL_PRESENTATIONS = Object.freeze({
   bio_workflows_run_cleanup: { title: 'Clean up workflow runs', kind: 'edit', fields: ['expectedCleanupPlanDigest'] },
 })
 
+const SAFE_IDENTIFIER = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/
+const RUN_READ_TOOLS = new Set(['bio_workflows_run_get', 'bio_workflows_run_list'])
+
 function salientInput(args, fields) {
   if (args === null || typeof args !== 'object' || Array.isArray(args) || fields === undefined) {
     return undefined
@@ -55,7 +58,15 @@ function parseTextPayload(result) {
   }
 }
 
-function errorMessage(result, payload) {
+function errorMessage(name, result, payload) {
+  if (RUN_READ_TOOLS.has(name)) {
+    const code = typeof payload?.error?.code === 'string'
+      && payload.error.code.length <= 96
+      && SAFE_IDENTIFIER.test(payload.error.code)
+      ? ` (${payload.error.code})`
+      : ''
+    return `Could not retrieve workflow run evidence${code}. Ask the Agent to explain the failure.`
+  }
   if (payload?.error?.message) return String(payload.error.message)
   const firstText = result?.content?.find((block) => block?.type === 'text')?.text
   if (typeof firstText === 'string' && firstText.length > 0) return firstText.slice(0, 320)
@@ -119,8 +130,14 @@ function summaryLines(name, payload) {
   } else if (name === 'bio_workflows_run_cleanup') {
     lines.push(`${payload.removedCount ?? 0} workflow run director${payload.removedCount === 1 ? 'y' : 'ies'} removed`)
     lines.push(`Cleanup plan ${payload.cleanupPlanDigest ?? 'unavailable'}`)
-  } else if (name === 'bio_workflows_run_get' || name === 'bio_workflows_run') {
-    lines.push(`${payload.runId ?? payload.run?.runId ?? 'Workflow run'} · ${payload.status ?? payload.run?.status ?? 'submitted'}`)
+  } else if (name === 'bio_workflows_run_get') {
+    lines.push('Workflow run evidence returned')
+    lines.push('Open the result view for validated outputs and QC evidence.')
+  } else if (name === 'bio_workflows_run') {
+    lines.push(`${payload.runId ?? 'Workflow run'} · ${payload.status ?? 'submitted'}`)
+  } else if (name === 'bio_workflows_run_list') {
+    lines.push('Workflow run history returned')
+    lines.push('Open the history view for validated lifecycle evidence.')
   } else if (name === 'bio_workflows_draft_create' || name === 'bio_workflows_draft_update' || name === 'bio_workflows_draft_get') {
     lines.push(`${payload.draftId ?? 'WDL draft'} · revision ${payload.revision ?? 'unknown'}`)
     if (payload.contentDigest) lines.push(payload.contentDigest)
@@ -156,7 +173,7 @@ export function getDefaultToolPresentation(name) {
       const payload = parseTextPayload(result)
       const failed = result?.isError === true || payload?.ok === false || payload?.error
       const content = failed
-        ? errorMessage(result, payload)
+        ? errorMessage(name, result, payload)
         : summaryLines(name, payload).join('\n')
       return {
         card: 'generic',

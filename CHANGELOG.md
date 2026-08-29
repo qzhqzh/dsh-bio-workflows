@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Reorient Workflow Center around Analyze data, Build workflow, Activity, and
+  contextual Setup. Show authoritative scientific-fit inputs/outputs before
+  implementation details, keep package checking explicitly non-executing, and
+  bound analysis briefs before they enter an Agent prompt.
+- Add keyed, replay-bounded `bio_workflows_run_list` and
+  `bio_workflows_run_get` Client views that lead with lifecycle outcome,
+  normalized FastQC findings, and declared checksummed outputs while keeping
+  provenance progressive and omitting Host paths, owner identity, commands,
+  environment values, and raw logs.
+- Document the owner-scoped lifecycle projection contract but defer its runtime
+  implementation until DSH exposes the existing prompt `rpcId` and trustworthy
+  client freshness signals. No browser execution path, production allowlist,
+  Mission execution, promotion, or trust authority is added.
+
 ## 0.12.0 - 2026-08-27
 
 - Add optional plan-bound production policies for pre-approval input SHA-256,

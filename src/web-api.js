@@ -1,7 +1,10 @@
 import { PACKAGE_NAME, PACKAGE_VERSION, getPackageInfo } from './info.js'
+import { getBuiltinWorkflowFit } from './public-workflow-metadata.js'
 
 export const WORKFLOW_CENTER_API_PATH = '/api/bio-workflows/v1/bootstrap'
 export const WORKFLOW_CENTER_SCHEMA_VERSION = '1'
+const MAX_PUBLIC_WORKFLOW_PORTS = 32
+const PUBLIC_WORKFLOW_PORT_TYPES = new Set(['file', 'directory', 'string', 'integer', 'number', 'boolean'])
 
 const PUBLIC_CATALOG_DIAGNOSTICS = Object.freeze({
   diagnostics_limit: 'Additional catalog diagnostics were omitted.',
@@ -21,6 +24,36 @@ function publicCatalogDiagnostics(diagnostics) {
       ? { code: 'catalog_diagnostic', message: 'A catalog entry could not be loaded.' }
       : { code: requestedCode, message }
   })
+}
+
+function publicWorkflowPorts(ports) {
+  if (!Array.isArray(ports)) return null
+  if (ports.some((port) => (
+    port === null
+    || typeof port !== 'object'
+    || typeof port.id !== 'string'
+    || port.id.length === 0
+    || port.id.length > 128
+    || port.id.trim() !== port.id
+    || !PUBLIC_WORKFLOW_PORT_TYPES.has(port.type)
+    || (port.required !== undefined && typeof port.required !== 'boolean')
+    || (port.cardinality !== undefined && port.cardinality !== 'one' && port.cardinality !== 'many')
+    || (port.description !== undefined && (
+      typeof port.description !== 'string'
+      || port.description.length === 0
+      || port.description.length > 1000
+    ))
+  ))) return null
+  return {
+    items: ports.slice(0, MAX_PUBLIC_WORKFLOW_PORTS).map((port) => ({
+      id: port.id,
+      type: port.type,
+      ...(typeof port.required === 'boolean' ? { required: port.required } : {}),
+      cardinality: port.cardinality ?? 'one',
+      ...(typeof port.description === 'string' ? { description: port.description } : {}),
+    })),
+    truncated: ports.length > MAX_PUBLIC_WORKFLOW_PORTS,
+  }
 }
 
 function writeJson(response, status, value) {
@@ -67,12 +100,48 @@ export async function createWorkflowCenterBootstrap(options) {
       ? execution.supportedWorkflows.filter((value) => typeof value === 'string')
       : [],
   )
+  const builtinWorkflowFit = options.builtinWorkflowFit ?? getBuiltinWorkflowFit
   const workflows = catalog.workflows
     .filter((workflow) => workflow.source === 'builtin')
-    .map((workflow) => ({
-      ...workflow,
-      executionSupported: supportedWorkflows.has(`${workflow.id}@${workflow.version}`),
-    }))
+    .map((workflow) => {
+      let fit = null
+      try {
+        fit = builtinWorkflowFit(workflow)
+      } catch {
+        fit = null
+      }
+      const inputs = publicWorkflowPorts(fit?.inputs)
+      const outputs = publicWorkflowPorts(fit?.outputs)
+      const scientificFitStatus = inputs !== null && outputs !== null ? 'available' : 'unavailable'
+      return {
+        id: workflow.id,
+        version: workflow.version,
+        name: workflow.name,
+        summary: workflow.summary,
+        status: workflow.status,
+        language: workflow.language,
+        languageVersion: workflow.languageVersion,
+        engines: workflow.engines.map((engine) => ({
+          name: engine.name,
+          ...(typeof engine.version === 'string' ? { version: engine.version } : {}),
+        })),
+        tags: [...workflow.tags],
+        source: 'builtin',
+        trust: workflow.trust,
+        verification: {
+          status: workflow.verification.status,
+          checks: [...workflow.verification.checks],
+        },
+        digest: workflow.digest,
+        installed: workflow.installed,
+        scientificFitStatus,
+        inputs: scientificFitStatus === 'available' ? inputs.items : [],
+        outputs: scientificFitStatus === 'available' ? outputs.items : [],
+        ...(scientificFitStatus === 'available' && inputs.truncated ? { inputsTruncated: true } : {}),
+        ...(scientificFitStatus === 'available' && outputs.truncated ? { outputsTruncated: true } : {}),
+        executionSupported: supportedWorkflows.has(`${workflow.id}@${workflow.version}`),
+      }
+    })
   return {
     schemaVersion: WORKFLOW_CENTER_SCHEMA_VERSION,
     package: { name: PACKAGE_NAME, version: PACKAGE_VERSION },

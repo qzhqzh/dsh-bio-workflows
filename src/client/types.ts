@@ -1,10 +1,32 @@
 export type WorkflowSource = 'builtin' | 'installed' | 'draft'
+export type WorkflowPortType = 'file' | 'directory' | 'string' | 'integer' | 'number' | 'boolean'
+
+export interface WorkflowPortSummary {
+  id: string
+  type: WorkflowPortType
+  required?: boolean
+  cardinality?: 'one' | 'many'
+  description?: string
+}
+
+export interface WorkflowAnalysisBrief {
+  biologicalQuestion: string
+  inputData: string
+  desiredOutputs: string
+  constraints: string
+  acceptanceCriteria: string
+}
 
 export interface WorkflowSummary {
   id: string
   version: string
   name: string
   summary: string
+  inputs?: WorkflowPortSummary[]
+  outputs?: WorkflowPortSummary[]
+  inputsTruncated?: boolean
+  outputsTruncated?: boolean
+  scientificFitStatus?: 'available' | 'unavailable'
   status: string
   language: string
   languageVersion: string
